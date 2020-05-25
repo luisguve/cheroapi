@@ -3,6 +3,8 @@ syntax = "proto3";
 // package metadata defines message types for describing content
 package metadata;
 
+import "google/protobuf/timestamp.proto";
+
 // ContentStatus defines the different categories that fits content at a
 // given time, trying to describe the quality of the content.
 enum ContentStatus {
@@ -11,7 +13,17 @@ enum ContentStatus {
 	TOP = 2;
 }
 
+// Content holds the most updated information about the data
 message Content {
-	ContentStatus status = 1;
-	
+	// Are considered interactions with the content the following actions:
+	// upvote, comment, comment upvote, subcomment and subcomment upvote.
+	uint32 interactions = 1;
+	// LastUpdated indicates when it was the last time this content
+	// received an interaction.
+	google.protobuf.Timestamp last_updated = 2;
+	// AvgUpdateTime indicates the average difference in time between
+	// interactions.
+	uint64 avg_update_time = 3;
+	// DataKey holds the key referencing the data.
+	// string data_key = 4;
 }

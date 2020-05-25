@@ -2,13 +2,11 @@ syntax = "proto3";
 
 // package dataformat defines the format in which the data will be stored 
 // in the database.
-// It also defines some data types that will describe the data, i.e.
-// metadata types.
 package dataformat;
 
 import "google/protobuf/timestamp.proto";
-import "github.com/luisguve/cheroapi/internal/proto/context.proto"
-import "github.com/luisguve/cheroapi/internal/proto/metadata.proto"
+import "github.com/luisguve/cheroapi/internal/proto/context.proto";
+import "github.com/luisguve/cheroapi/internal/proto/metadata.proto";
 
 // Notif is the format in which users get their notifications.
 message Notif {
@@ -49,7 +47,7 @@ message Activity {
 	repeated context.Subcomment subcomments = 3;
 }
 
-// Basic data of users
+// Public data of users
 message BasicUserData {
 	string alias = 1;
 	string username = 2;
@@ -101,4 +99,6 @@ message Content {
 	repeated string replier_ids = 12;
 	// list of users who saved this content
 	repeated string users_who_saved = 13;
+	// Metadata holds information about the interactions with this content.
+	metadata.Content metadata = 14;
 }
