@@ -5,9 +5,9 @@ syntax = "proto3";
 package cheropatillapb;
 
 import "google/protobuf/timestamp.proto";
-import "github.com/luisguve/cheroapi/internal/proto/data_format.proto"
-import "github.com/luisguve/cheroapi/internal/proto/context.proto"
-import "github.com/luisguve/cheroapi/internal/proto/metadata.proto"
+import "github.com/luisguve/cheroapi/internal/proto/data_format.proto";
+import "github.com/luisguve/cheroapi/internal/proto/context.proto";
+import "github.com/luisguve/cheroapi/internal/proto/metadata.proto";
 
 message Content {
 	string title = 1;
@@ -126,7 +126,7 @@ message UserList {
 	repeated string ids = 1;
 }
 
-// ContentRule holds a piece of content and its current status.
+// ContentRule holds a piece of content, its current status and its type.
 message ContentRule {
 	ContentData data = 1;
 	metadata.ContentStatus status = 2;

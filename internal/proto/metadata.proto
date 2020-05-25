@@ -13,7 +13,8 @@ enum ContentStatus {
 	TOP = 2;
 }
 
-// Content holds the most updated information about the data
+// Content holds the most updated information about the interactions with
+// the content.
 message Content {
 	// Are considered interactions with the content the following actions:
 	// upvote, comment, comment upvote, subcomment and subcomment upvote.
