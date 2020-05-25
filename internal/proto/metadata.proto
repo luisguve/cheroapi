@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+// package metadata defines message types for describing content
+package metadata;
+
+// ContentStatus defines the different categories that fits content at a
+// given time, trying to describe the quality of the content.
+enum ContentStatus {
+	NEW = 0;
+	REL = 1;
+	TOP = 2;
+}
+
+message Content {
+	ContentStatus status = 1;
+	
+}
