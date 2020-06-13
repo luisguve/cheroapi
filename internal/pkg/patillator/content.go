@@ -1,0 +1,71 @@
+package patillator
+
+import(
+	
+)
+
+type Content *pbMetadata.Content
+
+// ToDiscard iterates over the received list of ids, compares the ids to the
+// field DataKey of the underlying *pbMetadata.Content and returns true if it
+// finds a coincidence and the list without the found id, or false and the
+// unchanged list.
+//
+// The caller should be aware that removing the element found means that it
+// was replaced by the last element and the slice was re-sliced leaving out the
+// last element.
+func (c Content) ToDiscard(ids []string) (bool, []string) {
+	// type cast for ease of use
+	metadata := *pbMetadata.Content(c)
+	discard := false
+
+	for i := 0; i < len(ids); i++ {
+		if metadata.DataKey == ids[i] {
+			// this content and the corresponding id are to be discarded
+			discard = true
+			// Remove the id by copying the last id in the position i and
+			// then reslicing the ids, leaving the last element out.
+			last := len(ids) - 1
+			ids[i] = ids[last]
+			ids = ids[: last]
+			break
+		}
+	}
+	return discard, ids
+}
+
+// IsRelevant returns true if the number of interactions is greater than 10 and
+// the average update time difference is less than 10 minutes. It does the
+// comparison on the Interactions and AvgUpdateTime fields, respectively.
+func (c Content) IsRelevant() bool {
+	// type cast for ease of use
+	metadata := *pbMetadata.Content(c)
+	return (metadata.Interactions > 10) && (metadata.AvgUpdateTime <= 10 * time.Minute)
+}
+
+// IsLessRelevantThan compares the field Interactions and the field AvgUpdateTime
+// of c and the underlying Content of the argument.
+// 
+// It returns true if c -the local- has less interactions AND an equal or
+// greater average update time difference than other -the argument-, or false if
+// either some of the conditions are false or the underlying type of other is not
+// a Content.
+func (c Content) IsLessRelevantThan(other interface{}) bool {
+	// type assert to get access to fields Interactions and AvgUpdateTime
+	if otherC, ok := other.(Content); !ok {
+		return false
+	}
+	// type cast for ease of use
+	metadata := *pbMetadata.Content(c)
+	otherMetadata := *pbMetadata.Content(otherC)
+	return (metadata.Interactions < otherMetadata.Interactions) &&
+		(metadata.AvgUpdateTime >= otherMetadata.AvgUpdateTime)
+}
+
+// DataKey returns a string containing the field DataKey of c, which represents
+// a thread Id. The caller should know the section it belongs to.
+func (c Content) DataKey() interface{} {
+	// type cast for ease of use
+	metadata := *pbMetadata.Content(c)
+	return metadata.DataKey
+}
