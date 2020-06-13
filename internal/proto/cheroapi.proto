@@ -3,11 +3,12 @@ syntax = "proto3";
 // Package cheropatillapb defines the interface to send and receive messages to
 // and from the server.
 package cheropatillapb;
+option go_package = "github.com/luisguve/cheroapi/internal/protogen/cheropatillapb";
 
 import "google/protobuf/timestamp.proto";
-import "github.com/luisguve/cheroapi/internal/proto/data_format.proto";
-import "github.com/luisguve/cheroapi/internal/proto/context.proto";
-import "github.com/luisguve/cheroapi/internal/proto/metadata.proto";
+import "data_format.proto";
+import "context.proto";
+import "metadata.proto";
 
 message Content {
 	string title = 1;
@@ -49,9 +50,9 @@ message UserHeaderData {
 	string alias = 1;
 	string username = 2;
 	// unread notifications of this user.
-	repeated data_format.Notif unread_notifs = 3;
+	repeated dataformat.Notif unread_notifs = 3;
 	// read notifications of this user.
-	repeated data_format.Notif read_notifs = 4;
+	repeated dataformat.Notif read_notifs = 4;
 	// last time this user created a thread
 	google.protobuf.Timestamp last_time_created = 5;
 }
@@ -59,7 +60,7 @@ message UserHeaderData {
 // NotifyUser maps notifications to users.
 message NotifyUser {
 	string user_id = 1; // receiver
-	data_format.Notif notification = 2; // actual message
+	dataformat.Notif notification = 2; // actual message
 }
 
 // ContentPattern holds an array of ContentStatus, composing up a pattern of content 
@@ -113,7 +114,7 @@ message ActivityPattern {
 	// discard_ids is a map of user_ids to activity from the user referred to by 
 	// the key that must not be returned back, since it's content the user has 
 	// already seen.
-	map<string, data_format.Activity> discard_ids = 2;
+	map<string, dataformat.Activity> discard_ids = 2;
 	// context is either users following or the user itself.
 	oneof context {
 		UserList users = 3;
@@ -129,11 +130,10 @@ message UserList {
 // ContentRule holds a piece of content, its current status and its type.
 message ContentRule {
 	ContentData data = 1;
-	metadata.ContentStatus status = 2;
 	oneof content_context {
-		context.Thread thread_ctx = 3;
-		context.Comment comment_ctx = 4;
-		context.Subcomment subcomment_ctx = 5;
+		context.Thread thread_ctx = 2;
+		context.Comment comment_ctx = 3;
+		context.Subcomment subcomment_ctx = 4;
 	}
 }
 
@@ -148,8 +148,8 @@ message UpvoteRequest {
 	}
 }
 
-// UnupvoteRequest holds information about the un-upvote event.
-message UnupvoteRequest {
+// UndoUpvoteRequest holds information about the upvote undoing event.
+message UndoUpvoteRequest {
 	string user_id = 1; // Who is submitting the un-upvote
 	// The upvote event occurs either in a thread, in a comment or in a subcomment.
 	oneof content_context {
@@ -158,6 +158,8 @@ message UnupvoteRequest {
 		context.Subcomment subcomment_ctx = 4;
 	}
 }
+
+message UndoUpvoteResponse {}
 
 // CommentRequest holds information about the comment event.
 message CommentRequest {
@@ -310,7 +312,7 @@ message ViewUsersRequest {
 // ViewUsersResponse holds a list of basic user data of requested users following
 // or followers of a user
 message ViewUsersResponse {
-	repeated data_format.BasicUserData basic_user_data = 1;
+	repeated dataformat.BasicUserData basic_user_data = 1;
 }
 
 // ViewUserByUsernameRequest is a message for requesting public data of a user
@@ -377,7 +379,16 @@ message RegisterUserResponse {
 }
 
 service CrudCheropatilla {
-	// Get new feed of either threads in a section or comments in a thread
+	// Get new feed of either threads in a section or comments in a thread.
+	//
+	// In case of being called in the context of a section, it returns only
+	// threads that are currently active, as opposed to comments in a thread,
+	// in which case the type of content is considered always active, despite
+	// the current status of the thread they belong to.
+	//
+	// It may return a codes.InvalidArgument error in case of being passed a
+	// request with a nil ContentContext or a codes.Internal error in case of
+	// a database querying or network issue.
 	rpc RecycleContent(ContentPattern) returns (stream ContentRule) {}
 	// Get new feed of threads in general (from multiple sections)
 	rpc RecycleGeneral(GeneralPattern) returns (stream ContentRule) {}
@@ -388,8 +399,8 @@ service CrudCheropatilla {
 
 	// Post upvote on thread, comment or subcomment
 	rpc Upvote(UpvoteRequest) returns (stream NotifyUser) {}
-	// Post un-upvote on thread, comment or subcomment
-	rpc Unupvote(UnupvoteRequest) returns (UnupvoteResponse) {}
+	// Undo upvote on a thread, comment or subcomment
+	rpc UndoUpvote(UndoUpvoteRequest) returns (UndoUpvoteResponse) {}
 	// Post comment on a thread or in a comment
 	rpc Comment(CommentRequest) returns (stream NotifyUser) {}
 	// Update a thread, comment or subcomment
@@ -404,7 +415,7 @@ service CrudCheropatilla {
 	// Update a user's basic data
 	rpc UpdateBasicUserData(UpdateBasicUserDataRequest) returns (UpdateBasicUserDataResponse) {}
 	// Get a user's basic data to be dislayed in page
-	rpc GetBasicUserData(GetBasicUserDataRequest) returns (data_format.BasicUserData) {}
+	rpc GetBasicUserData(GetBasicUserDataRequest) returns (dataformat.BasicUserData) {}
 	// Get the list of users followed by a given user
 	rpc GetUserFollowingIds(GetBasicUserDataRequest) returns (UserList) {}
 
@@ -432,7 +443,7 @@ service CrudCheropatilla {
 	rpc ViewUsers(ViewUsersRequest) returns (ViewUsersResponse) {}
 	// Get username basic data, following, followers and threads created
 	rpc ViewUserByUsername(ViewUserByUsernameRequest) returns (ViewUserResponse) {}
-	// Get 
+	// Get dashboard data for a given user
 	rpc GetDashboardData(GetDashboardDataRequest) returns (DashboardData) {}
 
 	// Validate user credentials to login

@@ -3,10 +3,11 @@ syntax = "proto3";
 // package dataformat defines the format in which the data will be stored 
 // in the database.
 package dataformat;
+option go_package = "github.com/luisguve/cheroapi/internal/protogen/dataformat";
 
 import "google/protobuf/timestamp.proto";
-import "github.com/luisguve/cheroapi/internal/proto/context.proto";
-import "github.com/luisguve/cheroapi/internal/proto/metadata.proto";
+import "context.proto";
+import "metadata.proto";
 
 // Notif is the format in which users get their notifications.
 message Notif {
@@ -89,10 +90,10 @@ message Content {
 	string author_id = 5;
 	// id contains the THREAD ID
 	string id = 6;
-	// section is the name of the section
-	string section = 7;
-	// permalink is the full url to the content, including fragments
-	string permalink = 8;
+	// section_name is the name of the section
+	string section_name = 7;
+	// section_id holds the id of the section
+	string section_id = 8;
 	uint32 topvotes = 9;
 	uint32 replies = 10;
 	repeated string voter_ids = 11;
@@ -101,4 +102,6 @@ message Content {
 	repeated string users_who_saved = 13;
 	// Metadata holds information about the interactions with this content.
 	metadata.Content metadata = 14;
+	// permalink is the full url to the content, including fragments
+	string permalink = 15;
 }

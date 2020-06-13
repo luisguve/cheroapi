@@ -2,6 +2,7 @@ syntax = "proto3";
 
 // package metadata defines message types for describing content
 package metadata;
+option go_package = "github.com/luisguve/cheroapi/internal/protogen/metadata";
 
 import "google/protobuf/timestamp.proto";
 
@@ -26,5 +27,12 @@ message Content {
 	// interactions.
 	uint64 avg_update_time = 3;
 	// DataKey holds the key referencing the data.
-	// string data_key = 4;
+	string data_key = 4;
+}
+
+// GeneralContent holds the most updated information about the interactions
+// with the content, along with the section id it belongs to.
+message GeneralContent {
+	string section_id = 1;
+	Content content = 2;
 }
