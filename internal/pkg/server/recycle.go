@@ -7,10 +7,10 @@ import(
 	"google.golang.org/grpc/codes"
 	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
-	pbContext "github.com/luisguve/cheroapi/internal/protogen/context"
-	pbApi "github.com/luisguve/cheroapi/internal/protogen/cheropatillapb"
-	pbMetadata "github.com/luisguve/cheroapi/internal/protogen/metadata"
-	pbDataFormat "github.com/luisguve/cheroapi/internal/protogen/dataformat"
+	pbContext "github.com/luisguve/cheroproto-go/context"
+	pbApi "github.com/luisguve/cheroproto-go/cheropatillapb"
+	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
 // Get new feed of either threads in a section or comments in a thread.

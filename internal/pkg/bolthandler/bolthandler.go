@@ -14,10 +14,10 @@ import(
 	bolt "go.etcd.io/bbolt"
 	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
 	"google.golang.org/protobuf/proto"
-	pbApi "github.com/luisguve/cheroapi/internal/protogen/cheropatillapb"
-	pbDataFormat "github.com/luisguve/cheroapi/internal/protogen/dataformat"
-	pbMetadata "github.com/luisguve/cheroapi/internal/protogen/metadata"
-	pbContext "github.com/luisguve/cheroapi/internal/protogen/context"
+	pbApi "github.com/luisguve/cheroproto-go/cheropatillapb"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
+	pbContext "github.com/luisguve/cheroproto-go/context"
 )
 
 // names of buckets

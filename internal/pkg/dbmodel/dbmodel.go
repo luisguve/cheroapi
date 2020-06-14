@@ -6,10 +6,10 @@ package dbmodel
 
 import(
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
-	pbApi "github.com/luisguve/cheroapi/internal/protogen/cheropatillapb"
-	pbMetadata "github.com/luisguve/cheroapi/internal/protogen/metadata"
-	pbContext "github.com/luisguve/cheroapi/internal/protogen/context"
-	pbDataFormat "github.com/luisguve/cheroapi/internal/protogen/dataformat"
+	pbApi "github.com/luisguve/cheroproto-go/cheropatillapb"
+	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
+	pbContext "github.com/luisguve/cheroproto-go/context"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
 // Handler defines the set of available CRUD operations to perform on the

@@ -7,9 +7,9 @@ import(
 	"log"
 	"time"
 
-	pbContext "github.com/luisguve/cheroapi/internal/protogen/context"
-	pbMetadata "github.com/luisguve/cheroapi/internal/protogen/metadata"
-	pbDataformat "github.com/luisguve/cheroapi/internal/protogen/dataformat"
+	pbContext "github.com/luisguve/cheroproto-go/context"
+	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
+	pbDataformat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
 // ContentFinder is the set of methods that provide the required information
