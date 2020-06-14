@@ -3,7 +3,7 @@ package bolthandler
 import(
 	"log"
 
-	pbApi "github.com/luisguve/cheroapi/internal/protogen/cheropatillapb"
+	pbApi "github.com/luisguve/cheroapi/internal/protogen/cheroapi"
 	pbDataFormat "github.com/luisguve/cheroapi/internal/protogen/dataformat"
 	pbMetadata "github.com/luisguve/cheroapi/internal/protogen/metadata"
 	pbContext "github.com/luisguve/cheroapi/internal/protogen/context"

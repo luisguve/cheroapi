@@ -6,7 +6,7 @@ package dbmodel
 
 import(
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
-	pbApi "github.com/luisguve/cheroproto-go/cheropatillapb"
+	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
