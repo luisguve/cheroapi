@@ -4,8 +4,10 @@ This repository contains the implementation for the CrudCheropatilla service, as
 
 ### An overview of ***cheropatilla***
 
-***Cheropatilla*** is a social platform that introduces its own idea of how pagination of contents should be done. In order to understand it, we should first review what's the current way in which some of the most popular social networks out there achieve pagination of millions of posts every day, for every user.
+***Cheropatilla*** is a social platform that introduces its own idea of how pagination of contents should be done. In order to understand it, we should first review what's the current way in which some of the most important social platforms out there achieve pagination of millions of posts every day, for every user.
 
-1. **Twitter**. The main contents here are the so-called *tweets* and *re-tweets*; you can post an unlimited number of tweets no longer than 280 characters, attach up to four pictures or a video, and your followers and the followers of every user that *re-tweet* your tweets, will see them in their timeline, **in chronological order**. Additionally, you can use *#hashtags* to 
+1. **Twitter**. The main contents here are the so-called *tweets* and *re-tweets*; you can post an unlimited number of tweets no longer than 280 characters, attach up to four pictures or a video, and your followers and the followers of every user that *re-tweet* your tweets, will see them in their timeline, **in chronological order**.
 
-2. **Reddit**. This is actually a platform that enables users to discuss several specific topics
+Additionally, you can use *#hashtags* to positionate your tweets in the page of the hashtag you're using, which is like a section page, where you can view tweets quoting the hashtag.
+
+2. **Reddit**. This is a platform that enables users to discuss several specific topics 
