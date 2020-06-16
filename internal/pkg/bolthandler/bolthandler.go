@@ -26,6 +26,7 @@ const (
 	archivedContentsB = "ArchivedContents"
 	usersB = "Everyone"
 	usernamesB = "UsernameMappings"
+	emailsB = "EmailMappings"
 	commentsB = "Comments"
 	subcommentsB = "Subcomments"
 )
@@ -38,6 +39,8 @@ const (
 	ErrThreadNotFound = "Thread not found"
 	ErrCommentNotFound = "Comment not found"
 	ErrNoSavedThreads = "This user has not saved any thread yet"
+	ErrUsernameNotFound = "Username not found"
+	ErrEmailNotFound = "Email not found"
 )
 
 var sectionIds = []string{
@@ -104,6 +107,7 @@ func New() (dbmodel.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	// create bucket for users
 	if err = usersDB.Update(func(tx *bolt.Tx) error {
 		_, err = tx.CreateBucketIfNotExists([]byte(usersB))
@@ -117,6 +121,15 @@ func New() (dbmodel.Handler, error) {
 	if err = usersDB.Update(func(tx *bolt.Tx) error {
 		_, err = tx.CreateBucketIfNotExists([]byte(usernamesB))
 		log.Printf("Could not create bucket %s: %v\n", usernamesB, err)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+
+	// create bucket for emails to user ids mapping
+	if err = usersDB.Update(func(tx *bolt.Tx) error {
+		_, err = tx.CreateBucketIfNotExists([]byte(emailsB))
+		log.Printf("Could not create bucket %s: %v\n", emailsB, err)
 		return err
 	}); err != nil {
 		return nil, err
