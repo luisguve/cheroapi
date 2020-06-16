@@ -25,6 +25,7 @@ const (
 	activeContentsB = "ActiveContents"
 	archivedContentsB = "ArchivedContents"
 	usersB = "Everyone"
+	usernamesB = "UsernameMappings"
 	commentsB = "Comments"
 	subcommentsB = "Subcomments"
 )
@@ -106,7 +107,16 @@ func New() (dbmodel.Handler, error) {
 	// create bucket for users
 	if err = usersDB.Update(func(tx *bolt.Tx) error {
 		_, err = tx.CreateBucketIfNotExists([]byte(usersB))
-		log.Printf("Could not create bucket: %v\n", err)
+		log.Printf("Could not create bucket %s: %v\n", usersB, err)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+
+	// create bucket for usernames to user ids mapping
+	if err = usersDB.Update(func(tx *bolt.Tx) error {
+		_, err = tx.CreateBucketIfNotExists([]byte(usernamesB))
+		log.Printf("Could not create bucket %s: %v\n", usernamesB, err)
 		return err
 	}); err != nil {
 		return nil, err
