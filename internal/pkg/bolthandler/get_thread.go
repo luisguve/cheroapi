@@ -242,7 +242,8 @@ func (h *handler) GetGeneralThreads(threadsInfo []patillator.GeneralId) ([]*pbAp
 // 
 // If the section does not exist, it returns an ErrSectionNotFound error.
 // If it found the thread, it marshals it into a *pbDataFormat.Content and
-// returns it. Otherwise, it returns a nil Content and an error.
+// returns it. Otherwise, it returns a nil Content and a ErrThreadNotFound error
+// or a proto unmarshal error.
 func (h *handler) GetThreadContent(thread *pbContext.Thread) (*pbDataFormat.Content, error) {
 	var (
 		err error
