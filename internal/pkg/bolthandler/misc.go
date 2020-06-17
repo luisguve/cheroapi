@@ -182,6 +182,19 @@ func (h *handler) getContentAuthor(id string) (*pbApi.ContentAuthor, error) {
 	return pbAuthor, nil
 }
 
+// setThreadBytes puts the given thread bytes as the value of the threadId as
+// the key.
+// 
+// It returns a nil error on success or an ErrThreadNotFound or bolt put error
+// in case of failure.
+func setThreadBytes(tx *bolt.Tx, threadId string, threadBytes []byte) error {
+	contents, err := getThreadBucket(tx, threadId)
+	if err != nil {
+		return nil, ErrThreadNotFound
+	}
+	return contents.Put([]byte(threadId, threadBytes))
+}
+
 // getThreadBytes returns the thread with the given Id in protobuf-encoded bytes.
 // 
 // It returns an ErrThreadNotFound if the thread does not exist in the database
@@ -189,7 +202,7 @@ func (h *handler) getContentAuthor(id string) (*pbApi.ContentAuthor, error) {
 func getThreadBytes(tx *bolt.Tx, threadId string) ([]byte, error) {
 	contents, err := getThreadBucket(tx, threadId)
 	if err != nil {
-		return nil, err
+		return nil, ErrThreadNotFound
 	}
 
 	threadBytes := contents.Get([]byte(threadId))
@@ -197,6 +210,19 @@ func getThreadBytes(tx *bolt.Tx, threadId string) ([]byte, error) {
 		return nil, ErrThreadNotFound
 	}
 	return threadBytes, nil
+}
+
+// setCommentBytes puts the given comment bytes as the value of the commentId as
+// the key.
+// 
+// It returns a nil error on success or an ErrCommentNotFound or bolt put error
+// in case of failure.
+func setCommentBytes(tx *bolt.Tx, threadId, commentId string, commentBytes []byte) error {
+	contents, err := getCommentsBucket(tx, threadId)
+	if err != nil {
+		return nil, ErrCommentNotFound
+	}
+	return contents.Put([]byte(commentId), commentBytes)
 }
 
 // getCommentBytes returns the comment with the given Id associated to the given
@@ -207,7 +233,7 @@ func getThreadBytes(tx *bolt.Tx, threadId string) ([]byte, error) {
 func getCommentBytes(tx *bolt.Tx, threadId, commentId string) ([]byte, error) {
 	contents, err := getCommentsBucket(tx, threadId)
 	if err != nil {
-		return nil, err
+		return nil, ErrCommentNotFound
 	}
 
 	commentBytes := contents.Get([]byte(commentId))
@@ -215,6 +241,20 @@ func getCommentBytes(tx *bolt.Tx, threadId, commentId string) ([]byte, error) {
 		return nil, ErrCommentNotFound
 	}
 	return commentBytes, nil
+}
+
+// setSubCommentBytes puts the given subcomment bytes as the value of the
+// subcommentId as the key.
+// 
+// It returns a nil error on success or an ErrSubcommentNotFound or bolt put error
+// in case of failure.
+func setSubcommentBytes(tx *bolt.Tx, threadId, commentId, subcommentId string,
+	subcommentBytes []byte) error {
+	contents, err := getSubcommentsBucket(tx, threadId, commentId)
+	if err != nil {
+		return nil, ErrSubcommentNotFound
+	}
+	return contents.Put([]byte(subcommentId), subcommentBytes)
 }
 
 // getSubcommentBytes returns the subcomment with the given Id associated to the
@@ -274,8 +314,8 @@ func getThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 	return nil, ErrBucketNotFound
 }
 
-// getCommentsBucket looks for a comments bucket asociated to the given
-// thread id.
+// getCommentsBucket looks for a comments bucket asociated to the given thread
+// id.
 // 
 // It returns an ErrBucketNotFound if either the thread or the comments bucket
 // does not exist in the database associated to tx.
