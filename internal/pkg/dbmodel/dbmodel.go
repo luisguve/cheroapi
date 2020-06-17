@@ -46,4 +46,15 @@ type Handler interface {
 	// *status.Status on successful registering or an empty string an a *status.Status
 	// indicating what went wrong (email or username already in use) otherwise.
 	RegisterUser(email, name, patillavatar, username, alias, about, password string) (string, *status.Status)
+	// Submit upvote on a thread from the given user id and return a list of users
+	// and the notifications for them and an error
+	UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.NotifyUser, error)
+	// Submit upvote on a comment from the given user id and return a list of users
+	// and the notifications for them and an error
+	UpvoteComment(userId string, comment *pbContext.Comment) ([]*pbApi.NotifyUser, error)
+	// Submit upvote on a subcomment from the given user id and return a list of
+	// users and the notifications for them and an error
+	UpvoteSubcomment(userId string, subcomment *pbContext.Subcomment) ([]*pbApi.NotifyUser, error)
+	// Set notif into user's list of unread notifications
+	SaveNotif(userToNotif string, notif *pbDataFormat.Notif)
 }
