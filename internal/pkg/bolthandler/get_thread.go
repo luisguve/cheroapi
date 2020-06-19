@@ -86,7 +86,7 @@ func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi
 	var (
 		err error
 		id = section.Id
-		contentRules []*pbApi.ContentRule
+		contentRules = make([]*pbApi.ContentRule, len(ids))
 	)
 
 	// check whether the section exists
@@ -103,17 +103,16 @@ func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi
 		var (
 			done = make(chan error)
 			quit = make(chan error)
-			m sync.Mutex
 			wg sync.WaitGroup
 			elems = 0
 		)
-		for _, id = range ids {
+		for idx, id := range ids {
 			// Do the content querying, unmarshaling, formatting and appending
 			// in its own go-routine. Should it get an error and it will send
 			// it to the channel done, otherwise it will be sending nil to the
 			// same channel, meaning it could complete its work successfully.
 			wg.Add(1)
-			go func(id string) {
+			go func(idx int, id string) {
 				defer wg.Done()
 				v := activeContents.Get([]byte(id))
 				// Check whether the content was found (is currently active)
@@ -122,18 +121,19 @@ func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi
 					pbContent := new(pbDataFormat.Content)
 					if err := proto.Unmarshal(v, pbContent); err != nil {
 						log.Printf("Could not unmarshal content: %v\n", err)
+						contentRules[idx] = &pbApi.ContentRule{}
 					} else {
 						contentRule := h.formatThreadContentRule(pbContent, section, id)
-						m.Lock()
-						contentRules = append(contentRules, contentRule)
-						m.Unlock()
+						contentRules[idx] = contentRule
 					}
 					select {
 					case done<- err:
 					case <-quit: // exit in case of getting stuck on above statement.
 					}
+				} else {
+					contentRules[idx] = &pbApi.ContentRule{}
 				}
-			}(id)
+			}(idx, id)
 		}
 		// Check for errors. It terminates every go-routine hung on the statement
 		// "case done<- err" by closing the channel quit and returns the first err
@@ -205,7 +205,7 @@ func (h *handler) GetGeneralThreadsOverview(setContent func(*pbDataFormat.Conten
 // h.GetThread.
 func (h *handler) GetGeneralThreads(threadsInfo []patillator.GeneralId) ([]*pbApi.ContentRule, []error) {
 	var (
-		contentRules []*pbApi.ContentRule
+		contentRules = make([]*pbApi.ContentRule, len(threadsInfo))
 		errs []error
 		m sync.Mutex
 		wg sync.WaitGroup
@@ -213,9 +213,9 @@ func (h *handler) GetGeneralThreads(threadsInfo []patillator.GeneralId) ([]*pbAp
 
 	// query each thread concurrently; use a Mutex to synchronise write access
 	// to contentRules.
-	for _, threadInfo := range threadsInfo {
+	for idx, threadInfo := range threadsInfo {
 		wg.Add(1)
-		go func(threadInfo patillator.GeneralId) {
+		go func(idx int, threadInfo patillator.GeneralId) {
 			defer wg.Done()
 
 			ctx := &pbContext.Thread{
@@ -224,14 +224,15 @@ func (h *handler) GetGeneralThreads(threadsInfo []patillator.GeneralId) ([]*pbAp
 					Id: threadInfo.SectionId,
 				},
 			}
-			m.Lock()
-			defer m.Unlock()
 			if contentRule, err := h.GetThread(ctx); err != nil {
+				contentRules[idx] = &pbApi.ContentRule{}
+				m.Lock()
 				errs = append(errs, err)
+				m.Unlock()
 			} else {
-				contentRules = append(contentRules, contentRule)
+				contentRules[idx] = contentRule
 			}
-		}(threadInfo)
+		}(idx, threadInfo)
 	}
 	wg.Wait()
 	return contentRules, errs

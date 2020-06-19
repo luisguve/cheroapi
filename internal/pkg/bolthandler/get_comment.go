@@ -85,7 +85,7 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 		err error
 		id = thread.Id
 		sectionId = thread.SectionCtx.Id
-		contentRules []*pbApi.ContentRule
+		contentRules = make([]*pbApi.ContentRule, len(ids))
 	)
 
 	// check whether the section exists
@@ -101,18 +101,17 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 		}
 		var (
 			wg sync.WaitGroup
-			m sync.Mutex
 			elems = 0
 			done = make(chan error)
 			quit = make(chan error)
 		)
-		for _, id = range ids {
+		for idx, id = range ids {
 			// Do the content querying, unmarshaling, formatting and appending
 			// in its own go-routine. Should it get an error and it will send
 			// it to the channel done, otherwise it will be sending nil to the
 			// same channel, meaning it could complete its work successfully.
 			wg.Add(1)
-			go func(id string) {
+			go func(idx int, id string) {
 				defer wg.Done()
 				v := comments.Get([]byte(id))
 				// Check whether the comment exists
@@ -121,18 +120,19 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 					pbContent := new(pbDataFormat.Content)
 					if err := proto.Unmarshal(v, pbContent); err != nil {
 						log.Printf("Could not unmarshal content: %v\n", err)
+						contentRules[idx] = &pbApi.ContentRule{}
 					} else {
 						contentRule := h.formatCommentContentRule(pbContent, section, id)
-						m.Lock()
-						contentRules = append(contentRules, contentRule)
-						m.Unlock()
+						contentRules[idx] = contentRule
 					}
 					select {
 					case done<- err:
 					case <-quit: // exit in case of getting stuck on above statement.
 					}
+				} else {
+					contentRules[idx] = &pbApi.ContentRule{}
 				}
-			}(id)
+			}(idx, id)
 		}
 		// Check for errors. It terminates every go-routine hung on the statement
 		// "case done<- err" by closing the channel quit and returns the first err

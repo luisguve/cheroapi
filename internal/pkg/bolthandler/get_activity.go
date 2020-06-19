@@ -128,53 +128,51 @@ func (h *handler) GetActivity(users ...string,
 // into a []*pbApi.ContentRule.
 func (h *handler) GetContentsByContext(contexts []*pbContext.Context) ([]*pbApi.ContentRule, []error) {
 	var (
-		contentRules []*pbApi.ContentRule
+		contentRules = make([]*pbApi.ContentRule, len(contexts))
 		errs []error
 		m sync.Mutex
 		wg sync.WaitGroup
 	)
 
-	for _, context := range contexts {
+	for idx, context := range contexts {
 		wg.Add(1)
-		go func(context *pbContext.Context) {
+		go func(idx int, context *pbContext.Context) {
 			defer wg.Done()
-
+			var (
+				contentRule *pbApi.ContentRule
+				err error
+			)
 			switch ctx := context.(type) {
 			case *pbContext.Thread:
-				contentRule, err := h.GetThread(ctx)
-
-				m.Lock()
-				defer m.Unlock()
+				contentRule, err = h.GetThread(ctx)
 				if err != nil {
+					contentRule = &pbApi.ContentRule{}
 					log.Printf("Could not get thread: %v\n", err)
+					m.Lock()
 					errs = append(errs, err)
-					return
+					m.Unlock()
 				}
-				contentRules = append(contentRules, contentRule)
 			case *pbContext.Comment:
-				contentRule, err := h.GetComment(ctx)
-
-				m.Lock()
-				defer m.Unlock()
+				contentRule, err = h.GetComment(ctx)
 				if err != nil {
+					contentRule = &pbApi.ContentRule{}
 					log.Printf("Could not get comment: %v\n", err)
+					m.Lock()
 					errs = append(errs, err)
-					return
+					m.Unlock()
 				}
-				contentRules = append(contentRules, contentRule)
 			case *pbContext.Subcomment:
-				contentRule, err := h.GetSubcomment(ctx)
-
-				m.Lock()
-				defer m.Unlock()
+				contentRule, err = h.GetSubcomment(ctx)
 				if err != nil {
+					contentRule = &pbApi.ContentRule{}
 					log.Printf("Could not get subcomment: %v\n", err)
+					m.Lock()
 					errs = append(errs, err)
-					return
+					m.Unlock()
 				}
-				contentRules = append(contentRules, contentRule)
 			}
-		}(context)
+			contentRules[idx] = contentRule
+		}(idx, context)
 	}
 	wg.Wait()
 	return contentRules, errs
