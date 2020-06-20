@@ -57,4 +57,10 @@ type Handler interface {
 	UpvoteSubcomment(userId string, subcomment *pbContext.Subcomment) ([]*pbApi.NotifyUser, error)
 	// Set notif into user's list of unread notifications
 	SaveNotif(userToNotif string, notif *pbDataFormat.Notif)
+	// Undo upvote on a thread from the given user id
+	UndoUpvoteThread(userId string, thread *pbContext.Thread) error
+	// Undo upvote on a comment from the given user id
+	UndoUpvoteComment(userId string, comment *pbContext.Comment) error
+	// Undo upvote on a subcomment from the given user id
+	UndoUpvoteSubcomment(userId string, subcomment *pbContext.Subcomment) error
 }
