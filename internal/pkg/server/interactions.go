@@ -52,7 +52,7 @@ func (s *Server) Upvote(req *pbApi.UpvoteRequest, stream pbApi.CrudCheropatilla_
 // Undo an upvote on a thread, comment or subcomment
 func (s *Server) UndoUpvote(ctx context.Context, req *pbApi.UndoUpvoteRequest) (*pbApi.UndoUpvoteResponse, error) {
 	if s.dbHandler == nil {
-		return status.Error(codes.Internal, "No database connection")
+		return nil, status.Error(codes.Internal, "No database connection")
 	}
 	var (
 		submitter = req.UserId
@@ -61,11 +61,11 @@ func (s *Server) UndoUpvote(ctx context.Context, req *pbApi.UndoUpvoteRequest) (
 	// call a different undo upvote method, depending upon the context where the
 	// upvote undoing is being submitted.
 	switch ctx := req.ContentContext.(type) {
-	case *pbApi.UpvoteRequest_ThreadCtx: // THREAD
+	case *pbApi.UndoUpvoteRequest_ThreadCtx: // THREAD
 		err = s.dbHandler.UndoUpvoteThread(submitter, ctx.ThreadCtx)
-	case *pbApi.UpvoteRequest_CommentCtx: // COMMENT
+	case *pbApi.UndoUpvoteRequest_CommentCtx: // COMMENT
 		err = s.dbHandler.UndoUpvoteComment(submitter, ctx.CommentCtx)
-	case *pbApi.UpvoteRequest_SubcommentCtx: // SUBCOMMENT
+	case *pbApi.UndoUpvoteRequest_SubcommentCtx: // SUBCOMMENT
 		err = s.dbHandler.UndoUpvoteSubcomment(submitter, ctx.SubcommentCtx)
 	}
 	return &pbApi.UndoUpvoteResponse{}, err
