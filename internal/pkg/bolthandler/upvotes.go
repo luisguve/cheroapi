@@ -29,14 +29,16 @@ func incInteractions(m *pbMetadata.Content) {
 	m.AvgUpdateTime = float64(diff) / float64(m.Interactions)
 }
 
-// inSlice returns whether user is in users
-func inSlice(users []string, user) bool {
-	for _, u := range users {
+// inSlice returns whether user is in users and an integer indicating the index
+// where the user id is in the slice. Returns false an 0 if the user is not in
+// users slice.
+func inSlice(users []string, user string) (bool, int) {
+	for idx, u := range users {
 		if u == user {
-			return true
+			return true, idx
 		}
 	}
-	return false
+	return false, 0
 }
 
 // UpvoteThread increases by one the number of upvotes that the given thread has
@@ -60,7 +62,8 @@ func (h *handler) UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.
 	pbContent.VoterIds = append(pbContent.VoterIds, userId)
 	// increment interactions and calculata new average update time only if this
 	// user has not undone an interaction on this content before.
-	if !inSlice(pbContent.UndonerIds, userId) {
+	undoner, _ := inSlice(pbContent.UndonerIds, userId)
+	if !undoner {
 		incInteractions(pbContent.Metadata)
 	}
 
@@ -103,10 +106,32 @@ func (h *handler) UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.
 	return nil, nil
 }
 
-// UpvoteComment increases by one the number of upvotes that both the given
-// comment and the given thread have received, updates the metadata related to
-// their interactions and saves the notification in the list of unread
-// notifications of the comment author and the thread author.
+// UndoUpvoteThread decreases by one the number of upvotes that the thread has
+// received, removes the user id from the list of voters and appends it to the
+// list of undoners. It does not update the interactions of the thread.
+func (h *handler) UndoUpvoteThread(userId string, thread *pbContext.Thread) error {
+	pbContent, err := h.GetThreadContent(thread)
+	if err != nil {
+		return err
+	}
+	pbContent.Upvotes--
+	voted, idx := inSlice(pbContent.VoterIds, userId)
+	if voted {
+		last := len(pbContent.VoterIds) - 1
+		pbContent.VoterIds[idx] = pbContent.VoterIds[last]
+		pbContent.VoterIds = pbContent.VoterIds[:last]
+	}
+	undoner, _ := inSlice(pbContent.UndonerIds, userId)
+	if !undoner {
+		pbContent.UndonerIds = append(pbContent.UndonerIds, userId)
+	}
+	return h.SetThreadContent(thread, pbContent)
+}
+
+// UpvoteComment increases by one the number of upvotes that the given comment
+// has received, and updates the interactions and Average Update Time of both
+// the comment and the thread it belongs to and saves the notification in the
+// list of unread notifications of the comment author and the thread author.
 // 
 // It returns the user id and the notification for both the thread author and
 // the comment author and a nil error on success, or a nil []*pbApi.NotifyUser
@@ -132,7 +157,8 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 			pbComment.VoterIds = append(pbComment.VoterIds, userId)
 			// increment interactions and calculata new average update time only
 			// if this user has not undone an interaction on this content before.
-			if !inSlice(pbComment.UndonerIds, userId) {
+			undoner, _ := inSlice(pbComment.UndonerIds, userId)
+			if !undoner {
 				incInteractions(pbComment.Metadata)
 			}
 			// save content
@@ -184,7 +210,8 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 		if err == nil {
 			// increment interactions and calculata new average update time only
 			// if this user has not undone an interaction on this content before.
-			if !inSlice(pbThread.UndonerIds, userId) {
+			undoner, _ := inSlice(pbThread.UndonerIds, userId)
+			if !undoner {
 				incInteractions(pbThread.Metadata)
 			}
 			err = h.SetThreadContent(comment.ThreadCtx, pbThread)
@@ -240,6 +267,28 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 	return notifs[:], nil
 }
 
+// UndoUpvoteComment decreases by one the number of upvotes that the comment has
+// received, removes the user id from the list of voters and appends it to the
+// list of undoners. It does not update the interactions of the comment.
+func (h *handler) UndoUpvoteComment(userId string, comment *pbContext.Comment) error {
+	pbComment, err := h.GetCommentContent(comment)
+	if err != nil {
+		return err
+	}
+	pbComment.Upvotes--
+	voted, idx := inSlice(pbComment.VoterIds, userId)
+	if voted {
+		last := len(pbComment.VoterIds) - 1
+		pbComment.VoterIds[idx] = pbComment.VoterIds[last]
+		pbComment.VoterIds = pbComment.VoterIds[:last]
+	}
+	undoner, _ := inSlice(pbComment.UndonerIds, userId)
+	if !undoner {
+		pbComment.UndonerIds = append(pbComment.UndonerIds, userId)
+	}
+	return h.SetCommentContent(comment, pbComment)
+}
+
 // UpvoteSubcomment increases by one the number of upvotes that the given
 // subcomment has received, updates the metadata related to the interactions of
 // the subcomment, the comment and the thread and saves the notifications in the
@@ -268,7 +317,8 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 			pbSubcomment.VoterIds = append(pbSubcomment.VoterIds, userId)
 			// increment interactions and calculata new average update time only
 			// if this user has not undone an interaction on this content before.
-			if !inSlice(pbSubcomment.UndonerIds, userId) {
+			undoner, _ := inSlice(pbSubcomment.UndonerIds, userId)
+			if !undoner {
 				incInteractions(pbSubcomment.Metadata)
 			}
 			err = h.SetSubcommentContent(subcomment, pbSubcomment)
@@ -319,7 +369,8 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 		if err == nil {
 			// increment interactions and calculata new average update time only
 			// if this user has not undone an interaction on this content before.
-			if !inSlice(pbComment.UndonerIds, userId) {
+			undoner, _ := inSlice(pbComment.UndonerIds, userId)
+			if !undoner {
 				incInteractions(pbComment.Metadata)
 			}
 
@@ -336,7 +387,8 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 		if err == nil {
 			// increment interactions and calculata new average update time only
 			// if this user has not undone an interaction on this content before.
-			if !inSlice(pbThread.UndonerIds, userId) {
+			undoner, _ := inSlice(pbThread.UndonerIds, userId)
+			if !undoner {
 				incInteractions(pbThread.Metadata)
 			}
 			err = h.SetThreadContent(thread, pbThread)
@@ -389,4 +441,26 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 		}
 	}
 	return notifs[:], nil
+}
+
+// UndoUpvoteSubcomment decreases by one the number of upvotes that the subcomment
+// has received, removes the user id from the list of voters and appends it to the
+// list of undoners. It does not update the interactions of the subcomment.
+func (h *handler) UndoUpvoteSubcomment(userId string, subcomment *pbContext.Subcomment) error {
+	pbSubcomment, err := h.GetSubcommentContent(subcomment)
+	if err != nil {
+		return err
+	}
+	pbSubcomment.Upvotes--
+	voted, idx := inSlice(pbSubcomment.VoterIds, userId)
+	if voted {
+		last := len(pbSubcomment.VoterIds) - 1
+		pbSubcomment.VoterIds[idx] = pbSubcomment.VoterIds[last]
+		pbSubcomment.VoterIds = pbSubcomment.VoterIds[:last]
+	}
+	undoner, _ := inSlice(pbSubcomment.UndonerIds, userId)
+	if !undoner {
+		pbSubcomment.UndonerIds = append(pbSubcomment.UndonerIds, userId)
+	}
+	return h.SetSubcommentContent(subcomment, pbSubcomment)
 }
