@@ -314,7 +314,29 @@ func getThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 	return nil, ErrBucketNotFound
 }
 
-// getCommentsBucket looks for a comments bucket asociated to the given thread
+// getActiveThreadBucket returns the bucket of active contents if the given
+// thread is currently active.
+// 
+// It returns an ErrBucketNotFound error if the thread does not exist in the 
+// bucket of active contents in the database associated to tx.
+func getActiveThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
+	// get bucket of active contents.
+	contents := tx.Bucket([]byte(activeContentsB)
+	if contents == nil {
+		log.Printf("bucket %s not found\n", activeContentsB)
+		return nil, ErrBucketNotFound
+	}
+	// check whether the thread is in the bucket of active contents
+	threadBytes := contents.Get([]byte(threadId))
+	if threadBytes != nil {
+		// The thread is in the bucket of active contents.
+		return contents, nil
+	}
+	// the given thread is either unactive or does not exist.
+	return nil, ErrBucketNotFound
+}
+
+// getCommentsBucket looks for a comments bucket associated to the given thread
 // id.
 // 
 // It returns an ErrBucketNotFound if either the thread or the comments bucket
@@ -326,6 +348,32 @@ func getCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 	}
 
 	commentsBucket := contents.Bucket([]byte(commentsB))
+	if commentsBucket == nil {
+		log.Printf("subbucket %s not found\n", commentsB)
+		return nil, ErrBucketNotFound
+	}
+
+	comments := commentsBucket.Bucket([]byte(threadId))
+	if comments == nil {
+		log.Printf("subbucket %s of bucket %s not found\n", threadId, commentsB)
+		return nil, ErrBucketNotFound
+	}
+	return comments, nil
+}
+
+// getActiveCommentsBucket looks for a comments bucket associated to the given
+// thread id IN the bucket of active contents.
+// 
+// It returns an ErrBucketNotFound if either the thread or the comments bucket
+// does not exist in the bucket of active contents in the database associated
+// to tx.
+func getActiveCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
+	activeContents, err := getActiveThreadBucket(tx, threadId)
+	if err != nil {
+		return nil, err
+	}
+
+	commentsBucket := activeContents.Bucket([]byte(commentsB))
 	if commentsBucket == nil {
 		log.Printf("subbucket %s not found\n", commentsB)
 		return nil, ErrBucketNotFound
@@ -362,4 +410,53 @@ func getSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.Bucket
 		return nil, ErrBucketNotFound
 	}
 	return subcomments, nil
+}
+
+// getActiveSubcommentsBucket looks for a subcomments bucket associated to the
+// given comment id, which is associated to the given thread id IN the bucket of
+// active contents.
+// 
+// It returns an ErrBucketNotFound it either the thread or the comments bucket
+// does not exist in the bucket of active contents in the database associated
+// to tx.
+// 
+// If the subcomments bucket associated to the given comment does not exist, it
+// will return an ErrSubcommentsBucketNotFound error instead.
+func getActiveSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.Bucket, error) {
+	contents, err := getActiveCommentsBucket(tx, threadId)
+	if err != nil {
+		return nil, err
+	}
+
+	subcommentsBucket := contents.Bucket([]byte(subcommentsB))
+	if subcommentsBucket == nil {
+		log.Printf("subbucket %s not found\n", subcommentsB)
+		return nil, ErrBucketNotFound
+	}
+
+	subcomments := subcommentsBucket.Bucket([]byte(commentId))
+	if subcomments == nil {
+		return nil, ErrSubcommentsBucketNotFound
+	}
+	return subcomments, nil
+}
+
+// createSubcommentsBucket creates a bucket for subcomments, associated to the
+// given comment, which is associated to the given thread.
+// 
+// It returns an ErrBucketNotFound it either the thread or the comments bucket
+// does not exist in the bucket of active contents in the database associated
+// to tx.
+func createSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.Bucket, error) {
+	contents, err := getActiveCommentsBucket(tx, threadId)
+	if err != nil {
+		return nil, err
+	}
+
+	subcommentsBucket := contents.Bucket([]byte(subcommentsB))
+	if subcommentsBucket == nil {
+		log.Printf("subbucket %s not found\n", subcommentsB)
+		return nil, ErrBucketNotFound
+	}
+	return subcommentsBucket.CreateBucketIfNotExists([]byte(commentId))
 }
