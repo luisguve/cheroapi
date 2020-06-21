@@ -42,7 +42,7 @@ type ThreadActivity struct {
 func (ta ThreadActivity) DataKey() interface{} {
 	return &pbContext.Context{
 		Ctx: &pbContext.Context_ThreadCtx{
-			ThreadCtx: *pbContext.Thread(ta.Thread),
+			ThreadCtx: ta.Thread,
 		},
 	}
 }
@@ -79,8 +79,8 @@ type CommentActivity struct {
 func (ca CommentActivity) DataKey() interface{} {
 	return &pbContext.Context{
 		Ctx: &pbContext.Context_CommentCtx{
-			CommentCtx: *pbContext.Comment(ca.Comment),
-		}
+			CommentCtx: ca.Comment,
+		},
 	}
 }
 
@@ -131,8 +131,8 @@ type SubcommentActivity struct {
 func (sca SubcommentActivity) DataKey() interface{} {
 	return &pbContext.Context{
 		Ctx: &pbContext.Context_SubcommentCtx{
-			SubcommentCtx: *pbContext.Subcomment(sca.Subcomment)
-		}
+			SubcommentCtx: sca.Subcomment,
+		},
 	}
 }
 
