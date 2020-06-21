@@ -38,13 +38,23 @@ const (
 	ErrNoComments = "No comments available"
 	ErrThreadNotFound = "Thread not found"
 	ErrCommentNotFound = "Comment not found"
+	ErrSubcommentNotFound = "Subcomment not found"
 	ErrNoSavedThreads = "This user has not saved any thread yet"
 	ErrUsernameNotFound = "Username not found"
 	ErrEmailNotFound = "Email not found"
+	ErrSubcommentsBucketNotFound = "Subcomments bucket not found"
+	ErrNotUpvoted = "This user has not upvoted this content"
 )
 
-var sectionIds = []string{
-	"mylife", "food", "tech", "art", "music", "diy", "questions", "literature",
+var sectionIds = map[string]string{
+	"My Life": "mylife",
+	"Food": "food",
+	"Technology": "tech",
+	"Art": "art",
+	"Music": "music",
+	"Do it yourself": "diy",
+	"Questions": "questions",
+	"Literature": "literature",
 }
 
 type handler struct {
@@ -60,6 +70,8 @@ type section struct {
 	contents *bolt.DB
 	// relative path to the database, including extension
 	path string
+	// section name
+	name string
 }
 
 // New returns a dbmodel.Handler with a few just open bolt databases; one for
@@ -72,7 +84,7 @@ func New() (dbmodel.Handler, error) {
 	sectionsDBs := make(map[string]section)
 
 	// open or create section databases
-	for _, sectionId := range sectionIds {
+	for sectionName, sectionId := range sectionIds {
 		dbPath := sectionId + "/contents.db"
 		db, err := bolt.Open(dbPath, 0600, nil)
 		if err != nil {
@@ -98,7 +110,11 @@ func New() (dbmodel.Handler, error) {
 			return nil, err
 		}
 		// create bucket for archived contents
-		sectionsDBs[sectionId] = section{db, dbPath}
+		sectionsDBs[sectionId] = section{
+			contents: db,
+			path: dbPath,
+			name: sectionName,
+		}
 	}
 
 	// open or create users database
