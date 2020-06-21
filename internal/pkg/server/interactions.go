@@ -25,7 +25,7 @@ func (s *Server) Upvote(req *pbApi.UpvoteRequest, stream pbApi.CrudCheropatilla_
 	switch ctx := req.ContentContext.(type) {
 	case *pbApi.UpvoteRequest_ThreadCtx: // THREAD
 		notifyUser, err := s.dbHandler.UpvoteThread(submitter, ctx.ThreadCtx)
-		if err == nil {
+		if (err == nil) && (notifyUser != nil) {
 			notifyUsers = append(notifyUsers, notifyUser)
 		}
 	case *pbApi.UpvoteRequest_CommentCtx: // COMMENT
@@ -34,11 +34,13 @@ func (s *Server) Upvote(req *pbApi.UpvoteRequest, stream pbApi.CrudCheropatilla_
 		notifyUsers, err = s.dbHandler.UpvoteSubcomment(submitter, ctx.SubcommentCtx)
 	}
 	if err != nil {
-		log.Printf("Could not submit upvote: %v\n", err)
-		if errors.Is(err, ErrThreadNotFound) {
-			return status.Errorf(codes.NotFound, "Content %s not found", req.ContentContext)
+		if (errors.Is(err, ErrSectionNotFound)) || 
+			(errors.Is(err, ErrThreadNotFound)) || 
+			(errors.Is(err, ErrCommentNotFound)) || 
+			(errors.Is(err, ErrSubcommentNotFound)) {
+			return nil, status.Error(codes.NotFound, err.Error())
 		}
-		return status.Error(codes.Internal, "Proto marshal/unmarshal error")
+		return status.Error(codes.Internal, err.Error())
 	}
 	for _, notifyUser := range notifyUsers {
 		if sendErr = stream.Send(notifyUser); sendErr != nil {
@@ -68,7 +70,19 @@ func (s *Server) UndoUpvote(ctx context.Context, req *pbApi.UndoUpvoteRequest) (
 	case *pbApi.UndoUpvoteRequest_SubcommentCtx: // SUBCOMMENT
 		err = s.dbHandler.UndoUpvoteSubcomment(submitter, ctx.SubcommentCtx)
 	}
-	return &pbApi.UndoUpvoteResponse{}, err
+	if err != nil {
+		if errors.Is(err, ErrNotUpvoted) {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		if (errors.Is(err, ErrSectionNotFound)) || 
+			(errors.Is(err, ErrThreadNotFound)) || 
+			(errors.Is(err, ErrCommentNotFound)) || 
+			(errors.Is(err, ErrSubcommentNotFound)) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pbApi.UndoUpvoteResponse{}, nil
 }
 
 // Post comment on a thread or in a comment
