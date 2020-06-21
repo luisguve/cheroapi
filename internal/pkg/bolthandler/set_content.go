@@ -46,7 +46,7 @@ func (h *handler) SetThreadContent(thread *pbContext.Thread, content *pbDataForm
 // thread it belongs to does not exist, or a proto marshalling error.
 func (h *handler) SetCommentContent(comment *pbContext.Comment, content *pbDataFormat.Content) error {
 	var (
-		id = comment.id
+		id = comment.Id
 		threadId = comment.ThreadCtx.Id
 		sectionId = comment.ThreadCtx.SectionCtx.Id
 	)
