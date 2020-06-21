@@ -114,13 +114,16 @@ func (h *handler) UndoUpvoteThread(userId string, thread *pbContext.Thread) erro
 	if err != nil {
 		return err
 	}
-	pbContent.Upvotes--
 	voted, idx := inSlice(pbContent.VoterIds, userId)
-	if voted {
-		last := len(pbContent.VoterIds) - 1
-		pbContent.VoterIds[idx] = pbContent.VoterIds[last]
-		pbContent.VoterIds = pbContent.VoterIds[:last]
+	if !voted {
+		return ErrNotUpvoted
 	}
+	pbContent.Upvotes--
+
+	last := len(pbContent.VoterIds) - 1
+	pbContent.VoterIds[idx] = pbContent.VoterIds[last]
+	pbContent.VoterIds = pbContent.VoterIds[:last]
+
 	undoner, _ := inSlice(pbContent.UndonerIds, userId)
 	if !undoner {
 		pbContent.UndonerIds = append(pbContent.UndonerIds, userId)
@@ -275,13 +278,16 @@ func (h *handler) UndoUpvoteComment(userId string, comment *pbContext.Comment) e
 	if err != nil {
 		return err
 	}
-	pbComment.Upvotes--
 	voted, idx := inSlice(pbComment.VoterIds, userId)
-	if voted {
-		last := len(pbComment.VoterIds) - 1
-		pbComment.VoterIds[idx] = pbComment.VoterIds[last]
-		pbComment.VoterIds = pbComment.VoterIds[:last]
+	if !voted {
+		return ErrNotUpvoted
 	}
+	pbComment.Upvotes--
+
+	last := len(pbComment.VoterIds) - 1
+	pbComment.VoterIds[idx] = pbComment.VoterIds[last]
+	pbComment.VoterIds = pbComment.VoterIds[:last]
+
 	undoner, _ := inSlice(pbComment.UndonerIds, userId)
 	if !undoner {
 		pbComment.UndonerIds = append(pbComment.UndonerIds, userId)
@@ -451,13 +457,16 @@ func (h *handler) UndoUpvoteSubcomment(userId string, subcomment *pbContext.Subc
 	if err != nil {
 		return err
 	}
-	pbSubcomment.Upvotes--
 	voted, idx := inSlice(pbSubcomment.VoterIds, userId)
-	if voted {
-		last := len(pbSubcomment.VoterIds) - 1
-		pbSubcomment.VoterIds[idx] = pbSubcomment.VoterIds[last]
-		pbSubcomment.VoterIds = pbSubcomment.VoterIds[:last]
+	if !voted {
+		return ErrNotUpvoted
 	}
+	pbSubcomment.Upvotes--
+
+	last := len(pbSubcomment.VoterIds) - 1
+	pbSubcomment.VoterIds[idx] = pbSubcomment.VoterIds[last]
+	pbSubcomment.VoterIds = pbSubcomment.VoterIds[:last]
+	
 	undoner, _ := inSlice(pbSubcomment.UndonerIds, userId)
 	if !undoner {
 		pbSubcomment.UndonerIds = append(pbSubcomment.UndonerIds, userId)
