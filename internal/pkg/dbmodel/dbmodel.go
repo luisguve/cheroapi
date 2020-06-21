@@ -7,6 +7,7 @@ package dbmodel
 import(
 	"google.golang.org/grpc/status"
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
+	pbTime "github.com/golang/protobuf/ptypes/timestamp"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 	pbContext "github.com/luisguve/cheroproto-go/context"
@@ -63,4 +64,16 @@ type Handler interface {
 	UndoUpvoteComment(userId string, comment *pbContext.Comment) error
 	// Undo upvote on a subcomment from the given user id
 	UndoUpvoteSubcomment(userId string, subcomment *pbContext.Subcomment) error
+	// Post a comment on a thread
+	ReplyThread(userId string, thread *pbContext.Thread, r Reply) (*pbApi.NotifyUser, error)
+	// Post a comment on a comment
+	ReplyComment(userId string, comment *pbContext.Comment, r Reply) ([]*pbApi.NotifyUser, error)
+}
+
+// Reply holds the data of a reply
+type Reply struct {
+	Content string
+	FtFile string
+	Submitter string
+	PublishDate *pbTime.Timestamp
 }
