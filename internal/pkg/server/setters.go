@@ -1,7 +1,12 @@
 package server
 
 import(
-	
+	"log"
+	"errors"
+
+	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/codes"
+	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 )
 
 // Update a thread, comment or subcomment
@@ -17,9 +22,33 @@ func (s *Server) DeleteContent(ctx context.Context,
 }
 
 // Post a thread to create
-func (s *Server) CreateThread(ctx context.Context, 
-	req *pbApi.CreateThreadRequest) (*pbApi.CreateThreadResponse, error) {
+func (s *Server) CreateThread(ctx context.Context, req *pbApi.CreateThreadRequest) (*pbApi.CreateThreadResponse, error) {
+	if s.dbHandler == nil {
+		return status.Error(codes.Internal, "No database connection")
+	}
+	var (
+		submitter = req.UserId
+		section = req.SectionCtx
+		content = req.Content
+	)
+	canPost, err := s.dbHandler.CheckUserCanPost(submitter)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, status.Error(codes.Unauthenticated, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if !canPost {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
 	
+	permalink, err := s.dbHandler.CreateThread(content, section, submitter)
+	if err != nil {
+		if errors.Is(err, ErrSectionNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
 }
 
 // Update a user's basic data

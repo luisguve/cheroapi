@@ -44,6 +44,7 @@ const (
 	ErrEmailNotFound = "Email not found"
 	ErrSubcommentsBucketNotFound = "Subcomments bucket not found"
 	ErrNotUpvoted = "This user has not upvoted this content"
+	ErrUserUnableToPost = "This user cannot post another thread today"
 )
 
 var sectionIds = map[string]string{

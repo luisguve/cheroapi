@@ -6,8 +6,49 @@ import (
 	"google.golang.org/protobuf/proto"
 	bolt "go.etcd.io/bbolt"
 	pbContext "github.com/luisguve/cheroproto-go/context"
+	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
+
+func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Section, userId string) (string, error) {
+	var (
+		sectionId = section.Id
+	)
+
+	// check whether the section exists
+	if sectionDB, ok := h.sections[sectionId]; !ok {
+		return ErrSectionNotFound
+	}
+
+	pbContent := &pbDataFormat.Content{
+		Title: content.Title,
+		Content: content.Content,
+		FtFile: content.FtFile,
+		PublishDate: content.PublishDate,
+		AuthorId: userId,
+		Id: newId,
+		SectionName: sectionDB.name,
+		SectionId: sectionId,
+		Permalink: permalink,
+		Metadata: &pbMetadata.Content{
+			LastUpdated: content.PublishDate,
+			DataKey: newId,
+		},
+	}
+	pbContentBytes, err := proto.Marshal(pbContent)
+	if err != nil {
+		log.Printf("Could not marshal content: %v\n", err)
+		return "", err
+	}
+	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
+		activeContentsBucket := tx.Bucket(activeContentsB)
+		if activeContentsBucket == nil {
+			log.Printf("Bucket %s not found\n", activeContentsB)
+			return 
+		}
+	})
+}
 
 // SetThreadContent encodes the given content using Marshal from package proto,
 // then updates the value of the given thread with the resulting []byte.

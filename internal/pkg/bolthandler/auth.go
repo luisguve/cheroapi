@@ -165,3 +165,34 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 	}
 	return userId, nil
 }
+
+// CheckUserCanPost returns a bool indicating whether the given user can create a
+// thread and an error which may indicate the user does not exist.
+// 
+// A user can create a thread if the field Seconds of its field LastTimeCreated is
+// less than trhe field Seconds of the field LastCleanUp of the QA field in h.
+func (h *handler) CheckUserCanPost(userId string) (bool, error) {
+	userData := new(pbDataFormat.User)
+	err := h.users.View(func(tx *bolt.Tx) error {
+		usersBucket := tx.Bucket([]byte(usersB))
+		if usersBucket == nil {
+			return fmt.Errorf("Bucket %s of users not found\n", usersB)
+		}
+		userDataBytes := usersBucket.Get(userId)
+		if userDataBytes == nil {
+			log.Printf("Could not find user data (id %s)\n", string(userId))
+			return ErrUserNotFound
+		}
+		err := proto.Unmarshal(userDataBytes, userData)
+		if err != nil {
+			log.Println("Could not unmarshal user")
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	canPost := userData.LastTimeCreated.Seconds < h.QA.LastCleanUp.Seconds
+	return canPost, nil
+}
