@@ -73,5 +73,46 @@ func (s *Server) UndoUpvote(ctx context.Context, req *pbApi.UndoUpvoteRequest) (
 
 // Post comment on a thread or in a comment
 func (s *Server) Comment(req *pbApi.CommentRequest, stream pbApi.CrudCheropatilla_CommentServer) error {
-	
+	if s.dbHandler == nil {
+		return status.Error(codes.Internal, "No database connection")
+	}
+	var (
+		submitter = req.UserId
+		notifyUsers []*pbApi.NotifyUsers
+		err error
+		sendErr error
+	)
+	reply := dbmodel.Reply{
+		Content: req.Content,
+		FtFile: req.FtFile,
+		Submitter: req.UserId,
+		PublishDate: req.PublishDate,
+	}
+	// call a different comment method, depending upon the context where the
+	// comment is being submitted.
+	switch ctx := req.ContentContext.(type) {
+	case *pbApi.CommentRequest_ThreadCtx: // THREAD
+		notifyUser, err := s.dbHandler.ReplyThread(ctx.ThreadCtx, reply)
+		if (err == nil) && (notifyUser != nil) {
+			notifyUsers = append(notifyUsers, notifyUser)
+		}
+	case *pbApi.CommentRequest_CommentCtx: // COMMENT
+		notifyUsers, err = s.dbHandler.ReplyComment(ctx.CommentCtx, reply)
+	}
+	if err != nil {
+		if (errors.Is(err, ErrSectionNotFound)) || 
+			(errors.Is(err, ErrThreadNotFound)) || 
+			(errors.Is(err, ErrCommentNotFound)) || 
+			(errors.Is(err, ErrSubcommentNotFound)) {
+			return status.Error(codes.NotFound, err.Error())
+		}
+		return status.Error(codes.Internal, err.Error())
+	}
+	for _, notifyUser := range notifyUsers {
+		if sendErr = stream.Send(notifyUser); sendErr != nil {
+			log.Printf("Could not send NotifyUser: %v\n", sendErr)
+			return status.Error(codes.Internal,	sendErr.Error())
+		}
+	}
+	return nil
 }
