@@ -223,3 +223,39 @@ func (h *handler) User(userId string) (*pbDataFormat.User, error) {
 	}
 	return pbUser, nil
 }
+
+// MapUsername associates username to user id, returns ErrUsernameAlreadyExists
+// if the username is not available.
+func (h *handler) MapUsername(username, userId string) error {
+	return h.users.Update(func(tx *bolt.Tx) error {
+		// associate username to user id
+		usernamesBucket := tx.Bucket([]byte(usernamesB))
+		if usernamesBucket == nil {
+			log.Printf("Bucket %s of users not found\n", usernamesB)
+			return ErrBucketNotFound
+		}
+		userIdBytes := usernamesBucket.Get([]byte(username))
+		if userIdBytes != nil {
+			return ErrUsernameAlreadyExists
+		}
+		return usernamesBucket.Put([]byte(username), []byte(userId))
+	})
+}
+
+// UpdateUser marshals the given pbUser and puts it into the database with
+// userId as the key.
+func (h *handler) UpdateUser(pbUser *pbDataFormat.User, userId string) error {
+	pbUserBytes, err := proto.Marshal(pbUser)
+	if err != nil {
+		log.Printf("Could not marshal user: %v\n", err)
+		return err
+	}
+	return h.users.Update(func(tx *bolt.Tx) error {
+		// save user into users database
+		usersBucket := tx.Bucket([]byte(usersB))
+		if usersBucket == nil {
+			return fmt.Errorf("Bucket %s of users not found\n", usersB)
+		}
+		return usersBucket.Put([]byte(userId), pbUserBytes)
+	}
+}

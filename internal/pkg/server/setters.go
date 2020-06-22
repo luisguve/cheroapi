@@ -89,9 +89,41 @@ func (s *Server) CreateThread(ctx context.Context, req *pbApi.CreateThreadReques
 }
 
 // Update a user's basic data
-func (s *Server) UpdateBasicUserData(ctx context.Context, 
-	req *pbApi.UpdateBasicUserDataRequest) (*pbApi.UpdateBasicUserDataResponse, error) {
-	
+func (s *Server) UpdateBasicUserData(ctx context.Context, req *pbApi.UpdateBasicUserDataRequest) (*pbApi.UpdateBasicUserDataResponse, error) {
+	if s.dbHandler == nil {
+		return nil, status.Error(codes.Internal, "No database connection")
+	}
+	pbUser, err := s.dbHandler.User(req.UserId)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if req.Username != "" {
+		err = s.dbHandler.MapUsername(req.Username, req.UserId)
+		if err != nil {
+			if errors.Is(err, ErrUsernameAlreadyExists) {
+				return nil, status.Error(codes.AlreadyExists, "Username already taken")
+			}
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		pbUser.BasicUserData.Username = req.Username
+	}
+	if req.Description != "" {
+		pbUser.BasicUserData.About = req.Description
+	}
+	if req.PicUrl != "" {
+		pbUser.BasicUserData.PicUrl = req.PicUrl
+	}
+	if req.Alias != "" {
+		pbUser.BasicUserData.Alias = req.Alias
+	}
+	err = s.dbHandler.UpdateUser(pbUser, req.UserId)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pbApi.UpdateBasicUserDataResponse{}, nil
 }
 
 // Mark unread notifications as read

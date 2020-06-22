@@ -45,6 +45,7 @@ const (
 	ErrSubcommentsBucketNotFound = "Subcomments bucket not found"
 	ErrNotUpvoted = "This user has not upvoted this content"
 	ErrUserUnableToPost = "This user cannot post another thread today"
+	ErrUsernameAlreadyExists = "Username already exists"
 )
 
 var sectionIds = map[string]string{
