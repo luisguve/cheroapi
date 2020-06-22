@@ -73,6 +73,12 @@ type Handler interface {
 	CheckUserCanPost(userId string) (bool, error)
 	// Create a new thread, save it and return its permalink.
 	CreateThread(content *pbApi.Content, section *pbContext.Section, author string) (string, error)
+	// Delete the given thread and the contents associated to it.
+	DeleteThread(thread *pbContext.Thread, userId string) error
+	// Delete the given comment and the contents associated to it.
+	DeleteComment(thread *pbContext.Comment, userId string) error
+	// Delete the given subcomment and the contents associated to it.
+	DeleteSubcomment(thread *pbContext.Subcomment, userId string) error
 }
 
 // Reply holds the data of a reply
