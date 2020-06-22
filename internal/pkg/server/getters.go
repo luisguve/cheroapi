@@ -5,9 +5,24 @@ import(
 )
 
 // Get a user's basic data to be displayed in the header navigation section
-func (s *Server) GetUserHeaderData(ctx context.Context,
-	req *pbApi.GetBasicUserDataRequest) (*pbApi.UserHeaderData, error) {
-	
+func (s *Server) GetUserHeaderData(ctx context.Context, req *pbApi.GetBasicUserDataRequest) (*pbApi.UserHeaderData, error) {
+	if s.dbHandler == nil {
+		return nil, status.Error(codes.Internal, "No database connection")
+	}
+	pbUser, err := s.dbHandler.User(req.UserId)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pbApi.UserHeaderData{
+		Alias:           pbUser.BasicUserData.Alias,
+		Username:        pbUser.BasicUserData.Username,
+		UnreadNotifs:    pbUser.UnreadNotifs,
+		ReadNotifs:      pbUser.ReadNotifs,
+		LastTimeCreated: pbUser.LastTimeCreated,
+	}, nil
 }
 
 // Get a user's basic data to be dislayed in page
