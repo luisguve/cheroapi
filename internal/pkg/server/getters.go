@@ -41,9 +41,20 @@ func (s *Server) GetBasicUserData(ctx context.Context, req *pbApi.GetBasicUserDa
 }
 
 // Get the list of users followed by a given user
-func (s *Server) GetUserFollowingIds(ctx context.Context,
-	req *pbApi.GetBasicUserDataRequest) (*pbApi.UserList, error) {
-	
+func (s *Server) GetUserFollowingIds(ctx context.Context, req *pbApi.GetBasicUserDataRequest) (*pbApi.UserList, error) {
+	if s.dbHandler == nil {
+		return nil, status.Error(codes.Internal, "No database connection")
+	}
+	pbUser, err := s.dbHandler.User(req.UserId)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pbApi.UserList{
+		Ids: pbUser.FollowingIds,
+	}, nil
 }
 
 // Get a single thread
