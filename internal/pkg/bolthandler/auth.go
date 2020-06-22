@@ -196,3 +196,30 @@ func (h *handler) CheckUserCanPost(userId string) (bool, error) {
 	canPost := userData.LastTimeCreated.Seconds < h.QA.LastCleanUp.Seconds
 	return canPost, nil
 }
+
+// User gets the user bytes from the users bucket in the database of users, then
+// unmarshals it into a *pbDataFormat.User and returns it.
+func (h *handler) User(userId string) (*pbDataFormat.User, error) {
+	pbUser := new(pbDataFormat.User)
+	err := h.users.View(func(tx *bolt.Tx) error {
+		usersBucket := tx.Bucket(usersB)
+		if usersBucket == nil {
+			return fmt.Errorf("Bucket %s of users not found\n", usersB)
+		}
+		userBytes := usersBucket.Get([]byte(userId))
+		if userBytes == nil {
+			log.Printf("Could not find user data (id %s)\n", string(userId))
+			return ErrUserNotFound
+		}
+		err := proto.Unmarshal(userBytes, pbUser)
+		if err != nil {
+			log.Println("Could not unmarshal user")
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return pbUser, nil
+}

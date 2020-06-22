@@ -79,6 +79,8 @@ type Handler interface {
 	DeleteComment(thread *pbContext.Comment, userId string) error
 	// Delete the given subcomment and the contents associated to it.
 	DeleteSubcomment(thread *pbContext.Subcomment, userId string) error
+	// Get data of a user
+	User(userId string) (*pbDataFormat.User, error)
 }
 
 // Reply holds the data of a reply
