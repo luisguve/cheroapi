@@ -10,15 +10,49 @@ import(
 )
 
 // Update a thread, comment or subcomment
-func (s *Server) UpdateContent(req *pbApi.UpdateContentRequest,
-	stream pbApi.CrudCheropatilla_UpdateContentServer) error {
-	
-}
+/* func (s *Server) UpdateContent(req *pbApi.UpdateContentRequest, stream pbApi.CrudCheropatilla_UpdateContentServer) error {
+	if s.dbHandler == nil {
+		return status.Error(codes.Internal, "No database connection")
+	}
+	var (
+		submitter = req.UserId
+		notifyUsers []*pbApi.NotifyUsers
+		err error
+		sendErr error
+	)
+} */
 
 // Delete a thread, comment or subcomment
-func (s *Server) DeleteContent(ctx context.Context,
-	req *pbApi.DeleteContentRequest) (*pbApi.DeleteContentResponse, error) {
-	
+func (s *Server) DeleteContent(ctx context.Context, req *pbApi.DeleteContentRequest) (*pbApi.DeleteContentResponse, error) {
+	if s.dbHandler == nil {
+		return status.Error(codes.Internal, "No database connection")
+	}
+	var (
+		submitter = req.UserId
+		err error
+	)
+
+	switch ctx := req.ContentContext.(type) {
+	case *pbApi.DeleteContentRequest_ThreadCtx:
+		err = s.dbHandler.DeleteThread(ctx.ThreadCtx, submitter)
+	case *pbApi.DeleteContentRequest_CommentCtx:
+		err = s.dbHandler.DeleteComment(ctx.CommentCtx, submitter)
+	case *pbApi.DeleteContentRequest_SubcommentCtx:
+		err = s.dbHandler.DeleteSubcomment(ctx.SubcommentCtx, submitter)
+	}
+	if err != nil {
+		if errors.Is(err, ErrSectionNotFound) ||
+			errors.Is(err, ErrThreadNotFound) ||
+			errors.Is(err, ErrCommentNotFound) ||
+			errors.Is(err, ErrSubcommentNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		if errors.Is(err, ErrUserNotAllowed) {
+			return nil, status.Error(codes.Unauthenticated, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pbApi.DeleteContentResponse{}, nil
 }
 
 // Post a thread to create
