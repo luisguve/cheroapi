@@ -58,9 +58,18 @@ func (s *Server) GetUserFollowingIds(ctx context.Context, req *pbApi.GetBasicUse
 }
 
 // Get a single thread
-func (s *Server) GetThread(ctx context.Context, 
-	req *pbApi.GetThreadRequest) (*pbApi.ContentData, error) {
-	
+func (s *Server) GetThread(ctx context.Context, req *pbApi.GetThreadRequest) (*pbApi.ContentData, error) {
+	if s.dbHandler == nil {
+		return nil, status.Error(codes.Internal, "No database connection")
+	}
+	contentRule, err := s.dbHandler.GetThread(req.Thread)
+	if err != nil {
+		if errors.Is(err, ErrSectionNotFound) || errors.Is(err, ErrThreadNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return contentRule.Data, nil
 }
 
 // Get a comment's comments

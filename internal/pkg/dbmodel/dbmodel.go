@@ -29,6 +29,8 @@ type Handler interface {
 	GetGeneralThreadsOverview(func(*pbDataFormat.Content) patillator.SegregateDiscarderFinder) (map[string][]patillator.SegregateDiscarderFinder, []error)
 	// Get content of the given thread ids in the given sections
 	GetGeneralThreads([]patillator.GeneralId) ([]*pbApi.ContentRule, []error)
+	// Get a single thread content.
+	GetThread(*pbContext.Thread) (*pbApi.ContentRule, error)
 	// Get activity of users
 	GetActivity(users ...string,
 		func(metadata *pbMetadata.Content, ctx *pbContext.Thread) patillator.SegregateFinder,
