@@ -26,9 +26,18 @@ func (s *Server) GetUserHeaderData(ctx context.Context, req *pbApi.GetBasicUserD
 }
 
 // Get a user's basic data to be dislayed in page
-func (s *Server) GetBasicUserData(ctx context.Context,
-	req *pbApi.GetBasicUserDataRequest) (*pbApi.BasicUserData, error) {
-	
+func (s *Server) GetBasicUserData(ctx context.Context, req *pbApi.GetBasicUserDataRequest) (*pbDataFormat.BasicUserData, error) {
+	if s.dbHandler == nil {
+		return nil, status.Error(codes.Internal, "No database connection")
+	}
+	pbUser, err := s.dbHandler.User(req.UserId)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return pbUser.BasicUserData, nil
 }
 
 // Get the list of users followed by a given user
