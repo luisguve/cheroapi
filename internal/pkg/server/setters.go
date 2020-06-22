@@ -49,6 +49,9 @@ func (s *Server) CreateThread(ctx context.Context, req *pbApi.CreateThreadReques
 		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	return &pbApi.CreateThreadResponse{
+		Permalink: permalink,
+	}, nil
 }
 
 // Update a user's basic data

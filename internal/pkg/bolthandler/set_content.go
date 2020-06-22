@@ -1,7 +1,9 @@
 package bolthandler
 
 import (
+	"strings"
 	"log"
+	"fmt"
 
 	"google.golang.org/protobuf/proto"
 	bolt "go.etcd.io/bbolt"
@@ -11,6 +13,15 @@ import (
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
+// CreateThread inserts the given content in the given section, after formatting
+// it into a pbDataFormat.Content and marshaling it in protobuf-encoded bytes.
+// 
+// It assigns the title as the thread Id after replacing spaces with dashes and
+// converting it to lowercase, and builds the permalink with the format
+// /{section-id}/{thread-id}.
+// 
+// Then, it appends the just created thread to the list of threads created in
+// the recent activity of the author.
 func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Section, userId string) (string, error) {
 	var (
 		sectionId = section.Id
@@ -21,19 +32,25 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 		return ErrSectionNotFound
 	}
 
+	// build thread Id by replacing spaces with dashes and converting it to
+	// lowercase
+	newId := strings.ToLower(strings.Replace(content.Title, " ", "-", -1))
+	// build permalink: /{section-id}/{thread-id}
+	permalink := fmt.Sprintf("/%s/%s", sectionId, newId)
+
 	pbContent := &pbDataFormat.Content{
-		Title: content.Title,
-		Content: content.Content,
-		FtFile: content.FtFile,
+		Title:       content.Title,
+		Content:     content.Content,
+		FtFile:      content.FtFile,
 		PublishDate: content.PublishDate,
-		AuthorId: userId,
-		Id: newId,
+		AuthorId:    userId,
+		Id:          newId,
 		SectionName: sectionDB.name,
-		SectionId: sectionId,
-		Permalink: permalink,
-		Metadata: &pbMetadata.Content{
+		SectionId:   sectionId,
+		Permalink:   permalink,
+		Metadata:    &pbMetadata.Content{
 			LastUpdated: content.PublishDate,
-			DataKey: newId,
+			DataKey:     newId,
 		},
 	}
 	pbContentBytes, err := proto.Marshal(pbContent)
@@ -45,9 +62,52 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 		activeContentsBucket := tx.Bucket(activeContentsB)
 		if activeContentsBucket == nil {
 			log.Printf("Bucket %s not found\n", activeContentsB)
-			return 
+			return ErrBucketNotFound
 		}
+		return activeContentsBucket.Put([]byte(newId), pbContentBytes)
 	})
+	if err != nil {
+		log.Println(err)
+		return "", err
+	}
+	// append new thread context to users' recent activity
+	err = h.users.Update(func(tx *bolt.Tx) error {
+		usersBucket := tx.Bucket(usersB)
+		if usersB == nil {
+			log.Printf("Bucket %s of users not found\n", usersB)
+			return ErrBucketNotFound
+		}
+		pbUserBytes := usersBucket.Get([]byte(userId))
+		if pbUserBytes == nil {
+			log.Printf("User %s not found\n", userId)
+			return ErrUserNotFound
+		}
+		pbUser := new(pbDataFormat.User)
+		err = proto.Unmarshal(pbUser, pbUserBytes)
+		if err != nil {
+			log.Printf("Could not unmarshal user: %v\n", err)
+			return err
+		}
+		if pbUser.RecentActivity == nil {
+			pbUser.RecentActivity = new(pbDataFormat.Activity)
+		}
+		threadCtx := &pbContext.Thread{
+			Id:         newId,
+			SectionCtx: section,
+		}
+		pbUser.RecentActivity.ThreadsCreated = append(pbUser.RecentActivity.ThreadsCreated, threadCtx)
+		pbUserBytes, err = proto.Marshal(pbUser)
+		if err != nil {
+			log.Printf("Could not marshal user: %v\n", err)
+			return err
+		}
+		return usersBucket.Put([]byte(userId), pbUserBytes)
+	})
+	if err != nil {
+		log.Println(err)
+		return "", err
+	}
+	return permalink, nil
 }
 
 // SetThreadContent encodes the given content using Marshal from package proto,
