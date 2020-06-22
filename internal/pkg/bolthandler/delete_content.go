@@ -130,7 +130,38 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 		if pbComment.AuthorId != userId {
 			return ErrUsetNotAllowed
 		}
-		return commentsBucket.Delete([]byte(id))
+		err = commentsBucket.Delete([]byte(id))
+		if err != nil {
+			return err
+		}
+		// Update the thread which the comment belongs to; decrease Replies by 1
+		// and remove user id from list of repliers.
+		threadsBucket, err := getThreadBucket(tx, threadId)
+		if err != nil {
+			return err
+		}
+		threadBytes := threadsBucket.Get([]byte(threadId))
+		if threadBytes == nil {
+			return ErrThreadNotFound
+		}
+		pbThread := new(pbDataFormat.Content)
+		if err = proto.Unmarshal(pbThread, threadBytes); err != nil {
+			log.Printf("Could not unmarshal content: %v\n", err)
+			return err
+		}
+		pbThread.Replies--
+		replied, idx := inSlice(pbThread.ReplierIds, userId)
+		if replied {
+			last := len(pbThread.ReplierIds) - 1
+			pbThread.ReplierIds[idx] = pbThread.ReplierIds[last]
+			pbThread.ReplierIds = pbThread.ReplierIds[:last]
+		}
+		threadBytes, err = proto.Marshal(pbThread)
+		if err != nil {
+			log.Printf("Could not marshal content: %v\n", err)
+			return err
+		}
+		return threadsBucket.Put([]byte(threadId), threadBytes)
 	})
 	if err != nil {
 		log.Println(err)
