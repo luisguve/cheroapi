@@ -127,9 +127,18 @@ func (s *Server) UpdateBasicUserData(ctx context.Context, req *pbApi.UpdateBasic
 }
 
 // Mark unread notifications as read
-func (s *Server) MarkAllAsRead(ctx context.Context,
-	req *pbApi.ReadNotifsRequest) (*pbApi.ReadNotifsResponse, error) {
-	
+func (s *Server) MarkAllAsRead(ctx context.Context, req *pbApi.ReadNotifsRequest) (*pbApi.ReadNotifsResponse, error) {
+	if s.dbHandler == nil {
+		return nil, status.Error(codes.Internal, "No database connection")
+	}
+	err := s.dbHandler.ReadNotifs(req.UserId)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pbApi.ReadNotifsResponse{}, nil
 }
 
 // Clear all the notifications
