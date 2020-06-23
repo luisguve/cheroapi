@@ -261,3 +261,89 @@ func (h *handler) GetSubcomment(subcomment *pbContext.Subcomment) (*pbApi.Conten
 	contentRule := h.formatSubcommentContentRule(pbContent, subcomment.CommentCtx, subcomment.Id)
 	return contentRule, nil
 }
+
+// Get 10 subcomments associated to the given comment, skip first n subcomments.
+func (h *handler) GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.ContentRule, error) {
+	// number of comments to get
+	const Q = 10
+	var (
+		commentId = comment.Id,
+		threadId = comment.ThreadCtx.Id
+		sectionId = comment.ThreadCtx.SectionCtx.Id
+		contentRules = make([]*pbApi.ContentRule, Q)
+		err error
+		count = 0
+	)
+	// check whether section exists
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
+		return nil, ErrSectionNotFound
+	}
+
+	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
+		subcommentsBucket, err := getSubcommentsBucket(tx, threadId, commentId)
+		if err != nil {
+			return err
+		}
+		var (
+			c = subcommentsBucket.Cursor()
+			done = make(chan error)
+			quit = make(chan error)
+			wg sync.WaitGroup
+			m sync.Mutex
+		)
+		for k, v := c.First(); (k != nil) && (count < (n + Q)); k, v = c.Next() {
+			count++
+			// skip first n subcomments
+			if count < n {
+				continue
+			}
+			// Do the unmarshaling, formatting and appending in its own go-routine.
+			// Should it get an error and it will send it to the channel done,
+			// otherwise it will be sending nil to the same channel, meaning it
+			// could complete its work successfully.
+			wg.Add(1)
+			go func(k, v []byte, i int) {
+				defer wg.Done()
+				pbContent := new(pbDataFormat.Content)
+				contentRule := new(pbApi.ContentRule)
+				err := proto.Unmarshal(pbContent, v)
+				if err == nil {
+					contentRule = h.formatSubcommentContentRule(pbContent, comment, string(k))
+				}
+				contentRules[i] = contentRule
+				select {
+				case done<- err:
+				case <-quit:
+				}
+			}(k, v, count - n)
+		}
+		// Check for errors. It terminates every go-routine hung on the statement
+		// "case done<- err" by closing the channel quit and returns the first err
+		// read.
+		// Note that the tx must wait until all the goroutines are done, since all
+		// the byte slices are valid only during the life of the transaction.
+		for i := 0; i < (count - n); i++ {
+			err = <-done
+			if err != nil {
+				close(quit)
+				break
+			}
+		}
+		wg.Wait()
+		return err
+	})
+	if err != nil {
+		log.Println(err)
+		return contentRules, err
+	}
+	got := count - n
+	if got <= 0 {
+		return nil, ErrOffsetOutOfRange
+	}
+	if got < Q {
+		// It got less than Q comments; re-slice contentRules.
+		contentRules = contentRules[:got]
+	}
+	return contentRules, nil
+}
