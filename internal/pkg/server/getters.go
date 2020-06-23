@@ -106,9 +106,95 @@ func (s *Server) GetSubcomments(req *pbApi.GetSubcommentsRequest, stream pbApi.C
 }
 
 // Get either following or followers users' basic data
-func (s *Server) ViewUsers(ctx context.Context,
-	req *pbApi.ViewUsersRequest) (*pbApi.ViewUsersResponse, error) {
-	
+func (s *Server) ViewUsers(ctx context.Context, req *pbApi.ViewUsersRequest) (*pbApi.ViewUsersResponse, error) {
+	if s.dbHandler == nil {
+		return status.Error(codes.Internal, "No database connection")
+	}
+	// number of users to get
+	const Q = 10
+	var (
+		userId = req.UserId
+		ctx = req.Context
+		offset = int(req.Offset)
+		pbUsersData = make([]*pbDataFormat.BasicUserData, Q)
+		count = 0
+	)
+	pbUser, err := s.dbHandler.User(userId)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	var (
+		done = make(chan error)
+		quit = make(chan error)
+	)
+	// Get data of users concurrently.
+	switch ctx {
+	case "following":
+		if offset >= len(pbUser.FollowingIds) {
+			return nil, status.Error(codes.OutOfRange, "Offset out of range")
+		}
+		userIds := pbUser.FollowingIds[offset:]
+		for i := 0; (i < len(userIds)) && (count < Q); i++, count++ {
+			userId := userIds[i]
+			go func(userId string, idx int) {
+				var (
+					pbUser *pbDataFormat.User
+					err error
+				)
+				pbUser, err = s.dbHandler.User(userId)
+				if err == nil {
+					pbUsersData[idx] = pbUser.BasicUserData
+				}
+				select {
+				case done<- err:
+				case <-quit:
+				}
+			}(userId, i)
+		}
+	case "followers":
+		if offset >= len(pbUser.FollowerIds) {
+			return nil, status.Error(codes.OutOfRange, "Offset out of range")
+		}
+		userIds := pbUser.FollowerIds[offset:]
+		for i := 0; (i < len(userIds)) && (count < Q); i++, count++ {
+			userId := userIds[i]
+			go func(userId string, idx int) {
+				var (
+					pbUser *pbDataFormat.User
+					err error
+				)
+				pbUser, err = s.dbHandler.User(userId)
+				if err == nil {
+					pbUsersData[idx] = pbUser.BasicUserData
+				}
+				select {
+				case done<- err:
+				case <-quit:
+				}
+			}(userId, i)
+		}
+	default:
+		return nil, status.Error(codes.InvalidArgument, "Context should be either following or followers")
+	}
+	// Check for errors. It terminates every go-routine hung on the statement
+	// "case done<- err" by closing the channel quit and returns the first err
+	// read.
+	for i := 0; i < count; i++ {
+		err = <-done
+		if err != nil {
+			close(quit)
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	}
+	if count < Q {
+		// It got data of less than Q users; re-slice pbUsersData to get rid
+		// of the last Q - count (empty) data of users.
+		pbUsersData = pbUsersData[:count]
+	}
+	return pbUsersData, nil
 }
 
 // Get username basic data, following, followers and threads created
