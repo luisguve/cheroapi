@@ -351,14 +351,14 @@ func (h *handler) GetSavedThreadsOverview(user string,
 			defer wg.Done()
 			pbContent, err := h.GetThreadContent(ctx)
 			if err == nil {
-				m.Lock()
-				defer m.Unlock()
+				content := setContent(pbContent)
+				section := ctx.SectionCtx.Id
 				once.Do(func() {
 					contents = make(map[string][]patillator.SegregateDiscarderFinder)
 				})
-				section := ctx.SectionCtx.Id
-				content := setContent(pbContent)
+				m.Lock()
 				contents[section] = append(contents[section], content)
+				m.Unlock()
 			}
 			select {
 			case done<- err:
