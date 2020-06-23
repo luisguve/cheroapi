@@ -73,9 +73,36 @@ func (s *Server) GetThread(ctx context.Context, req *pbApi.GetThreadRequest) (*p
 }
 
 // Get a comment's comments
-func (s *Server) GetSubcomments(req *pbApi.GetSubcommentsRequest,
-	stream pbApi.CrudCheropatilla_GetSubcommentsServer) error {
-	
+func (s *Server) GetSubcomments(req *pbApi.GetSubcommentsRequest, stream pbApi.CrudCheropatilla_GetSubcommentsServer) error {
+	if s.dbHandler == nil {
+		return status.Error(codes.Internal, "No database connection")
+	}
+	var (
+		err error
+		sendErr error
+		ctx = req.CommentCtx
+		offset = req.Offset
+		contentRules []*pbApi.ContentRule
+	)
+	contentRules, err = d.dbHandler.GetSubcomments(ctx, offset)
+	if err != nil {
+		if errors.Is(err, ErrSectionNotFound) ||
+			errors.Is(err, ErrThreadNotFound) ||
+			errors.Is(err, ErrCommentNotFound) {
+			return status.Error(codes.NotFound, err.Error())
+		}
+		if errors.Is(err, ErrOffsetOutOfRange) {
+			return status.Error(codes.OutOfRange, err.Error())
+		}
+		return status.Error(codes.Internal, err.Error())
+	}
+	for _, contentRule := range contentRules {
+		if sendErr = stream.Send(contentRule); err != nil {
+			log.Printf("Could not send Content Rule: %v\n", sendErr)
+			return status.Error(codes.Internal,	sendErr.Error())
+		}
+	}
+	return nil
 }
 
 // Get either following or followers users' basic data
