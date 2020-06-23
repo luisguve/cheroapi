@@ -255,9 +255,97 @@ func (s *Server) FollowUser(ctx context.Context, req *pbApi.FollowUserRequest) (
 }
 
 // Unfollow a user
-func (s *Server) UnfollowUser(ctx context.Context,
-	req *pbApi.UnfollowUserRequest) (*pbApi.UnfollowUserResponse, error) {
-	
+func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserRequest) (*pbApi.UnfollowUserResponse, error) {
+	if s.dbHandler == nil {
+		return nil, status.Error(codes.Internal, "No database connection")
+	}
+	var (
+		// user to stop following
+		ufId string
+		pbUf *pbDataFormat.User
+		// user unfollowing id
+		fId = req.UserId
+		pbF *pbDataFormat.User
+		done = make(chan error)
+		quit = make(chan error)
+	)
+	// Get both users concurrently.
+	go func() {
+		var err error
+		pbF, err = s.dbHandler.User(fId)
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	go func() {
+		ufIdB, err := s.dbHandler.FindUserIdByUsername(req.UserToUnFollow)
+		if err == nil {
+			ufId = string(ufIdB)
+			pbUf, err = s.dbHandler.User(ufId)
+		}
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	var err error
+	// Check for errors. If there was an error, it will close the channel quit,
+	// terminating any go-routine hung on the statement "case done<- err:", and
+	// return the error to the client.
+	for i := 0; i < 2; i++ {
+		err = <-done
+		if err != nil {
+			close(quit)
+			if errors.Is(err, ErrUserNotFound) {
+				return nil, status.Error(codes.NotFound, err.Error())
+			}
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	}
+	// Update users data.
+	following, idx := inSlice(pbF.FollowingIds, ufId)
+	if following {
+		last := len(pbF.FollowingIds) - 1
+		pbF.FollowingIds[idx] = pbF.FollowingIds[last]
+		pbF.FollowingIds = pbF.FollowingIds[:last]
+	}
+
+	follower, idx := inSlice(pbUf.FollowerIds, fId)
+	if follower {
+		last := len(pbUf.FollowerIds) - 1
+		pbUf.FollowerIds[idx] = pbUf.FollowerIds[last]
+		pbUf.FollowerIds = pbUf.FollowerIds[:last]
+	}
+	// Save both users concurrently.
+	go func() {
+		err := s.dbHandler.UpdateUser(pbF, fId)
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	go func() {
+		err := s.dbHandler.UpdateUser(pbUf, ufId)
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	// Check for errors. If there was an error, it will close the channel quit,
+	// terminating any go-routine hung on the statement "case done<- err:", and
+	// return the error to the client.
+	for i := 0; i < 2; i++ {
+		err = <-done
+		if err != nil {
+			close(quit)
+			if errors.Is(err, ErrUserNotFound) {
+				return nil, status.Error(codes.NotFound, err.Error())
+			}
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	}
+	return &pbApi.UnfollowUserResponse{}, nil
 }
 
 // Request to save thread
