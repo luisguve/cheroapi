@@ -174,9 +174,84 @@ func (s *Server) ClearNotifs(ctx context.Context, req *pbApi.ClearNotifsRequest)
 }
 
 // Follow a user
-func (s *Server) FollowUser(ctx context.Context,
-	req *pbApi.FollowUserRequest) (*pbApi.FollowUserResponse, error) {
-	
+func (s *Server) FollowUser(ctx context.Context, req *pbApi.FollowUserRequest) (*pbApi.FollowUserResponse, error) {
+	if s.dbHandler == nil {
+		return nil, status.Error(codes.Internal, "No database connection")
+	}
+	var (
+		followingId string
+		followerId = req.UserId
+		pbFollower *pbDataFormat.User
+		pbFollowing *pbDataFormat.User
+		done = make(chan error)
+		quit = make(chan error)
+	)
+	// Get both users concurrently.
+	go func() {
+		var err error
+		pbFollower, err = s.dbHandler.User(followerId)
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	go func() {
+		followingIdB, err := s.dbHandler.FindUserIdByUsername(req.UserToFollow)
+		if err == nil {
+			followingId = string(followingIdB)
+			pbFollowing, err = s.dbHandler.User(followingId)
+		}
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	var err error
+	// Check for errors. If there was an error, it will close the channel quit,
+	// terminating any go-routine hung on the statement "case done<- err:", and
+	// return the error to the client.
+	for i := 0; i < 2; i++ {
+		err = <-done
+		if err != nil {
+			close(quit)
+			if errors.Is(err, ErrUserNotFound) {
+				return nil, status.Error(codes.NotFound, err.Error())
+			}
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	}
+	// Update users data.
+	pbFollower.FollowingIds = append(pbFollower.FollowingIds, followingId)
+	pbFollowing.FollowerIds = append(pbFollowing.FollowerIds, followerId)
+	// Save both users concurrently.
+	go func() {
+		err := s.dbHandler.UpdateUser(pbFollower, followerId)
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	go func() {
+		err := s.dbHandler.UpdateUser(pbFollowing, followingId)
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	// Check for errors. If there was an error, it will close the channel quit,
+	// terminating any go-routine hung on the statement "case done<- err:", and
+	// return the error to the client.
+	for i := 0; i < 2; i++ {
+		err = <-done
+		if err != nil {
+			close(quit)
+			if errors.Is(err, ErrUserNotFound) {
+				return nil, status.Error(codes.NotFound, err.Error())
+			}
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	}
+	return &pbApi.FollowUserResponse{}, nil
 }
 
 // Unfollow a user
