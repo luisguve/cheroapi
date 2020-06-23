@@ -142,9 +142,24 @@ func (s *Server) MarkAllAsRead(ctx context.Context, req *pbApi.ReadNotifsRequest
 }
 
 // Clear all the notifications
-func (s *Server) ClearNotifs(ctx context.Context,
-	req *pbApi.ClearNotifsRequest) (*pbApi.ClearNotifsResponse, error) {
-	
+func (s *Server) ClearNotifs(ctx context.Context, req *pbApi.ClearNotifsRequest) (*pbApi.ClearNotifsResponse, error) {
+	if s.dbHandler == nil {
+		return nil, status.Error(codes.Internal, "No database connection")
+	}
+	pbUser, err := s.dbHandler.User(req.UserId)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	pbUser.ReadNotifs = nil
+	pbUser.UnreadNotifs = nil
+	err = s.dbHandler.UpdateUser(pbUser, req.UserId)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pbApi.ClearNotifsResponse{}, nil
 }
 
 // Follow a user
