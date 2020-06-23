@@ -29,8 +29,10 @@ type Handler interface {
 	GetGeneralThreadsOverview(func(*pbDataFormat.Content) patillator.SegregateDiscarderFinder) (map[string][]patillator.SegregateDiscarderFinder, []error)
 	// Get content of the given thread ids in the given sections
 	GetGeneralThreads([]patillator.GeneralId) ([]*pbApi.ContentRule, []error)
-	// Get a single thread content.
+	// Get a single ContentRule containing a thread.
 	GetThread(*pbContext.Thread) (*pbApi.ContentRule, error)
+	// Get a single thread content.
+	GetThreadContent(thread *pbContext.Thread) (*pbDataFormat.Content, error)
 	// Get 10 content of subcomments, skip first n comments.
 	GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.ContentRule, error)
 	// Get activity of users
