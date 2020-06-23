@@ -89,6 +89,8 @@ type Handler interface {
 	MapUsername(username, userId string) error
 	// Update data of user.
 	UpdateUser(pbUser *pbDataFormat.User, userId string) error
+	// Mark all the notifications of the given user as read.
+	ReadNotifs(userId string) error
 }
 
 // Reply holds the data of a reply
