@@ -170,6 +170,7 @@ func (h *handler) getContentAuthor(id string) (*pbApi.ContentAuthor, error) {
 			log.Printf("Could not unmarshal user: %v\n", err)
 			return err
 		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
