@@ -31,6 +31,8 @@ type Handler interface {
 	GetGeneralThreads([]patillator.GeneralId) ([]*pbApi.ContentRule, []error)
 	// Get a single thread content.
 	GetThread(*pbContext.Thread) (*pbApi.ContentRule, error)
+	// Get 10 content of subcomments, skip first n comments.
+	GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.ContentRule, error)
 	// Get activity of users
 	GetActivity(users ...string,
 		func(metadata *pbMetadata.Content, ctx *pbContext.Thread) patillator.SegregateFinder,
