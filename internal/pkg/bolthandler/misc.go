@@ -9,58 +9,6 @@ import(
 	pbContext "github.com/luisguve/cheroapi/internal/protogen/context"
 )
 
-// findUserIdByUsername looks for a user id with the given username as the key
-// in the bucket usernamesB from the users database of h, and returns it and a
-// nil error if it could be found, or a nil []byte and an ErrUsernameNotFound
-// if the username could not be found or an ErrBucketNotFound if the query could
-// not be completed.
-func (h *handler) findUserIdByUsername(username string) ([]byte, error) {
-	var (
-		userId []byte
-		err error
-	)
-	err = h.users.View(func(tx *bolt.Tx) error {
-		usernamesBucket := tx.Bucket([]byte(usernamesB))
-		if usernamesBucket == nil {
-			log.Printf("Bucket %s of users not found\n", usernamesB)
-			return ErrBucketNotFound
-		}
-		userIdBytes := usernamesBucket.Get([]byte(username))
-		if userIdBytes == nil {
-			return ErrUsernameNotFound
-		}
-		copy(userId, userIdBytes)
-		return nil
-	})
-	return userId, err
-}
-
-// findUserIdByEmail looks for a user id with the given email as the key in the
-// bucket usernamesB from the users database of h, and returns it and a nil
-// error if it could be found, or a nil []byte and an ErrEmailNotFound if the
-// username could not be found or an ErrBucketNotFound if the query could not
-// not be completed.
-func (h *handler) findUserIdByEmail(email string) ([]byte, error) {
-	var (
-		userId []byte
-		err error
-	)
-	err = h.users.View(func(tx *bolt.Tx) error {
-		emailsBucket := tx.Bucket([]byte(emailsB))
-		if emailsBucket == nil {
-			log.Printf("Bucket %s of users not found\n", emailsB)
-			return ErrBucketNotFound
-		}
-		userIdBytes := emailsBucket.Get([]byte(email))
-		if userIdBytes == nil {
-			return ErrEmailNotFound
-		}
-		copy(userId, userIdBytes)
-		return nil
-	})
-	return userId, err
-}
-
 // formatThreadContentRule takes in a *pbDataFormat.Content and a section context
 // and converts them into a *pbApi.ContentRule. It calls h.formatContentData to
 // convert the *pbDataFormat.Content into a *pbApi.ContentData.
