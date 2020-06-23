@@ -131,11 +131,22 @@ func (s *Server) MarkAllAsRead(ctx context.Context, req *pbApi.ReadNotifsRequest
 	if s.dbHandler == nil {
 		return nil, status.Error(codes.Internal, "No database connection")
 	}
-	err := s.dbHandler.ReadNotifs(req.UserId)
+	pbUser, err := s.dbHandler.User(req.UserId)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	// Append read notifs to list of unread notifs to keep unread as the
+	// first notifs, then set the resulting list of notifs to read notifs
+	// and nil to unread notifs.
+	pbUser.UnreadNotifs = append(pbUser.UnreadNotifs, pbUser.ReadNotifs...)
+	pbUser.ReadNotifs = pbUser.UnreadNotifs
+	pbUser.UnreadNotifs = nil
+
+	err = s.dbHandler.UpdateUser(pbUser, req.UserId)
+	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &pbApi.ReadNotifsResponse{}, nil
