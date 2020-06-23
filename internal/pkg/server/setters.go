@@ -349,9 +349,44 @@ func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserReques
 }
 
 // Request to save thread
-func (s *Server) SaveThread(ctx context.Context,
-	req *pbApi.SaveThreadRequest) (*pbApi.SaveThreadResponse, error) {
-	
+func (s *Server) SaveThread(ctx context.Context, req *pbApi.SaveThreadRequest) (*pbApi.SaveThreadResponse, error) {
+	if s.dbHandler == nil {
+		return nil, status.Error(codes.Internal, "No database connection")
+	}
+	var (
+		userId = req.UserId
+		thread = req.Thread
+	)
+	pbUser, err := s.dbHandler.User(userId)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	var saved bool
+	for _, t := range pbUser.SavedThreads {
+		if (t.SectionCtx.Id == thread.SectionCtx.Id) && (t.Id == thread.Id) {
+			saved = true
+			break
+		}
+	}
+	if !saved {
+		_, err = s.dbHandler.GetThreadContent(thread)
+		if err != nil {
+			if (errors.Is(err, ErrSectionNotFound)) ||
+				(errors.Is(err, ErrThreadNotFound)) {
+				return nil, status.Error(codes.NotFound, err.Error())
+			}
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		pbUser.SavedThreads = append(pbUser.SavedThreads, thread)
+		err = s.dbHandler.UpdateUser(pbUser, userId)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	}
+	return &pbApi.SaveThreadResponse{}, nil
 }
 
 // Request to remove thread from user's list of saved threads
