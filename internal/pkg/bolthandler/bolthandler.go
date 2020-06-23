@@ -46,6 +46,7 @@ const (
 	ErrNotUpvoted = "This user has not upvoted this content"
 	ErrUserUnableToPost = "This user cannot post another thread today"
 	ErrUsernameAlreadyExists = "Username already exists"
+	ErrOffsetOutOfRange = "Offset out of range"
 )
 
 var sectionIds = map[string]string{
