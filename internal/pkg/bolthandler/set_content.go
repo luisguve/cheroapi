@@ -96,6 +96,8 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 			SectionCtx: section,
 		}
 		pbUser.RecentActivity.ThreadsCreated = append(pbUser.RecentActivity.ThreadsCreated, threadCtx)
+		// Update last time created field.
+		pbUser.LastTimeCreated = content.PublishDate
 		pbUserBytes, err = proto.Marshal(pbUser)
 		if err != nil {
 			log.Printf("Could not marshal user: %v\n", err)
