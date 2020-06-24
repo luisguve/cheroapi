@@ -222,7 +222,7 @@ func (s *Server) FollowUser(ctx context.Context, req *pbApi.FollowUserRequest) (
 	}
 	// Update users data.
 	pbFollower.FollowingIds = append(pbFollower.FollowingIds, followingId)
-	pbFollowing.FollowerIds = append(pbFollowing.FollowerIds, followerId)
+	pbFollowing.FollowersIds = append(pbFollowing.FollowersIds, followerId)
 	// Save both users concurrently.
 	go func() {
 		err := s.dbHandler.UpdateUser(pbFollower, followerId)
@@ -311,11 +311,11 @@ func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserReques
 		pbF.FollowingIds = pbF.FollowingIds[:last]
 	}
 
-	follower, idx := inSlice(pbUf.FollowerIds, fId)
+	follower, idx := inSlice(pbUf.FollowersIds, fId)
 	if follower {
-		last := len(pbUf.FollowerIds) - 1
-		pbUf.FollowerIds[idx] = pbUf.FollowerIds[last]
-		pbUf.FollowerIds = pbUf.FollowerIds[:last]
+		last := len(pbUf.FollowersIds) - 1
+		pbUf.FollowersIds[idx] = pbUf.FollowersIds[last]
+		pbUf.FollowersIds = pbUf.FollowersIds[:last]
 	}
 	// Save both users concurrently.
 	go func() {

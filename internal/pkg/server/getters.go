@@ -155,10 +155,10 @@ func (s *Server) ViewUsers(ctx context.Context, req *pbApi.ViewUsersRequest) (*p
 			}(userId, i)
 		}
 	case "followers":
-		if offset >= len(pbUser.FollowerIds) {
+		if offset >= len(pbUser.FollowersIds) {
 			return nil, status.Error(codes.OutOfRange, "Offset out of range")
 		}
-		userIds := pbUser.FollowerIds[offset:]
+		userIds := pbUser.FollowersIds[offset:]
 		for i := 0; (i < len(userIds)) && (count < Q); i++, count++ {
 			userId := userIds[i]
 			go func(userId string, idx int) {
@@ -224,7 +224,7 @@ func (s *Server) ViewUserByUsername(ctx context.Context, req *pbApi.ViewUserByUs
 		About:           pbUser.BasicUserData.About,
 		UserId:          userId,
 		LastTimeCreated: pbUser.LastTimeCreated,
-		FollowersIds:    pbUser.FollowerIds,
+		FollowersIds:    pbUser.FollowersIds,
 		FollowingIds:    pbUser.FollowingIds,
 	}, nil
 }
