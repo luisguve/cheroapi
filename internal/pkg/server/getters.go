@@ -230,7 +230,28 @@ func (s *Server) ViewUserByUsername(ctx context.Context, req *pbApi.ViewUserByUs
 }
 
 // Get dashboard data for a given user
-func (s *Server) GetDashboardData(ctx context.Context,
-	req *pbApi.GetDashboardDataRequest) (*pbApi.DashboardData, error) {
-	
+func (s *Server) GetDashboardData(ctx context.Context, req *pbApi.GetDashboardDataRequest) (*pbApi.DashboardData, error) {
+	if s.dbHandler == nil {
+		return nil, status.Error(codes.Internal, "No database connection")
+	}
+	pbUser, err := s.dbHandler.User(req.UserId)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pbApi.DashboardData{
+		UserHeaderData: &pbApi.UserHeaderData{
+			Alias:           pbUser.BasicUserData.Alias,
+			Username:        pbUser.BasicUserData.Username,
+			UnreadNotifs:    pbUser.UnreadNotifs,
+			ReadNotifs:      pbUser.ReadNotifs,
+			LastTimeCreated: pbUser.LastTimeCreated,
+		},
+		FollowersIds: pbUser.FollowersIds,
+		FollowingIds: pbUser.FollowingIds,
+		SavedThreads: uint32(len(pbUser.SavedThreads)),
+		UserId:       req.UserId,
+	}, nil
 }
