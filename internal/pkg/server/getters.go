@@ -198,9 +198,35 @@ func (s *Server) ViewUsers(ctx context.Context, req *pbApi.ViewUsersRequest) (*p
 }
 
 // Get username basic data, following, followers and threads created
-func (s *Server) ViewUserByUsername(ctx context.Context,
-	req *pbApi.ViewUserByUsernameRequest) (*pbApi.ViewUserResponse, error) {
-	
+func (s *Server) ViewUserByUsername(ctx context.Context, req *pbApi.ViewUserByUsernameRequest) (*pbApi.ViewUserResponse, error) {
+	if s.dbHandler == nil {
+		return nil, status.Error(codes.Internal, "No database connection")
+	}
+	userIdB, err := s.dbHandler.FindUserIdByUsername(req.Username)
+	if err != nil {
+		if errors.Is(err, ErrUsernameNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	userId := string(userIdB)
+	pbUser, err := s.dbHandler.User(userId)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return &pbApi.ViewUserResponse{
+		Alias:           pbUser.BasicUserData.Alias,
+		Username:        pbUser.BasicUserData.Username,
+		PicUrl:          pbUser.BasicUserData.PicUrl,
+		About:           pbUser.BasicUserData.About,
+		UserId:          userId,
+		LastTimeCreated: pbUser.LastTimeCreated,
+		FollowersIds:    pbUser.FollowerIds,
+		FollowingIds:    pbUser.FollowingIds,
+	}, nil
 }
 
 // Get dashboard data for a given user
