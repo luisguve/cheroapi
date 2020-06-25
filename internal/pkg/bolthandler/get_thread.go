@@ -291,10 +291,10 @@ func (h *handler) GetThread(thread *pbContext.Thread) (*pbApi.ContentRule, error
 }
 
 func (h *handler) GetSavedThreadsOverview(user string, 
-	setContent func(metadata *pbDataFormat.Content) patillator.SegregateDiscarderFinder) (map[string][]patillator.SegregateDiscarderFinder, error) {
+	setContent func(metadata *pbDataFormat.Content) patillator.SegregateDiscarderFinder) (map[string][]patillator.SegregateDiscarderFinder, []error) {
 	var (
 		contents map[string][]patillator.SegregateDiscarderFinder
-		err error
+		errs []error
 		pbUser = new(pbDataFormat.User)
 	)
 
@@ -323,59 +323,39 @@ func (h *handler) GetSavedThreadsOverview(user string,
 		return nil
 	}
 	if err != nil {
-		// it's ok to get an ErrNoSavedThreads error
-		if errors.Is(ErrNoSavedThreads) {
-			return nil, nil
-		}
-		// if it's not such an error, it must be reported to the caller by
-		// returning it.
-		return nil, err
+		errs = append(errs, err)
+		return nil, errs
 	}
 	var (
 		m sync.Mutex
 		once sync.Once
 		wg sync.WaitGroup
-		done = make(chan error)
-		quit = make(chan error)
-		elems = 0
 	)
-	// get and set threads metadata
+	// Get and set threads metadata.
 	for _, ctx := range pbUser.SavedThreads {
-		elems++
 		wg.Add(1)
 		// Do the content getting, setting and appending in its own go-routine.
-		// Should it get an error and it will send it to the channel done,
-		// otherwise it will be sending nil to the same channel, meaning it
-		// could complete its work successfully.
+		// Should it get an error and it will append it to errs. Otherwise, it
+		// will format the content and append it to the section it belongs to.
 		go func(ctx *pbContext.Thread) {
 			defer wg.Done()
 			pbContent, err := h.GetThreadContent(ctx)
-			if err == nil {
-				content := setContent(pbContent)
-				section := ctx.SectionCtx.Id
-				once.Do(func() {
-					contents = make(map[string][]patillator.SegregateDiscarderFinder)
-				})
+			if err != nil {
 				m.Lock()
-				contents[section] = append(contents[section], content)
+				errs = append(errs, err)
 				m.Unlock()
+				return
 			}
-			select {
-			case done<- err:
-			case <-quit: // exit in case of getting stuck on above statement.
-			}
+			content := setContent(pbContent)
+			section := ctx.SectionCtx.Id
+			once.Do(func() {
+				contents = make(map[string][]patillator.SegregateDiscarderFinder)
+			})
+			m.Lock()
+			contents[section] = append(contents[section], content)
+			m.Unlock()
 		}(ctx)
 	}
-	// Check for errors. It terminates every go-routine hung on the statement
-	// "case done<- err" by closing the channel quit and returns the first err
-	// read.
-	for i := 0; i < elems; i++ {
-		err = <-done
-		if err != nil {
-			close(quit)
-			break
-		}
-	}
 	wg.Wait()
-	return contents, err
+	return contents, errs
 }
