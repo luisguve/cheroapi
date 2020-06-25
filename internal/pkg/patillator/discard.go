@@ -1,14 +1,16 @@
 package patillator
 
 import(
+	"log"
 	
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
 // DiscardActivities removes the threads, comments and subcomments of the activity
 // set whose toDiscard method returns true and returns the resulting activity.
 // It does nothing when the fields ThreadsCreated, Comments or Subcomments from
 // either the given Activity or ids are empty.
-func DiscardActivities(a UserActivity, ids *pbDataformat.Activity) UserActivity {
+func DiscardActivities(a UserActivity, ids *pbDataFormat.Activity) UserActivity {
 	// initially, no activity has been discarded and if there are no ids
 	// to compare, the exact same list of activity will be returned back.
 	discardedActivity := a
