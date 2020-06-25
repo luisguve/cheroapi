@@ -1,10 +1,12 @@
-// package dbmodel provides the Handler interface defining a set of CRUD
+// package dbmodel provides the Handler interface defining the set of CRUD
 // operations on any sort of DBMS, specifically designed for the cheroapi
 // service.
 
 package dbmodel
 
 import(
+	"errors"
+
 	"google.golang.org/grpc/status"
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
@@ -99,4 +101,48 @@ type Reply struct {
 	FtFile string
 	Submitter string
 	PublishDate *pbTime.Timestamp
+}
+
+// These errors are returned when contents are not found.
+var (
+	ErrUserNotFound = errors.New("User not found")
+	ErrUsernameNotFound = errors.New("Username not found")
+	ErrEmailNotFound = errors.New("Email not found")
+	ErrSectionNotFound = errors.New("Section not found")
+	ErrThreadNotFound = errors.New("Thread not found")
+	ErrCommentNotFound = errors.New("Comment not found")
+	ErrSubcommentNotFound = errors.New("Subcomment not found")
+	ErrBucketNotFound = errors.New("Bucket not found")
+	ErrSubcommentsBucketNotFound = errors.New("Subcomments bucket not found")
+)
+
+// These errors can be returned when accessing contents.
+var (
+	// There are no comments in the thread.
+	ErrNoComments = errors.New("No comments available")
+	// This user has not saved any thread yet
+	ErrNoSavedThreads = errors.New("This user has not saved any thread yet")
+	// Trying to index a list beyond its size.
+	ErrOffsetOutOfRange = errors.New("Offset out of range")
+)
+
+// These errors can be returned when submitting actions.
+var (
+	// A user is trying to undo an upvote on a content he's not upvoted.
+	ErrNotUpvoted = errors.New("This user has not upvoted this content")
+	// A user has not the permission to do something.
+	ErrUserNotAllowed = errors.New("User not allowed")
+	// A user wants to change or set its username, but it's not available.
+	ErrUsernameAlreadyExists = errors.New("Username already exists")
+)
+
+var SectionIds = map[string]string{
+	"My Life": "mylife",
+	"Food": "food",
+	"Technology": "tech",
+	"Art": "art",
+	"Music": "music",
+	"Do it yourself": "diy",
+	"Questions": "questions",
+	"Literature": "literature",
 }

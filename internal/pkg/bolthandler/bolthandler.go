@@ -31,35 +31,6 @@ const (
 	subcommentsB = "Subcomments"
 )
 
-const (
-	ErrSectionNotFound = "Section not found"
-	ErrBucketNotFound = "Bucket not found"
-	ErrUserNotFound = "User not found"
-	ErrNoComments = "No comments available"
-	ErrThreadNotFound = "Thread not found"
-	ErrCommentNotFound = "Comment not found"
-	ErrSubcommentNotFound = "Subcomment not found"
-	ErrNoSavedThreads = "This user has not saved any thread yet"
-	ErrUsernameNotFound = "Username not found"
-	ErrEmailNotFound = "Email not found"
-	ErrSubcommentsBucketNotFound = "Subcomments bucket not found"
-	ErrNotUpvoted = "This user has not upvoted this content"
-	ErrUserUnableToPost = "This user cannot post another thread today"
-	ErrUsernameAlreadyExists = "Username already exists"
-	ErrOffsetOutOfRange = "Offset out of range"
-)
-
-var sectionIds = map[string]string{
-	"My Life": "mylife",
-	"Food": "food",
-	"Technology": "tech",
-	"Art": "art",
-	"Music": "music",
-	"Do it yourself": "diy",
-	"Questions": "questions",
-	"Literature": "literature",
-}
-
 type handler struct {
 	// database for user management.
 	users *bolt.DB
