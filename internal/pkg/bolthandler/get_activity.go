@@ -5,8 +5,7 @@ import(
 )
 
 // Get activity of users
-func (h *handler) GetActivity(users ...string)
-		(map[string]patillator.UserActivity, []error) {
+func (h *handler) GetActivity(users ...string) (map[string]patillator.UserActivity, []error) {
 	var (
 		activity map[string]patillator.UserActivity
 		m sync.Mutex
