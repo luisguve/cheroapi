@@ -10,6 +10,7 @@ import(
 	"golang.org/x/crypto/bcrypt"
 	bolt "go.etcd.io/bbolt"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
 )
 
 // FindUserIdByUsername looks for a user id with the given username as the key
@@ -26,11 +27,11 @@ func (h *handler) FindUserIdByUsername(username string) ([]byte, error) {
 		usernamesBucket := tx.Bucket([]byte(usernamesB))
 		if usernamesBucket == nil {
 			log.Printf("Bucket %s of users not found\n", usernamesB)
-			return ErrBucketNotFound
+			return dbmodel.ErrBucketNotFound
 		}
 		userIdBytes := usernamesBucket.Get([]byte(username))
 		if userIdBytes == nil {
-			return ErrUsernameNotFound
+			return dbmodel.ErrUsernameNotFound
 		}
 		copy(userId, userIdBytes)
 		return nil
@@ -52,11 +53,11 @@ func (h *handler) FindUserIdByEmail(email string) ([]byte, error) {
 		emailsBucket := tx.Bucket([]byte(emailsB))
 		if emailsBucket == nil {
 			log.Printf("Bucket %s of users not found\n", emailsB)
-			return ErrBucketNotFound
+			return dbmodel.ErrBucketNotFound
 		}
 		userIdBytes := emailsBucket.Get([]byte(email))
 		if userIdBytes == nil {
-			return ErrEmailNotFound
+			return dbmodel.ErrEmailNotFound
 		}
 		copy(userId, userIdBytes)
 		return nil
@@ -78,12 +79,13 @@ func (h *handler) CheckUser(username, password string) (string, bool) {
 	err = h.users.View(func(tx *bolt.Tx) error {
 		usersBucket := tx.Bucket([]byte(usersB))
 		if usersBucket == nil {
-			return fmt.Errorf("Bucket %s of users not found\n", usersB)
+			log.Printf("Bucket %s of users not found\n", usersB)
+			return dbmodel.ErrBucketNotFound
 		}
 		userDataBytes := usersBucket.Get(userId)
 		if userDataBytes == nil {
 			log.Printf("Could not find user data (id %s)\n", string(userId))
-			return fmt.Errorf("User %s not found\n", string(userId))
+			return dbmodel.ErrUserNotFound
 		}
 		err := proto.Unmarshal(userDataBytes, userData)
 		if err != nil {
@@ -119,7 +121,7 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 	// there must be an error, which should be ErrUsernameNotFound, otherwise the
 	// query could not be completed or the username has already been taken.
 	if err != nil {
-		if !errors.Is(err, ErrUsernameNotFound) {
+		if !errors.Is(err, dbmodel.ErrUsernameNotFound) {
 			return "", status.New(codes.Internal, "Failed to query database")
 		}
 	} else {
@@ -131,7 +133,7 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 	// there must be an error, which should be ErrEmailNotFound, otherwise the
 	// query could not be completed or the email has already been taken.
 	if err != nil {
-		if !errors.Is(err, ErrEmailNotFound) {
+		if !errors.Is(err, dbmodel.ErrEmailNotFound) {
 			return "", status.New(codes.Internal, "Failed to query database")
 		}
 	} else {
@@ -178,7 +180,8 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 		// save user into users database
 		usersBucket := tx.Bucket([]byte(usersB))
 		if usersBucket == nil {
-			return fmt.Errorf("Bucket %s of users not found\n", usersB)
+			log.Printf("Bucket %s of users not found\n", usersB)
+			return dbmodel.ErrBucketNotFound
 		}
 		err := usersBucket.Put([]byte(userId), pbUserBytes)
 		if err != nil {
@@ -190,7 +193,7 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 		usernamesBucket := tx.Bucket([]byte(usernamesB))
 		if usernamesBucket == nil {
 			log.Printf("Bucket %s of users not found\n", usernamesB)
-			return ErrBucketNotFound
+			return dbmodel.ErrBucketNotFound
 		}
 		err = usernamesBucket.Put([]byte(username), []byte(userId))
 		if err != nil {
@@ -202,7 +205,7 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 		emailsBucket := tx.Bucket([]byte(emailsB))
 		if emailsBucket == nil {
 			log.Printf("Bucket %s of users not found\n", emailsB)
-			return ErrBucketNotFound
+			return dbmodel.ErrBucketNotFound
 		}
 		err = emailsBucket.Put([]byte(email), []byte(userId))
 		if err != nil {
@@ -228,12 +231,13 @@ func (h *handler) CheckUserCanPost(userId string) (bool, error) {
 	err := h.users.View(func(tx *bolt.Tx) error {
 		usersBucket := tx.Bucket([]byte(usersB))
 		if usersBucket == nil {
-			return fmt.Errorf("Bucket %s of users not found\n", usersB)
+			log.Printf("Bucket %s of users not found\n", usersB)
+			return dbmodel.ErrBucketNotFound
 		}
 		userDataBytes := usersBucket.Get(userId)
 		if userDataBytes == nil {
 			log.Printf("Could not find user data (id %s)\n", string(userId))
-			return ErrUserNotFound
+			return dbmodel.ErrUserNotFound
 		}
 		err := proto.Unmarshal(userDataBytes, userData)
 		if err != nil {
@@ -256,12 +260,13 @@ func (h *handler) User(userId string) (*pbDataFormat.User, error) {
 	err := h.users.View(func(tx *bolt.Tx) error {
 		usersBucket := tx.Bucket(usersB)
 		if usersBucket == nil {
-			return fmt.Errorf("Bucket %s of users not found\n", usersB)
+			log.Printf("Bucket %s of users not found\n", usersB)
+			return dbmodel.ErrBucketNotFound
 		}
 		userBytes := usersBucket.Get([]byte(userId))
 		if userBytes == nil {
 			log.Printf("Could not find user data (id %s)\n", string(userId))
-			return ErrUserNotFound
+			return dbmodel.ErrUserNotFound
 		}
 		err := proto.Unmarshal(userBytes, pbUser)
 		if err != nil {
@@ -284,11 +289,11 @@ func (h *handler) MapUsername(username, userId string) error {
 		usernamesBucket := tx.Bucket([]byte(usernamesB))
 		if usernamesBucket == nil {
 			log.Printf("Bucket %s of users not found\n", usernamesB)
-			return ErrBucketNotFound
+			return dbmodel.ErrBucketNotFound
 		}
 		userIdBytes := usernamesBucket.Get([]byte(username))
 		if userIdBytes != nil {
-			return ErrUsernameAlreadyExists
+			return dbmodel.ErrUsernameAlreadyExists
 		}
 		return usernamesBucket.Put([]byte(username), []byte(userId))
 	})
@@ -306,7 +311,8 @@ func (h *handler) UpdateUser(pbUser *pbDataFormat.User, userId string) error {
 		// save user into users database
 		usersBucket := tx.Bucket([]byte(usersB))
 		if usersBucket == nil {
-			return fmt.Errorf("Bucket %s of users not found\n", usersB)
+			log.Printf("Bucket %s of users not found\n", usersB)
+			return dbmodel.ErrBucketNotFound
 		}
 		return usersBucket.Put([]byte(userId), pbUserBytes)
 	}

@@ -3,6 +3,7 @@ package bolthandler
 import (
 	"log"
 
+	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 )
@@ -18,7 +19,7 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 	)
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return ErrSectionNotFound
+		return dbmodel.ErrSectionNotFound
 	}
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
 		threadsBucket, err := getThreadBucket(tx, threadId)
@@ -27,7 +28,7 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 		}
 		threadBytes := threadsBucket.Get([]byte(id))
 		if threadBytes == nil {
-			return ErrThreadNotFound
+			return dbmodel.ErrThreadNotFound
 		}
 		pbThread := new(pbDataFormat.Content)
 		if err = proto.Unmarshal(pbThread, threadBytes); err != nil {
@@ -35,7 +36,7 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 			return err
 		}
 		if pbThread.AuthorId != userId {
-			return ErrUsetNotAllowed
+			return dbmodel.ErrUsetNotAllowed
 		}
 		usersWhoSaved = pbThread.UsersWhoSaved
 		return threadsBucket.Delete([]byte(id))
@@ -57,12 +58,12 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 			usersBucket := tx.Bucket(usersB)
 			if usersBucket == nil {
 				log.Printf("Bucket %s of users not found\n", usersB)
-				return ErrBucketNotFound
+				return dbmodel.ErrBucketNotFound
 			}
 			pbUserBytes := usersBucket.Get([]byte(userId))
 			if pbUserBytes == nil {
 				log.Printf("User %s not found\n", userId)
-				return ErrUserNotFound
+				return dbmodel.ErrUserNotFound
 			}
 			pbUser := new(pbDataFormat.User)
 			err = proto.Unmarshal(pbUser, pbUserBytes)
@@ -98,7 +99,7 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 			}
 			if !found {
 				log.Printf("Could not find reference to thread %s in activity of user %s\n", id, userId)
-				return fmt.Errorf("Could not find reference to thread %s in activity of user %s\n", id, userId)
+				return dbmodel.ErrThreadNotFound
 			}
 			pbUserBytes, err = proto.Marshal(pbUser)
 			if err != nil {
@@ -120,12 +121,12 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 				usersBucket := tx.Bucket(usersB)
 				if usersBucket == nil {
 					log.Printf("Bucket %s of users not found\n", usersB)
-					return ErrBucketNotFound
+					return dbmodel.ErrBucketNotFound
 				}
 				pbUserBytes := usersBucket.Get([]byte(userId))
 				if pbUserBytes == nil {
 					log.Printf("User %s not found\n", userId)
-					return ErrUserNotFound
+					return dbmodel.ErrUserNotFound
 				}
 				pbUser := new(pbDataFormat.User)
 				err = proto.Unmarshal(pbUser, pbUserBytes)
@@ -180,7 +181,7 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 	)
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return ErrSectionNotFound
+		return dbmodel.ErrSectionNotFound
 	}
 
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
@@ -190,7 +191,7 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 		}
 		commentBytes := commentsBucket.Get([]byte(id))
 		if commentBytes == nil {
-			return ErrCommentNotFound
+			return dbmodel.ErrCommentNotFound
 		}
 		pbComment := new(pbDataFormat.Content)
 		if err = proto.Unmarshal(pbComment, commentBytes); err != nil {
@@ -198,7 +199,7 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 			return err
 		}
 		if pbComment.AuthorId != userId {
-			return ErrUsetNotAllowed
+			return dbmodel.ErrUsetNotAllowed
 		}
 		err = commentsBucket.Delete([]byte(id))
 		if err != nil {
@@ -212,7 +213,7 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 		}
 		threadBytes := threadsBucket.Get([]byte(threadId))
 		if threadBytes == nil {
-			return ErrThreadNotFound
+			return dbmodel.ErrThreadNotFound
 		}
 		pbThread := new(pbDataFormat.Content)
 		if err = proto.Unmarshal(pbThread, threadBytes); err != nil {
@@ -241,12 +242,12 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 		usersBucket := tx.Bucket(usersB)
 		if usersB == nil {
 			log.Printf("Bucket %s of users not found\n", usersB)
-			return ErrBucketNotFound
+			return dbmodel.ErrBucketNotFound
 		}
 		pbUserBytes := usersBucket.Get([]byte(userId))
 		if pbUserBytes == nil {
 			log.Printf("User %s not found\n", userId)
-			return ErrUserNotFound
+			return dbmodel.ErrUserNotFound
 		}
 		pbUser := new(pbDataFormat.User)
 		err = proto.Unmarshal(pbUser, pbUserBytes)
@@ -310,7 +311,7 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 	)
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return ErrSectionNotFound
+		return dbmodel.ErrSectionNotFound
 	}
 
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
@@ -320,7 +321,7 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 		}
 		subcommentBytes := subcommentsBucket.Get([]byte(id))
 		if subcommentBytes == nil {
-			return ErrSubcommentNotFound
+			return dbmodel.ErrSubcommentNotFound
 		}
 		pbSubcomment := new(pbDataFormat.Content)
 		if err = proto.Unmarshal(pbSubcomment, subcommentBytes); err != nil {
@@ -328,7 +329,7 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 			return err
 		}
 		if pbSubcomment.AuthorId != userId {
-			return ErrUsetNotAllowed
+			return dbmodel.ErrUsetNotAllowed
 		}
 		err = subcommentsBucket.Delete([]byte(id))
 		if err != nil {
@@ -342,7 +343,7 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 		}
 		commentBytes := commentsBucket.Get([]byte(commentId))
 		if commentBytes == nil {
-			return ErrCommentNotFound
+			return dbmodel.ErrCommentNotFound
 		}
 		pbComment := new(pbDataFormat.Content)
 		if err = proto.Unmarshal(pbComment, commentBytes); err != nil {
@@ -373,7 +374,7 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 		}
 		threadBytes := threadsBucket.Get([]byte(threadId))
 		if threadBytes == nil {
-			return ErrThreadNotFound
+			return dbmodel.ErrThreadNotFound
 		}
 		pbThread := new(pbDataFormat.Content)
 		if err = proto.Unmarshal(pbThread, threadBytes); err != nil {
@@ -396,12 +397,12 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 		usersBucket := tx.Bucket(usersB)
 		if usersB == nil {
 			log.Printf("Bucket %s of users not found\n", usersB)
-			return ErrBucketNotFound
+			return dbmodel.ErrBucketNotFound
 		}
 		pbUserBytes := usersBucket.Get([]byte(userId))
 		if pbUserBytes == nil {
 			log.Printf("User %s not found\n", userId)
-			return ErrUserNotFound
+			return dbmodel.ErrUserNotFound
 		}
 		pbUser := new(pbDataFormat.User)
 		err = proto.Unmarshal(pbUser, pbUserBytes)

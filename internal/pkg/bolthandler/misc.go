@@ -3,6 +3,7 @@ package bolthandler
 import(
 	"log"
 
+	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
 	pbApi "github.com/luisguve/cheroapi/internal/protogen/cheroapi"
 	pbDataFormat "github.com/luisguve/cheroapi/internal/protogen/dataformat"
 	pbMetadata "github.com/luisguve/cheroapi/internal/protogen/metadata"
@@ -107,12 +108,12 @@ func (h *handler) getContentAuthor(id string) (*pbApi.ContentAuthor, error) {
 		users := tx.Bucket(usersB)
 		if users == nil {
 			log.Printf("Users bucket \"%s\" not found\n", usersB)
-			return ErrBucketNotFound
+			return dbmodel.ErrBucketNotFound
 		}
 		userBytes := users.Get([]byte(id))
 		if userBytes == nil {
 			log.Printf("User (id = %s) not found\n", id)
-			return ErrUserNotFound
+			return dbmodel.ErrUserNotFound
 		}
 		if err = proto.Unmarshal(userBytes, pbUser); err != nil {
 			log.Printf("Could not unmarshal user: %v\n", err)
@@ -139,7 +140,7 @@ func (h *handler) getContentAuthor(id string) (*pbApi.ContentAuthor, error) {
 func setThreadBytes(tx *bolt.Tx, threadId string, threadBytes []byte) error {
 	contents, err := getThreadBucket(tx, threadId)
 	if err != nil {
-		return nil, ErrThreadNotFound
+		return nil, dbmodel.ErrThreadNotFound
 	}
 	return contents.Put([]byte(threadId, threadBytes))
 }
@@ -151,12 +152,12 @@ func setThreadBytes(tx *bolt.Tx, threadId string, threadBytes []byte) error {
 func getThreadBytes(tx *bolt.Tx, threadId string) ([]byte, error) {
 	contents, err := getThreadBucket(tx, threadId)
 	if err != nil {
-		return nil, ErrThreadNotFound
+		return nil, dbmodel.ErrThreadNotFound
 	}
 
 	threadBytes := contents.Get([]byte(threadId))
 	if treadBytes == nil {
-		return nil, ErrThreadNotFound
+		return nil, dbmodel.ErrThreadNotFound
 	}
 	return threadBytes, nil
 }
@@ -169,7 +170,7 @@ func getThreadBytes(tx *bolt.Tx, threadId string) ([]byte, error) {
 func setCommentBytes(tx *bolt.Tx, threadId, commentId string, commentBytes []byte) error {
 	contents, err := getCommentsBucket(tx, threadId)
 	if err != nil {
-		return nil, ErrCommentNotFound
+		return nil, dbmodel.ErrCommentNotFound
 	}
 	return contents.Put([]byte(commentId), commentBytes)
 }
@@ -182,12 +183,12 @@ func setCommentBytes(tx *bolt.Tx, threadId, commentId string, commentBytes []byt
 func getCommentBytes(tx *bolt.Tx, threadId, commentId string) ([]byte, error) {
 	contents, err := getCommentsBucket(tx, threadId)
 	if err != nil {
-		return nil, ErrCommentNotFound
+		return nil, dbmodel.ErrCommentNotFound
 	}
 
 	commentBytes := contents.Get([]byte(commentId))
 	if commentBytes == nil {
-		return nil, ErrCommentNotFound
+		return nil, dbmodel.ErrCommentNotFound
 	}
 	return commentBytes, nil
 }
@@ -201,7 +202,7 @@ func setSubcommentBytes(tx *bolt.Tx, threadId, commentId, subcommentId string,
 	subcommentBytes []byte) error {
 	contents, err := getSubcommentsBucket(tx, threadId, commentId)
 	if err != nil {
-		return nil, ErrSubcommentNotFound
+		return nil, dbmodel.ErrSubcommentNotFound
 	}
 	return contents.Put([]byte(subcommentId), subcommentBytes)
 }
@@ -220,7 +221,7 @@ func getSubcommentBytes(tx *bolt.Tx, threadId, commentId, subcommentId string) (
 
 	subcommentBytes := contents.Get([]byte(subcommentId))
 	if subcommentBytes == nil {
-		return nil, ErrSubcommentNotFound
+		return nil, dbmodel.ErrSubcommentNotFound
 	}
 	return subcommentBytes, nil
 }
@@ -236,7 +237,7 @@ func getThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 	contents := tx.Bucket([]byte(activeContentsB)
 	if contents == nil {
 		log.Printf("bucket %s not found\n", activeContentsB)
-		return nil, ErrBucketNotFound
+		return nil, dbmodel.ErrBucketNotFound
 	}
 	// check whether the thread is in the bucket of active contents
 	threadBytes := contents.Get([]byte(threadId))
@@ -249,7 +250,7 @@ func getThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 	contents = tx.Bucket([]byte(archivedContentsB))
 	if contents == nil {
 		log.Printf("bucket %s not found\n", archivedContentsB)
-		return nil, ErrBucketNotFound
+		return nil, dbmodel.ErrBucketNotFound
 	}
 	// check whether the thread is in the bucket of archived contents
 	threadBytes = contents.Get([]byte(threadId))
@@ -260,7 +261,7 @@ func getThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 
 	// thread not found (FOR DEBUGGING)
 	log.Printf("the thread id %s could not be found\n", threadId)
-	return nil, ErrBucketNotFound
+	return nil, dbmodel.ErrBucketNotFound
 }
 
 // getActiveThreadBucket returns the bucket of active contents if the given
@@ -273,7 +274,7 @@ func getActiveThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 	contents := tx.Bucket([]byte(activeContentsB)
 	if contents == nil {
 		log.Printf("bucket %s not found\n", activeContentsB)
-		return nil, ErrBucketNotFound
+		return nil, dbmodel.ErrBucketNotFound
 	}
 	// check whether the thread is in the bucket of active contents
 	threadBytes := contents.Get([]byte(threadId))
@@ -282,7 +283,7 @@ func getActiveThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 		return contents, nil
 	}
 	// the given thread is either unactive or does not exist.
-	return nil, ErrBucketNotFound
+	return nil, dbmodel.ErrBucketNotFound
 }
 
 // getCommentsBucket looks for a comments bucket associated to the given thread
@@ -299,13 +300,13 @@ func getCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 	commentsBucket := contents.Bucket([]byte(commentsB))
 	if commentsBucket == nil {
 		log.Printf("subbucket %s not found\n", commentsB)
-		return nil, ErrBucketNotFound
+		return nil, dbmodel.ErrBucketNotFound
 	}
 
 	comments := commentsBucket.Bucket([]byte(threadId))
 	if comments == nil {
 		log.Printf("subbucket %s of bucket %s not found\n", threadId, commentsB)
-		return nil, ErrBucketNotFound
+		return nil, dbmodel.ErrBucketNotFound
 	}
 	return comments, nil
 }
@@ -325,13 +326,13 @@ func getActiveCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error)
 	commentsBucket := activeContents.Bucket([]byte(commentsB))
 	if commentsBucket == nil {
 		log.Printf("subbucket %s not found\n", commentsB)
-		return nil, ErrBucketNotFound
+		return nil, dbmodel.ErrBucketNotFound
 	}
 
 	comments := commentsBucket.Bucket([]byte(threadId))
 	if comments == nil {
 		log.Printf("subbucket %s of bucket %s not found\n", threadId, commentsB)
-		return nil, ErrBucketNotFound
+		return nil, dbmodel.ErrBucketNotFound
 	}
 	return comments, nil
 }
@@ -350,13 +351,13 @@ func getSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.Bucket
 	subcommentsBucket := contents.Bucket([]byte(subcommentsB))
 	if subcommentsBucket == nil {
 		log.Printf("subbucket %s not found\n", subcommentsB)
-		return nil, ErrBucketNotFound
+		return nil, dbmodel.ErrBucketNotFound
 	}
 
 	subcomments := subcommentsBucket.Bucket([]byte(commentId))
 	if subcomments == nil {
 		log.Printf("subbucket %s of bucket %s not found\n", commentId, subcommentsB)
-		return nil, ErrBucketNotFound
+		return nil, dbmodel.ErrBucketNotFound
 	}
 	return subcomments, nil
 }
@@ -380,12 +381,12 @@ func getActiveSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.
 	subcommentsBucket := contents.Bucket([]byte(subcommentsB))
 	if subcommentsBucket == nil {
 		log.Printf("subbucket %s not found\n", subcommentsB)
-		return nil, ErrBucketNotFound
+		return nil, dbmodel.ErrBucketNotFound
 	}
 
 	subcomments := subcommentsBucket.Bucket([]byte(commentId))
 	if subcomments == nil {
-		return nil, ErrSubcommentsBucketNotFound
+		return nil, dbmodel.ErrSubcommentsBucketNotFound
 	}
 	return subcomments, nil
 }
@@ -405,7 +406,7 @@ func createSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.Buc
 	subcommentsBucket := contents.Bucket([]byte(subcommentsB))
 	if subcommentsBucket == nil {
 		log.Printf("subbucket %s not found\n", subcommentsB)
-		return nil, ErrBucketNotFound
+		return nil, dbmodel.ErrBucketNotFound
 	}
 	return subcommentsBucket.CreateBucketIfNotExists([]byte(commentId))
 }

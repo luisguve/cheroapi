@@ -58,7 +58,7 @@ func New() (dbmodel.Handler, error) {
 	sectionsDBs := make(map[string]section)
 
 	// open or create section databases
-	for sectionName, sectionId := range sectionIds {
+	for sectionName, sectionId := range dbmodel.SectionIds {
 		dbPath := sectionId + "/contents.db"
 		db, err := bolt.Open(dbPath, 0600, nil)
 		if err != nil {
@@ -70,13 +70,13 @@ func New() (dbmodel.Handler, error) {
 			_, err = tx.CreateBucketIfNotExists([]byte(activeContentsB))
 			if err != nil {
 				log.Printf("Could not create bucket %s: %v\n", activeContentsB, err)
-				return fmt.Errorf("Could not create bucket: %v", err)
+				return err
 			}
 			// archived
 			_, err = tx.CreateBucketIfNotExists([]byte(archivedContentsB))
 			if err != nil {
 				log.Printf("Could not create bucket %s: %v\n", archivedContentsB, err)
-				return fmt.Errorf("Could not create bucket: %v", err)
+				return err
 			}
 			return nil
 		})
@@ -99,29 +99,38 @@ func New() (dbmodel.Handler, error) {
 	}
 
 	// create bucket for users
-	if err = usersDB.Update(func(tx *bolt.Tx) error {
+	err = usersDB.Update(func(tx *bolt.Tx) error {
 		_, err = tx.CreateBucketIfNotExists([]byte(usersB))
-		log.Printf("Could not create bucket %s: %v\n", usersB, err)
+		if err != nil {
+			log.Printf("Could not create bucket %s: %v\n", usersB, err)
+		}
 		return err
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 
 	// create bucket for usernames to user ids mapping
-	if err = usersDB.Update(func(tx *bolt.Tx) error {
+	err = usersDB.Update(func(tx *bolt.Tx) error {
 		_, err = tx.CreateBucketIfNotExists([]byte(usernamesB))
-		log.Printf("Could not create bucket %s: %v\n", usernamesB, err)
+		if err != nil {
+			log.Printf("Could not create bucket %s: %v\n", usernamesB, err)
+		}
 		return err
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 
 	// create bucket for emails to user ids mapping
-	if err = usersDB.Update(func(tx *bolt.Tx) error {
+	err = usersDB.Update(func(tx *bolt.Tx) error {
 		_, err = tx.CreateBucketIfNotExists([]byte(emailsB))
-		log.Printf("Could not create bucket %s: %v\n", emailsB, err)
+		if err != nil {
+			log.Printf("Could not create bucket %s: %v\n", emailsB, err)
+		}
 		return err
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, err
 	}
 

@@ -1,6 +1,7 @@
 package bolthandler
 
 import(
+	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -17,7 +18,7 @@ func (h *handler) GetCommentsOverview(thread *pbContext.Thread) ([]patillator.Se
 	)
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return nil, ErrSectionNotFound
+		return nil, dbmodel.ErrSectionNotFound
 	}
 
 	setContent := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
@@ -29,7 +30,7 @@ func (h *handler) GetCommentsOverview(thread *pbContext.Thread) ([]patillator.Se
 		comments, err := getCommentsBucket(tx, id)
 		if err != nil {
 			log.Printf("There are no comments for the thread %s. %v\n", id, err)
-			return ErrNoComments
+			return dbmodel.ErrNoComments
 		}
 
 		var (
@@ -93,14 +94,14 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return nil, ErrSectionNotFound
+		return nil, dbmodel.ErrSectionNotFound
 	}
 
 	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
 		comments, err := getCommentsBucket(tx, id)
 		if err != nil {
 			log.Printf("There are no comments for the thread %s. %v\n", id, err)
-			return ErrNoComments
+			return dbmodel.ErrNoComments
 		}
 		var (
 			wg sync.WaitGroup
@@ -174,7 +175,7 @@ func (h *handler) GetCommentContent(comment *pbContext.Comment) (*pbDataFormat.C
 
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return nil, ErrSectionNotFound
+		return nil, dbmodel.ErrSectionNotFound
 	}
 
 	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
@@ -213,7 +214,7 @@ func (h *handler) GetSubcommentContent(subcomment *pbContext.Subcomment) (*pbDat
 
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return nil, ErrSectionNotFound
+		return nil, dbmodel.ErrSectionNotFound
 	}
 
 	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
@@ -280,7 +281,7 @@ func (h *handler) GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.Co
 	// check whether section exists
 	sectionDB, ok := h.sections[sectionId]
 	if !ok {
-		return nil, ErrSectionNotFound
+		return nil, dbmodel.ErrSectionNotFound
 	}
 
 	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
@@ -342,7 +343,7 @@ func (h *handler) GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.Co
 	}
 	got := count - n
 	if got <= 0 {
-		return nil, ErrOffsetOutOfRange
+		return nil, dbmodel.ErrOffsetOutOfRange
 	}
 	if got < Q {
 		// It got less than Q comments; re-slice contentRules.

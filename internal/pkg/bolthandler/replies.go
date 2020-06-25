@@ -34,7 +34,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 	)
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return nil, ErrSectionNotFound
+		return nil, dbmodel.ErrSectionNotFound
 	}
 	pbThread, err := h.GetThreadContent(comment.ThreadCtx)
 	if err != nil {
@@ -49,7 +49,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 	err := sectionDB.Contents.Update(func(tx *bolt.Tx) error {
 		subcommentsBucket, err := getActiveSubcommentsBucket(tx, threadId, comment.Id)
 		if err != nil {
-			if errors.Is(err, ErrSubcommentsBucketNotFound) {
+			if errors.Is(err, dbmodel.ErrSubcommentsBucketNotFound) {
 				// this is the first comment; create the subcomments bucket
 				// associated to the comment.
 				subcommentsBucket, err = createSubcommentsBucket(tx, threadId, comment.Id)
@@ -82,7 +82,8 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		}
 		pbSubcommentBytes, err := proto.Marshal(pbSubcomment)
 		if err != nil {
-			return fmt.Errorf("Could not marshal comment: %v\n", err)
+			log.Printf("Could not marshal comment: %v\n", err)
+			return err
 		}
 		return subcommentsBucket.Put([]byte(subcommentId), pbSubcommentBytes)
 	})
@@ -94,12 +95,13 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 	err = h.users.Update(func(tx *bolt.Tx) error {
 		usersBucket := tx.Bucket(usersB)
 		if usersBucket == nil {
-			return fmt.Errorf("Bucket %s from users not found\n", usersB)
+			log.Printf("Bucket %s from users not found\n", usersB)
+			return dbmodel.ErrBucketNotFound
 		}
 		pbUserBytes := usersBucket.Get([]byte(reply.Submitter))
 		if pbUserBytes == nil {
 			log.Printf("Could not find user %v\n", reply.Submitter)
-			return ErrUserNotFound
+			return dbmodel.ErrUserNotFound
 		}
 		pbUser := new(pbDataFormat.User)
 		err := proto.Unmarshal(pbUser, pbUserBytes)
@@ -265,7 +267,7 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 	)
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return nil, ErrSectionNotFound
+		return nil, dbmodel.ErrSectionNotFound
 	}
 
 	pbThread, err := h.GetThreadContent(thread)
@@ -276,7 +278,8 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 	err := sectionDB.Contents.Update(func(tx *bolt.Tx) error {
 		commentsBucket, err := getActiveCommentsBucket(tx, thread.Id)
 		if err != nil {
-			return fmt.Errorf("Could not find comments bucket: %v\n", err)
+			log.Printf("Could not find comments bucket: %v\n", err)
+			return err
 		}
 		// generate Id for the comment
 		sequence, _ := commentsBucket.NextSequence()
@@ -300,7 +303,8 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		}
 		pbCommentBytes, err := proto.Marshal(pbComment)
 		if err != nil {
-			return fmt.Errorf("Could not marshal comment: %v\n", err)
+			log.Printf("Could not marshal comment: %v\n", err)
+			return err
 		}
 		return commentsBucket.Put([]byte(commentId), pbCommentBytes)
 	})
@@ -312,12 +316,13 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 	err = h.users.Update(func(tx *bolt.Tx) error {
 		usersBucket := tx.Bucket(usersB)
 		if usersBucket == nil {
-			return fmt.Errorf("Bucket %s from users not found\n", usersB)
+			log.Printf("Bucket %s from users not found\n", usersB)
+			return dbmodel.ErrBucketNotFound
 		}
 		pbUserBytes := usersBucket.Get([]byte(reply.Submitter))
 		if pbUserBytes == nil {
 			log.Printf("Could not find user %v\n", reply.Submitter)
-			return ErrUserNotFound
+			return dbmodel.ErrUserNotFound
 		}
 		pbUser := new(pbDataFormat.User)
 		err := proto.Unmarshal(pbUser, pbUserBytes)

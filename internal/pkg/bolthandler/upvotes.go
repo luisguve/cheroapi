@@ -5,6 +5,7 @@ import (
 	"time"
 	"fmt"
 
+	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
 	bolt "go.etcd.io/bbolt"
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
@@ -116,7 +117,7 @@ func (h *handler) UndoUpvoteThread(userId string, thread *pbContext.Thread) erro
 	}
 	voted, idx := inSlice(pbContent.VoterIds, userId)
 	if !voted {
-		return ErrNotUpvoted
+		return dbmodel.ErrNotUpvoted
 	}
 	pbContent.Upvotes--
 
@@ -280,7 +281,7 @@ func (h *handler) UndoUpvoteComment(userId string, comment *pbContext.Comment) e
 	}
 	voted, idx := inSlice(pbComment.VoterIds, userId)
 	if !voted {
-		return ErrNotUpvoted
+		return dbmodel.ErrNotUpvoted
 	}
 	pbComment.Upvotes--
 
@@ -459,7 +460,7 @@ func (h *handler) UndoUpvoteSubcomment(userId string, subcomment *pbContext.Subc
 	}
 	voted, idx := inSlice(pbSubcomment.VoterIds, userId)
 	if !voted {
-		return ErrNotUpvoted
+		return dbmodel.ErrNotUpvoted
 	}
 	pbSubcomment.Upvotes--
 

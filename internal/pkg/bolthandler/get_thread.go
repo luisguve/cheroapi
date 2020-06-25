@@ -1,7 +1,7 @@
 package bolthandler
 
 import(
-
+	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
 )
 
 // Get metadata of all the active threads in a section. It returns
@@ -15,7 +15,7 @@ func (h *handler) GetThreadsOverview(section *pbContext.Section) ([]patillator.S
 	)
 	// check whether the section exists
 	if sectionDB, ok := h.sections[id]; !ok {
-		return nil, ErrSectionNotFound
+		return nil, dbmodel.ErrSectionNotFound
 	}
 
 	setContent := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
@@ -27,7 +27,7 @@ func (h *handler) GetThreadsOverview(section *pbContext.Section) ([]patillator.S
 		activeContents := tx.Bucket([]byte(activeContentsB)
 		if activeContents == nil {
 			log.Printf("bucket %s of section %s not found\n", activeContentsB, id)
-			return ErrBucketNotFound
+			return dbmodel.ErrBucketNotFound
 		}
 		var (
 			done = make(chan error)
@@ -94,13 +94,14 @@ func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi
 
 	// check whether the section exists
 	if sectionDB, ok := h.sections[id]; !ok {
-		return nil, ErrSectionNotFound
+		return nil, dbmodel.ErrSectionNotFound
 	}
 
 	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
 		activeContents := tx.Bucket([]byte(activeContentsB))
 		if activeContents == nil {
-			return fmt.Errorf("bucket %s of section %s not found\n", activeContentsB, id)
+			log.Printf("bucket %s of section %s not found\n", activeContentsB, id)
+			return dbmodel.ErrBucketNotFound
 		}
 
 		var (
@@ -266,7 +267,7 @@ func (h *handler) GetThreadContent(thread *pbContext.Thread) (*pbDataFormat.Cont
 
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return nil, ErrSectionNotFound
+		return nil, dbmodel.ErrSectionNotFound
 	}
 
 	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
@@ -320,13 +321,13 @@ func (h *handler) GetSavedThreadsOverview(user string) (map[string][]patillator.
 		usersBucket := tx.Bucket([]byte(usersB))
 		if usersBucket == nil {
 			log.Printf("Bucket %s of users not found\n", usersB)
-			return ErrBucketNotFound
+			return dbmodel.ErrBucketNotFound
 		}
 
 		userBytes := usersBucket.Get([]byte(user))
 		if userBytes == nil {
 			log.Printf("User (id: %s) not found\n", user)
-			return ErrUserNotFound
+			return dbmodel.ErrUserNotFound
 		}
 
 		if err := proto.Unmarshal(userBytes, pbUser); err != nil {
@@ -336,7 +337,7 @@ func (h *handler) GetSavedThreadsOverview(user string) (map[string][]patillator.
 
 		if len(pbUser.SavedThreads) == 0 {
 			log.Println("This user has not saved any thread yet.")
-			return ErrNoSavedThreads
+			return dbmodel.ErrNoSavedThreads
 		}
 		return nil
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"google.golang.org/protobuf/proto"
+	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
 	bolt "go.etcd.io/bbolt"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
@@ -29,7 +30,7 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return ErrSectionNotFound
+		return dbmodel.ErrSectionNotFound
 	}
 
 	// build thread Id by replacing spaces with dashes and converting it to
@@ -62,7 +63,7 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 		activeContentsBucket := tx.Bucket(activeContentsB)
 		if activeContentsBucket == nil {
 			log.Printf("Bucket %s not found\n", activeContentsB)
-			return ErrBucketNotFound
+			return dbmodel.ErrBucketNotFound
 		}
 		return activeContentsBucket.Put([]byte(newId), pbContentBytes)
 	})
@@ -75,12 +76,12 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 		usersBucket := tx.Bucket(usersB)
 		if usersB == nil {
 			log.Printf("Bucket %s of users not found\n", usersB)
-			return ErrBucketNotFound
+			return dbmodel.ErrBucketNotFound
 		}
 		pbUserBytes := usersBucket.Get([]byte(userId))
 		if pbUserBytes == nil {
 			log.Printf("User %s not found\n", userId)
-			return ErrUserNotFound
+			return dbmodel.ErrUserNotFound
 		}
 		pbUser := new(pbDataFormat.User)
 		err = proto.Unmarshal(pbUser, pbUserBytes)
@@ -126,7 +127,7 @@ func (h *handler) SetThreadContent(thread *pbContext.Thread, content *pbDataForm
 
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return ErrSectionNotFound
+		return dbmodel.ErrSectionNotFound
 	}
 
 	contentBytes, err := proto.Marshal(content)
@@ -156,7 +157,7 @@ func (h *handler) SetCommentContent(comment *pbContext.Comment, content *pbDataF
 
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return ErrSectionNotFound
+		return dbmodel.ErrSectionNotFound
 	}
 
 	contentBytes, err := proto.Marshal(content)
@@ -188,7 +189,7 @@ func (h *handler) SetSubcommentContent(subcomment *pbContext.Subcomment, content
 
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return ErrSectionNotFound
+		return dbmodel.ErrSectionNotFound
 	}
 	contentBytes, err := proto.Marshal(content)
 	if err != nil {

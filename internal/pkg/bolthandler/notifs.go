@@ -3,6 +3,7 @@ package bolthandler
 import (
 	"log"
 
+	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
@@ -15,12 +16,12 @@ func (h *handler) SaveNotif(userToNotif string, notif *pbDataFormat.Notif) {
 		usersBucket := tx.Bucket([]byte(usersB))
 		if usersBucket == nil {
 			log.Printf("Bucket %s of users not found\n", usersB)
-			return ErrBucketNotFound
+			return dbmodel.ErrBucketNotFound
 		}
 		userBytes := usersBucket.Get([]byte(userToNotif))
 		if userBytes == nil {
 			log.Printf("User \"%s\" not found\n", userToNotif)
-			return ErrUserNotFound
+			return dbmodel.ErrUserNotFound
 		}
 		if err := proto.Unmarshal(userBytes, pbUser); err != nil {
 			log.Printf("Could not unmarshal user: %v\n", err)
@@ -55,7 +56,7 @@ func (h *handler) SaveNotif(userToNotif string, notif *pbDataFormat.Notif) {
 		usersBucket := tx.Bucket([]byte(usersB))
 		if usersBucket == nil {
 			log.Printf("Bucket %s of users not found\n", usersB)
-			return ErrBucketNotFound
+			return dbmodel.ErrBucketNotFound
 		}
 		if err := usersBucket.Put([]byte(userToNotif, userBytes)); err != nil {
 			log.Printf("Could not put user: %v\n", err)
