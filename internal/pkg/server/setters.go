@@ -396,7 +396,8 @@ func (s *Server) UndoSaveThread(ctx context.Context, req *pbApi.UndoSaveThreadRe
 	}
 	var (
 		userId = req.UserId
-		thread = req.Thread
+		id = req.Thread.Id
+		sectionId = req.Thread.SectionCtx.Id
 	)
 	pbUser, err := s.dbHandler.User(userId)
 	if err != nil {
@@ -405,24 +406,17 @@ func (s *Server) UndoSaveThread(ctx context.Context, req *pbApi.UndoSaveThreadRe
 		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	var (
-		saved bool
-		idx int
-	)
+	// Find and remove reference to the thread.
 	for idx, t := range pbUser.SavedThreads {
-		if (t.SectionCtx.Id == thread.SectionCtx.Id) && (t.Id == thread.Id) {
-			saved = true
+		if (t.SectionCtx.Id == sectionId) && (t.Id == id) {
+			last := len(pbUser.SavedThreads) - 1
+			pbUser.SavedThreads[idx] = pbUser.SavedThreads[last]
+			pbUser.SavedThreads = pbUser.SavedThreads[:last]
+			err = s.dbHandler.UpdateUser(pbUser, userId)
+			if err != nil {
+				return nil, status.Error(codes.Internal, err.Error())
+			}
 			break
-		}
-	}
-	if saved {
-		last := len(pbUser.SavedThreads) - 1
-		pbUser.SavedThreads[idx] = pbUser.SavedThreads[last]
-		pbUser.SavedThreads = pbUser.SavedThreads[:last]
-		
-		err = s.dbHandler.UpdateUser(pbUser, userId)
-		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
 		}
 	}
 	return &pbApi.UndoSaveThreadResponse{}, nil
