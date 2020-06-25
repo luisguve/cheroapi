@@ -5,10 +5,7 @@ import(
 )
 
 // Get activity of users
-func (h *handler) GetActivity(users ...string,
-	setTA func(pbContent *pbDataFormat.Content, ctx *pbContext.Thread) patillator.SegregateFinder,
-	setCA func(pbContent *pbDataFormat.Content, ctx *pbContext.Comment) patillator.SegregateFinder,
-	setSCA func(pbContent *pbDataFormat.Content, ctx *pbContext.Subcomment) patillator.SegregateFinder)
+func (h *handler) GetActivity(users ...string)
 		(map[string]patillator.UserActivity, []error) {
 	var (
 		activity map[string]patillator.UserActivity
@@ -17,7 +14,26 @@ func (h *handler) GetActivity(users ...string,
 		wg sync.WaitGroup
 		errs []error
 	)
-	
+
+	setTA := func(pbContent *pbDataFormat.Content, ctx *pbContext.Thread) patillator.SegregateFinder {
+		return patillator.ThreadActivity{
+			Thread:           ctx,
+			ActivityMetadata: patillator.ActivityMetadata(pbContent.Metadata),
+		}
+	}
+	setCA := func(pbContent *pbDataFormat.Content, ctx *pbContext.Comment) patillator.SegregateFinder {
+		return patillator.CommentActivity{
+			Comment:          ctx,
+			ActivityMetadata: patillator.ActivityMetadata(pbContent.Metadata),
+		}
+	}
+	setSCA := func(pbContent *pbDataFormat.Content, ctx *pbContext.Subcomment) patillator.SegregateFinder {
+		return patillator.SubcommentActivity{
+			Subcomment:       ctx,
+			ActivityMetadata: patillator.ActivityMetadata(pbContent.Metadata),
+		}
+	}
+
 	err := h.users.View(func(tx *bolt.Tx) error {
 		usersBucket := tx.Bucket([]byte(usersB))
 		if usersBucket == nil {

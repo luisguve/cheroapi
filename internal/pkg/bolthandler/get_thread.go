@@ -7,8 +7,7 @@ import(
 // Get metadata of all the active threads in a section. It returns
 // ErrSectionNotFound if the section is invalid and ErrBucketNotFound if the
 // section doesn't have a bucket for active contents.
-func (h *handler) GetThreadsOverview(section *pbContext.Section, 
-	setContent func(*pbDataFormat.Content) patillator.SegregateDiscarderFinder) ([]patillator.SegregateDiscarderFinder, error) {
+func (h *handler) GetThreadsOverview(section *pbContext.Section) ([]patillator.SegregateDiscarderFinder, error) {
 	var (
 		contents []patillator.SegregateDiscarderFinder
 		id = section.Id
@@ -17,6 +16,10 @@ func (h *handler) GetThreadsOverview(section *pbContext.Section,
 	// check whether the section exists
 	if sectionDB, ok := h.sections[id]; !ok {
 		return nil, ErrSectionNotFound
+	}
+
+	setContent := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
+		return patillator.Content(c.Metadata)
 	}
 
 	// query database
@@ -156,10 +159,9 @@ func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi
 
 // Get metadata of all the active threads in every section. It calls 
 // h.GetThreadsOverview for each section in a concurrent fashion and returns
-// a []error and a map of section ids to the []patillator.SegregateDiscarderFinder
+// a map of section ids to []patillator.SegregateDiscarderFinder and a []error
 // that returns each call to GetThreadsOverview.
-func (h *handler) GetGeneralThreadsOverview(setContent func(*pbDataFormat.Content) patillator.SegregateDiscarderFinder) 
-	(map[string][]patillator.SegregateDiscarderFinder, []error) {
+func (h *handler) GetGeneralThreadsOverview() (map[string][]patillator.SegregateDiscarderFinder, []error) {
 	var (
 		contents map[string][]patillator.SegregateDiscarderFinder
 		errs []error
@@ -167,6 +169,14 @@ func (h *handler) GetGeneralThreadsOverview(setContent func(*pbDataFormat.Conten
 		wg sync.WaitGroup
 		once sync.Once
 	)
+
+	setContent := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
+		gc := &pbMetadata.GeneralContent{
+			SectionId: c.SectionId,
+			Content:   c.Metadata,
+		}
+		return patillator.GeneralContent(gc)
+	}
 
 	for section, _ := range h.sections {
 		// query each section database concurrently; use a Mutex to synchronize
@@ -291,13 +301,20 @@ func (h *handler) GetThread(thread *pbContext.Thread) (*pbApi.ContentRule, error
 	return contentRule, nil
 }
 
-func (h *handler) GetSavedThreadsOverview(user string, 
-	setContent func(metadata *pbDataFormat.Content) patillator.SegregateDiscarderFinder) (map[string][]patillator.SegregateDiscarderFinder, []error) {
+func (h *handler) GetSavedThreadsOverview(user string) (map[string][]patillator.SegregateDiscarderFinder, []error) {
 	var (
 		contents map[string][]patillator.SegregateDiscarderFinder
 		errs []error
 		pbUser = new(pbDataFormat.User)
 	)
+
+	setContent := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
+		gc := &pbMetadata.GeneralContent{
+			SectionId: c.SectionId,
+			Content:   c.Metadata,
+		}
+		return patillator.GeneralContent(gc)
+	}
 
 	err = h.users.View(func(tx *bolt.Tx) error {
 		usersBucket := tx.Bucket([]byte(usersB))

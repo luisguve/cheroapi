@@ -8,8 +8,7 @@ import(
 // section is invalid and ErrBucketNotFound if the section doesn't have a bucket
 // for active contents or a bucket for archived contents, depending upon the
 // current status of the thread which the comments belongs to.
-func (h *handler) GetCommentsOverview(thread *pbContext.Thread, 
-	setContent func(*pbDataFormat.Content) patillator.SegregateDiscarderFinder) ([]patillator.SegregateDiscarderFinder, error) {
+func (h *handler) GetCommentsOverview(thread *pbContext.Thread) ([]patillator.SegregateDiscarderFinder, error) {
 	var (
 		err error
 		id = thread.Id
@@ -19,6 +18,10 @@ func (h *handler) GetCommentsOverview(thread *pbContext.Thread,
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
 		return nil, ErrSectionNotFound
+	}
+
+	setContent := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
+		return patillator.Content(c.Metadata)
 	}
 
 	// query database

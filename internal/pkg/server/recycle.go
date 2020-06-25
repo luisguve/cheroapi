@@ -36,8 +36,7 @@ import(
 // It may return a codes.InvalidArgument error in case of being passed a
 // request with a nil ContentContext or a codes.Internal error in case of
 // a database querying or network issue.
-func (s *Server) RecycleContent(req *pbApi.ContentPattern, 
-	stream pbApi.CrudCheropatilla_RecycleContentServer) error {
+func (s *Server) RecycleContent(req *pbApi.ContentPattern, stream pbApi.CrudCheropatilla_RecycleContentServer) error {
 	if s.dbHandler == nil {
 		return status.Error(codes.Internal, "No database connection")
 	}
@@ -50,12 +49,6 @@ func (s *Server) RecycleContent(req *pbApi.ContentPattern,
 		getErr2 error // get contents data
 		sendErr error // stream send
 	)
-
-	// callback to set SegregateDiscarderFinder, used in content getters (both 
-	// GetThreadsOverview and GetCommentsOverview)
-	setSDF := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
-		return patillator.Content(c.Metadata)
-	}
 
 	// call a different getter depending upon the content context:
 	// - GetThreadsOverview and GetThreads in case of a section
@@ -132,8 +125,7 @@ func (s *Server) RecycleContent(req *pbApi.ContentPattern,
 // 
 // It may return a codes.Internal error in case of a database querying or
 // network issue.
-func (s *Server) RecycleGeneral(req *pbApi.GeneralPattern, 
-	stream pbApi.CrudCheropatilla_RecycleGeneralServer) error {
+func (s *Server) RecycleGeneral(req *pbApi.GeneralPattern, stream pbApi.CrudCheropatilla_RecycleGeneralServer) error {
 	if s.dbHandler == nil {
 		return status.Error(codes.Internal, "No database connection")
 	}
@@ -146,29 +138,20 @@ func (s *Server) RecycleGeneral(req *pbApi.GeneralPattern,
 		sendErr error // stream send
 	)
 
-	// callback to set SegregateDiscarderFinder, used in content getter
-	setSDF := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
-		gc := &pbMetadata.GeneralContent{
-			SectionId: c.SectionId,
-			Content:   c.Metadata,
-		}
-		return patillator.GeneralContent(gc)
-	}
-
-	// get threads in every section
-	generalMetadata, getErrs1 = s.dbHandler.GetGeneralThreadsOverview(setSDF)
-	// return an error only if no content could be gotten
+	// Get threads in every section.
+	generalMetadata, getErrs1 = s.dbHandler.GetGeneralThreadsOverview()
+	// Return an error only if no content could be gotten.
 	if (getErrs1 != nil) && (generalMetadata == nil) {
-		// set the first error
+		// Set the first error.
 		errs := fmt.Sprintf("Error 1: %v\n", getErrs1[0].Error())
-		// set the rest of errors
+		// Set the rest of errors.
 		for i := 1; i < len(getErrs1); i++ {
 			errs += fmt.Sprintf("Error %d: %v\n", i+1, getErrs1[i].Error())
 		}
 		return status.Error(codes.Internal, errs)
 	}
 
-	// get rid of contents already seen by the user and get back a 
+	// Get rid of contents already seen by the user and get back a 
 	// []patillator.SegregateFinder for every call to DiscardContents only if
 	// there are ids to be discarded.
 	if req.DiscardIds != nil {
@@ -177,8 +160,8 @@ func (s *Server) RecycleGeneral(req *pbApi.GeneralPattern,
 			cleanedUp[section] = patillator.DiscardContents(contents, ids)
 		}
 	} else {
-		// type cast every content (type patillator.SegregateDiscarderFinder)
-		// into a patillator.SegregateFinder
+		// Type cast every content (type patillator.SegregateDiscarderFinder)
+		// into a patillator.SegregateFinder.
 		for section, contents := range generalMetadata {
 			cleanedUp[section] = make([]patillator.SegregateFinder, len(contents))
 			for i, c := range contents {
@@ -189,11 +172,11 @@ func (s *Server) RecycleGeneral(req *pbApi.GeneralPattern,
 
 	contentIds := patillator.FillGeneralPattern(cleanedUp, req.Pattern)
 	contentRules, getErrs2 = s.dbHandler.GetGeneralThreads(contentIds)
-	// return an error only if no content rules could be gotten
+	// Return an error only if no content rules could be gotten.
 	if (getErrs2 != nil) && (len(contentRules) == 0) {
-		// set the first error
+		// Set the first error.
 		errs := fmt.Sprintf("Error 1: %v\n", getErrs2[0].Error())
-		// set the rest of errors
+		// Set the rest of errors.
 		for i := 1; i < len(getErrs2); i++ {
 			errs += fmt.Sprintf("Error %d: %v\n", i+1, getErrs2[i].Error())
 		}
@@ -213,17 +196,17 @@ func (s *Server) RecycleGeneral(req *pbApi.GeneralPattern,
 	// but the content returned was not empty.
 	switch {
 	case getErrs1 != nil:
-		// set the first error
+		// Set the first error.
 		errs := fmt.Sprintf("Error 1: %v\n", getErrs1[0].Error())
-		// set the rest of errors
+		// Set the rest of errors.
 		for i := 1; i < len(getErrs1); i++ {
 			errs += fmt.Sprintf("Error %d: %v\n", i+1, getErrs1[i].Error())
 		}
 		return status.Error(codes.Internal, errs)
 	case getErrs2 != nil:
-		// set the first error
+		// Set the first error.
 		errs := fmt.Sprintf("Error 1: %v\n", getErrs2[0].Error())
-		// set the rest of errors
+		// Set the rest of errors.
 		for i := 1; i < len(getErrs2); i++ {
 			errs += fmt.Sprintf("Error %d: %v\n", i+1, getErrs2[i].Error())
 		}
@@ -249,8 +232,7 @@ func (s *Server) RecycleGeneral(req *pbApi.GeneralPattern,
 // 
 // It may return a codes.Internal error in case of a database querying or
 // network issue.
-func (s *Server) RecycleActivity(req *pbApi.ActivityPattern,
-	stream pbApi.CrudCheropatilla_RecycleActivityServer) error {
+func (s *Server) RecycleActivity(req *pbApi.ActivityPattern, stream pbApi.CrudCheropatilla_RecycleActivityServer) error {
 	if s.dbHandler == nil {
 		return status.Error(codes.Internal, "No database connection")
 	}
@@ -262,27 +244,6 @@ func (s *Server) RecycleActivity(req *pbApi.ActivityPattern,
 		sendErr error // stream send
 	)
 
-	// callback to set patillator.SegregateFinder as a patillator.ThreadActivity
-	setThreadSF := func(pbContent *pbDataFormat.Content, ctx *pbContext.Thread) patillator.SegregateFinder {
-		return patillator.ThreadActivity{
-			Thread: ctx,
-			ActivityMetadata: patillator.ActivityMetadata(pbContent.Metadata),
-		}
-	}
-	// callback to set patillator.SegregateFinder as a patillator.CommentActivity
-	setComSF := func(pbContent *pbDataFormat.Content, ctx *pbContext.Comment) patillator.SegregateFinder {
-		return patillator.CommentActivity{
-			Comment: ctx,
-			ActivityMetadata: patillator.ActivityMetadata(pbContent.Metadata),
-		}
-	}
-	// callback to set patillator.SegregateFinder as a patillator.SubcommentActivity
-	setSubcSF := func(pbContent *pbDataFormat.Content, ctx *pbContext.Subcomment) patillator.SegregateFinder {
-		return patillator.SubcommentActivity{
-			Subcomment: ctx,
-			ActivityMetadata: patillator.ActivityMetadata(pbContent.Metadata),
-		}
-	}
 	// assign users to a new variable
 	var users []string
 	switch ctx := req.Context.(type) {
@@ -291,26 +252,23 @@ func (s *Server) RecycleActivity(req *pbApi.ActivityPattern,
 	case *ActivityPattern_UserId:
 		users = append(users, ctx.UserId)
 	default:
-		return status.Error(
-			codes.InvalidArgument,
-			"A Context is required",
-		)
+		return status.Error(codes.InvalidArgument, "A Context is required")
 	}
 
-	activityOverview, getErrs1 = s.dbHandler.GetActivity(users..., setThreadSF, setComSF, setSubcSF)
+	activityOverview, getErrs1 = s.dbHandler.GetActivity(users...)
 
-	// return an error only if it couldn't get any activity
+	// Return an error only if it couldn't get any activity.
 	if (getErrs1 != nil) && (activityOverview == nil) {
-		// set the first error
+		// Set the first error.
 		errs := fmt.Sprintf("Error 1: %v\n", getErrs1[0].Error())
-		// set the rest of errors
+		// Set the rest of errors.
 		for i := 1; i < len(getErrs1); i++ {
 			errs += fmt.Sprintf("Error %d: %v\n", i+1, getErrs1[i].Error())
 		}
 		return status.Error(codes.Internal, errs)
 	}
 
-	// discard activity of every user, only if there are ids to discard
+	// Discard activity of every user, only if there are ids to discard.
 	if req.DiscardIds != nil {
 		var wg sync.WaitGroup
 		var m sync.Mutex
@@ -328,19 +286,19 @@ func (s *Server) RecycleActivity(req *pbApi.ActivityPattern,
 	}
 
 	contexts := patillator.FillActivityPattern(activityOverview, req.Pattern)
-	// get content of activity
+	// Get content of activity.
 	contentRules, getErrs2 = s.dbHandler.GetContentsByContext(contexts)
-	// return an error only if it couldn't get any content
+	// Return an error only if it couldn't get any content.
 	if (getErrs2 != nil) && (len(contentRules) == 0) {
-		// set the first error
+		// Set the first error.
 		errs := fmt.Sprintf("Error 1: %v\n", getErrs2[0].Error())
-		// set the rest of errors
+		// Set the rest of errors.
 		for i := 1; i < len(getErrs2); i++ {
 			errs += fmt.Sprintf("Error %d: %v\n", i+1, getErrs2[i].Error())
 		}
 		return status.Error(codes.Internal, errs)
 	}
-	// send stream of content rules
+	// Send stream of content rules.
 	for _, contentRule := range contentRules {
 		if sendErr = stream.Send(contentRule); sendErr != nil {
 			log.Printf("Could not send Content Rule: %v\n", sendErr)
@@ -355,17 +313,17 @@ func (s *Server) RecycleActivity(req *pbApi.ActivityPattern,
 	// but the content returned was not empty.
 	switch {
 	case getErrs1 != nil:
-		// set the first error
+		// Set the first error.
 		errs := fmt.Sprintf("Error 1: %v\n", getErrs1[0].Error())
-		// set the rest of errors
+		// Set the rest of errors.
 		for i := 1; i < len(getErrs1); i++ {
 			errs += fmt.Sprintf("Error %d: %v\n", i+1, getErrs1[i].Error())
 		}
 		return status.Error(codes.Internal, errs)
 	case getErrs2 != nil:
-		// set the first error
+		// Set the first error.
 		errs := fmt.Sprintf("Error 1: %v\n", getErrs2[0].Error())
-		// set the rest of errors
+		// Set the rest of errors.
 		for i := 1; i < len(getErrs2); i++ {
 			errs += fmt.Sprintf("Error %d: %v\n", i+1, getErrs2[i].Error())
 		}
@@ -390,8 +348,7 @@ func (s *Server) RecycleActivity(req *pbApi.ActivityPattern,
 // 
 // It may return a codes.Internal error in case of a database querying or
 // network issue.
-func (s *Server) RecycleSaved(req *pbApi.SavedPattern,
-	stream pbApi.CrudCheropatilla_RecycleSavedServer) error {
+func (s *Server) RecycleSaved(req *pbApi.SavedPattern, stream pbApi.CrudCheropatilla_RecycleSavedServer) error {
 	if s.dbHandler == nil {
 		return status.Error(codes.Internal, "No database connection")
 	}
@@ -404,29 +361,20 @@ func (s *Server) RecycleSaved(req *pbApi.SavedPattern,
 		sendErr error // stream send
 	)
 
-	// callback to set SegregateDiscarderFinder, used in content getter
-	setSDF := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
-		gc := &pbMetadata.GeneralContent{
-			SectionId: c.SectionId,
-			Content:   c.Metadata,
-		}
-		return patillator.GeneralContent(gc)
-	}
-
-	// get threads in every section
-	generalMetadata, getErrs1 = s.dbHandler.GetSavedThreadsOverview(req.UserId, setSDF)
-	// return an error only if no content could be gotten
+	// Get threads in every section.
+	generalMetadata, getErrs1 = s.dbHandler.GetSavedThreadsOverview(req.UserId)
+	// Return an error only if no content could be gotten.
 	if (getErrs1 != nil) && (generalMetadata == nil) {
-		// set the first error
+		// Set the first error.
 		errs := fmt.Sprintf("Error 1: %v\n", getErrs1[0].Error())
-		// set the rest of errors
+		// Set the rest of errors.
 		for i := 1; i < len(getErrs1); i++ {
 			errs += fmt.Sprintf("Error %d: %v\n", i+1, getErrs1[i].Error())
 		}
 		return status.Error(codes.Internal, errs)
 	}
 
-	// get rid of contents already seen by the user and get back a 
+	// Get rid of contents already seen by the user and get back a 
 	// []patillator.SegregateFinder for every call to DiscardContents only if
 	// there are ids to be discarded.
 	if req.DiscardIds != nil {
@@ -435,8 +383,8 @@ func (s *Server) RecycleSaved(req *pbApi.SavedPattern,
 			cleanedUp[section] = patillator.DiscardContents(contents, ids)
 		}
 	} else {
-		// type cast every content (type patillator.SegregateDiscarderFinder)
-		// into a patillator.SegregateFinder
+		// Type cast every content (type patillator.SegregateDiscarderFinder)
+		// into a patillator.SegregateFinder.
 		for section, contents := range generalMetadata {
 			cleanedUp[section] = make([]patillator.SegregateFinder, len(contents))
 			for i, c := range contents {
@@ -447,11 +395,11 @@ func (s *Server) RecycleSaved(req *pbApi.SavedPattern,
 
 	contentIds := patillator.FillGeneralPattern(cleanedUp, req.Pattern)
 	contentRules, getErrs2 = s.dbHandler.GetGeneralThreads(contentIds)
-	// return an error only if no content rules could be gotten
+	// Return an error only if no content rules could be gotten.
 	if (getErrs2 != nil) && (len(contentRules) == 0) {
-		// set the first error
+		// Set the first error.
 		errs := fmt.Sprintf("Error 1: %v\n", getErrs2[0].Error())
-		// set the rest of errors
+		// Set the rest of errors.
 		for i := 1; i < len(getErrs2); i++ {
 			errs += fmt.Sprintf("Error %d: %v\n", i+1, getErrs2[i].Error())
 		}
@@ -471,17 +419,17 @@ func (s *Server) RecycleSaved(req *pbApi.SavedPattern,
 	// but the content returned was not empty.
 	switch {
 	case getErrs1 != nil:
-		// set the first error
+		// Set the first error.
 		errs := fmt.Sprintf("Error 1: %v\n", getErrs1[0].Error())
-		// set the rest of errors
+		// Set the rest of errors.
 		for i := 1; i < len(getErrs1); i++ {
 			errs += fmt.Sprintf("Error %d: %v\n", i+1, getErrs1[i].Error())
 		}
 		return status.Error(codes.Internal, errs)
 	case getErrs2 != nil:
-		// set the first error
+		// Set the first error.
 		errs := fmt.Sprintf("Error 1: %v\n", getErrs2[0].Error())
-		// set the rest of errors
+		// Set the rest of errors.
 		for i := 1; i < len(getErrs2); i++ {
 			errs += fmt.Sprintf("Error %d: %v\n", i+1, getErrs2[i].Error())
 		}
