@@ -1,9 +1,10 @@
 package patillator
 
 import(
-	pbMetadata ""
+	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 )
 
+// ActivityMetadata holds the metadata of a content.
 type ActivityMetadata *pbMetadata.Content
 
 // IsRelevant returns true if the number of interactions is greater than 10 and
@@ -34,11 +35,13 @@ func (am ActivityMetadata) IsLessRelevantThan(other interface{}) bool {
 		(metadata.AvgUpdateTime >= otherMetadata.AvgUpdateTime)
 }
 
+// ThreadActivity holds the metadata of a thread as well as its context.
 type ThreadActivity struct {
 	Thread *pbContext.Thread
 	ActivityMetadata
 }
 
+// DataKey returns a Context containing a thread context.
 func (ta ThreadActivity) DataKey() interface{} {
 	return &pbContext.Context{
 		Ctx: &pbContext.Context_ThreadCtx{
@@ -47,23 +50,31 @@ func (ta ThreadActivity) DataKey() interface{} {
 	}
 }
 
+// toDiscard compares the section ids, then thread ids of ta and each comment
+// context in ids. If it finds a coincidence, it returns true and the slice of
+// ids without the comment context found.
 func (ta ThreadActivity) toDiscard(ids []*pbContext.Thread) (bool, []*pbContext.Thread) {
 	toDiscard := false
 	t := ta.Thread
-	for i := 0; i < len(ids); i++ {
+
+	id1 := t.Id
+	sectionCtx1 := t.SectionCtx
+
+	for i, t := range ids {
 		// compare sections
-		section1 := t.SectionCtx.Id
-		section2 := ids[i].SectionCtx.Id
+		section1 := sectionCtx1.Id
+		section2 := t.SectionCtx.Id
+
 		if section1 == section2 {
-			id1 := t.Id
-			id2 := ids[i].Id
 			// compare ids
+			id2 := t.Id
+
 			if id1 == id2 {
+				toDiscard = true
 				// remove id
 				last := len(ids) - 1
 				ids[i] = ids[last]
 				ids = ids[:last]
-				toDiscard = true
 				break
 			}
 		}
@@ -71,11 +82,13 @@ func (ta ThreadActivity) toDiscard(ids []*pbContext.Thread) (bool, []*pbContext.
 	return toDiscard, ids
 }
 
+// CommentActivity holds the metadata of a comment as well as its context.
 type CommentActivity struct {
 	Comment *pbContext.Comment
 	ActivityMetadata
 }
 
+// DataKey returns a Context containing a comment context.
 func (ca CommentActivity) DataKey() interface{} {
 	return &pbContext.Context{
 		Ctx: &pbContext.Context_CommentCtx{
@@ -84,6 +97,9 @@ func (ca CommentActivity) DataKey() interface{} {
 	}
 }
 
+// toDiscard compares the section ids, then thread ids, then comment ids of
+// ca and each comment context in ids. If it finds a coincidence, it returns
+// true and the slice of ids without the comment context found.
 func (ca CommentActivity) toDiscard(ids []*pbContext.Comment) (bool, []*pbContext.Comment) {
 	c := ca.Comment
 
@@ -94,27 +110,30 @@ func (ca CommentActivity) toDiscard(ids []*pbContext.Comment) (bool, []*pbContex
 	toDiscard := false
 
 	// Iterate over ids. Compare sections then threads then ids.
-	for i := 0; i < len(ids); i++ {
-		sectionCtx2 := ids[i].ThreadCtx.SectionCtx
-
+	for i, c := range ids {
+		sectionCtx2 := c.ThreadCtx.SectionCtx
+		
 		// compare sections
 		section1 := sectionCtx1.Id
 		section2 := sectionCtx2.Id
+
 		if section1 == section2 {
-			threadCtx2 := ids[i].ThreadCtx
+			threadCtx2 := c.ThreadCtx
 
 			// compare threads
 			thread1 := threadCtx1.Id
 			thread2 := threadCtx2.Id
+
 			if thread1 == thread2 {
 				// compare ids
-				id2 := ids[i].Id
+				id2 := c.Id
+
 				if id1 == id2 {
+					toDiscard = true
 					// remove id
 					last := len(ids) - 1
 					ids[i] = ids[last]
 					ids = ids[:last]
-					toDiscard = true
 					break					
 				}
 			}
@@ -123,11 +142,13 @@ func (ca CommentActivity) toDiscard(ids []*pbContext.Comment) (bool, []*pbContex
 	return toDiscard, ids
 }
 
+// SubcommentActivity holds the metadata of a subcomment as well as its context.
 type SubcommentActivity struct {
 	Subcomment *pbContext.Subcomment
 	ActivityMetadata
 }
 
+// DataKey returns a Context containing a subcomment context.
 func (sca SubcommentActivity) DataKey() interface{} {
 	return &pbContext.Context{
 		Ctx: &pbContext.Context_SubcommentCtx{
@@ -136,6 +157,10 @@ func (sca SubcommentActivity) DataKey() interface{} {
 	}
 }
 
+// toDiscard compares the section ids, then thread ids, then comment ids, then
+// subcomment ids of sca and each subcomment context in ids. If it finds a
+// coincidence, it returns true and the slice of ids without the subcomment
+// context found.
 func (sca SubcommentActivity) toDiscard(ids []*pbContext.Subcomment) (bool, []*pbContext.Subcomment) {
 	sc := sca.Subcomment
 
@@ -147,34 +172,38 @@ func (sca SubcommentActivity) toDiscard(ids []*pbContext.Subcomment) (bool, []*p
 	toDiscard := false
 	
 	// Iterate over ids. Compare sections then threads then comments then ids.
-	for i := 0; i < len(ids); i++ {
-		sectionCtx2 := ids[i].CommentCtx.ThreadCtx.SectionCtx
+	for i, sc := range ids {
+		sectionCtx2 := sc.CommentCtx.ThreadCtx.SectionCtx
 
 		// compare sections
 		section1 := sectionCtx1.Id
 		section2 := sectionCtx2.Id
+
 		if section1 == section2 {
-			threadCtx2 := ids[i].CommentCtx.ThreadCtx
+			threadCtx2 := sc.CommentCtx.ThreadCtx
 
 			// compare threads
 			thread1 := threadCtx1.Id
 			thread2 := threadCtx2.Id
+
 			if thread1 == thread2 {
-				commentCtx2 := ids[i].CommentCtx
+				commentCtx2 := sc.CommentCtx
 
 				//compare comments
 				comment1 := commentCtx1.Id
 				comment2 := commentCtx2.Id
+
 				if comment1 == comment2 {
 					// compare ids
-					id2 := ids[i].Id
+					id2 := sc.Id
+
 					if id1 == id2 {
+						toDiscard = true
 						// remove id
 						last := len(ids) - 1
 						ids[i] = ids[last]
 						ids = ids[:last]
-						toDiscard = true
-						break					
+						break
 					}
 				}
 			}
