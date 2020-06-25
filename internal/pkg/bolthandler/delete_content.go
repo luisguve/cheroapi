@@ -88,12 +88,17 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 				// remove thread from list of old activity of user
 				for i, t := range pbUser.OldActivity.ThreadsCreated {
 					if (t.SectionCtx.Id == sectionId) && (t.Id == id) {
+						found = true
 						last := len(pbUser.RecentActivity.ThreadsCreated) - 1
 						pbUser.RecentActivity.ThreadsCreated[i] = pbUser.RecentActivity.ThreadsCreated[last]
 						pbUser.RecentActivity.ThreadsCreated = pbUser.RecentActivity.ThreadsCreated[:last]
 						break
 					}
 				}
+			}
+			if !found {
+				log.Printf("Could not find reference to thread %s in activity of user %s\n", id, userId)
+				return fmt.Errorf("Could not find reference to thread %s in activity of user %s\n", id, userId)
 			}
 			pbUserBytes, err = proto.Marshal(pbUser)
 			if err != nil {
