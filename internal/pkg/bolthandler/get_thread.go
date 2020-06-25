@@ -185,7 +185,7 @@ func (h *handler) GetGeneralThreadsOverview(setContent func(*pbDataFormat.Conten
 			}
 			// Allocate map (only once) and assign the given threadsOverview
 			// only if there could be gotten some thread overviews.
-			if len(threadsOverview > 0) {
+			if len(threadsOverview) > 0 {
 				once.Do(func() {
 					contents = make(map[string][]patillator.SegregateDiscarderFinder)
 				})
@@ -224,14 +224,15 @@ func (h *handler) GetGeneralThreads(threadsInfo []patillator.GeneralId) ([]*pbAp
 					Id: threadInfo.SectionId,
 				},
 			}
-			if contentRule, err := h.GetThread(ctx); err != nil {
+			contentRule, err := h.GetThread(ctx)
+			if err != nil {
 				contentRules[idx] = &pbApi.ContentRule{}
 				m.Lock()
 				errs = append(errs, err)
 				m.Unlock()
-			} else {
-				contentRules[idx] = contentRule
+				return
 			}
+			contentRules[idx] = contentRule
 		}(idx, threadInfo)
 	}
 	wg.Wait()
