@@ -31,22 +31,32 @@ func DiscardActivities(a UserActivity, ids *pbDataformat.Activity) UserActivity 
 			total := len(a.ThreadsCreated)
 			removed := 0
 			for idx := 0; idx < len(a.ThreadsCreated); idx++ {
-				ta, ok := a.ThreadsCreated[idx].(ThreadActivity)
-				if !ok {
-					log.Printf("Failed type assertion to ThreadActivity.\n")
-					continue
+				// Discard the thread at position idx and the threads that
+				// replace it if it fulfills the requirement toDiscard.
+				for {
+					ta, ok := a.ThreadsCreated[idx].(ThreadActivity)
+					if !ok {
+						log.Printf("Failed type assertion to ThreadActivity.\n")
+						break
+					}
+					var discard bool
+					discard, ids.ThreadsCreated = ta.toDiscard(ids.ThreadsCreated)
+					if discard {
+						removed++
+						// copy last valid element in position idx
+						a.ThreadsCreated[idx] = a.ThreadsCreated[total - removed]
+						// re-slice a.ThreadsCreated, leaving out the last element
+						a.ThreadsCreated = a.ThreadsCreated[:total - removed]
+						// If there are still elements in a.ThreadsCreated,
+						// keep checking the element at position idx, which was
+						// replaced by the last thread in a.ThreadsCreated.
+						if len(a.ThreadsCreated) > 0 {
+							continue
+						}
+					}
+					break
 				}
-				// discard the thread at position idx if it fulfills the
-				// requirement toDiscard.
-				var discard bool
-				discard, ids.ThreadsCreated = ta.toDiscard(ids.ThreadsCreated)
-				if discard {
-					removed++
-					// copy last element in position idx
-					a.ThreadsCreated[idx] = a.ThreadsCreated[total - removed]
-					// re-slice a.ThreadsCreated, leaving out the last element
-					a.ThreadsCreated = a.ThreadsCreated[:total - removed]
-				} else if len(ids.ThreadsCreated) == 0 {
+				if len(ids.ThreadsCreated) == 0 {
 					// no more thread ids to compare; break loop
 					break
 				}
@@ -65,22 +75,32 @@ func DiscardActivities(a UserActivity, ids *pbDataformat.Activity) UserActivity 
 			total := len(a.Comments)
 			removed := 0
 			for idx := 0; idx < len(a.Comments); idx++ {
-				ca, ok := a.Comments[idx].(CommentActivity)
-				if !ok {
-					log.Printf("Failed type assertion to CommentActivity.\n")
-					continue
+				// Discard the comment at position idx and the comments that
+				// replace it if it fulfills the requirement toDiscard.
+				for {
+					ca, ok := a.Comments[idx].(CommentActivity)
+					if !ok {
+						log.Printf("Failed type assertion to CommentActivity.\n")
+						break
+					}
+					var discard bool
+					discard, ids.Comments = ca.toDiscard(ids.Comments)
+					if discard {
+						removed++
+						// copy last element in position idx
+						a.Comments[idx] = a.Comments[total - removed]
+						// re-slice a.Comments, leaving out the last element
+						a.Comments = a.Comments[:total - removed]
+						// If there are still elements in a.Comments, keep
+						// checking the element at position idx, which was
+						// replaced by the last comment in a.Comments.
+						if len(a.Comments) > 0 {
+							continue
+						}
+					}
+					break
 				}
-				// discard the comment at position idx if it fulfills the
-				// requirement toDiscardComment.
-				var discard bool
-				discard, ids.Comments = ca.toDiscard(ids.Comments)
-				if discard {
-					removed++
-					// copy last element in position idx
-					a.Comments[idx] = a.Comments[total - removed]
-					// re-slice a.Comments, leaving out the last element
-					a.Comments = a.Comments[:total - removed]
-				} else if len(ids.Comments) == 0 {
+				if len(ids.Comments) == 0 {
 					// no more comment ids to compare; break loop
 					break
 				}
@@ -99,22 +119,32 @@ func DiscardActivities(a UserActivity, ids *pbDataformat.Activity) UserActivity 
 			total := len(a.Subcomments)
 			removed := 0
 			for idx := 0; idx < len(a.Subcomments); idx++ {
-				sca, ok := a.Subcomments[idx].(SubcommentActivity)
-				if !ok {
-					log.Printf("Failed type assertion to SubcommentActivity\n")
-					continue
+				// Discard the subcomment at position idx and the subcomments
+				// that replace it if it fulfills the requirement toDiscard.
+				for {
+					sca, ok := a.Subcomments[idx].(SubcommentActivity)
+					if !ok {
+						log.Printf("Failed type assertion to SubcommentActivity\n")
+						break
+					}
+					var discard bool
+					discard, ids.Subcomments = sca.toDiscard(ids.Subcomments)
+					if discard {
+						removed++
+						// copy last element in position idx
+						a.Subcomments[idx] = a.Subcomments[total - removed]
+						// re-slice a.Subcomments, leaving out the last element
+						a.Subcomments = a.Subcomments[:total - removed]
+						// If there are still elements in a.Subcomments, keep
+						// checking the element at position idx, which was
+						// replaced by the last comment in a.Subcomments.
+						if len(a.Subcomments) > 0 {
+							continue
+						}
+					}
+					break
 				}
-				var discard bool
-				// discard the subcomment at position idx if it fulfills the
-				// requirement toDiscardSubcomment.
-				discard, ids.Subcomments = sca.toDiscard(ids.Subcomments)
-				if discard {
-					removed++
-					// copy last element in position idx
-					a.Subcomments[idx] = a.Subcomments[total - removed]
-					// re-slice a.Subcomments, leaving out the last element
-					a.Subcomments = a.Subcomments[:total - removed]
-				} else if len(ids.Subcomments) == 0 {
+				if len(ids.Subcomments) == 0 {
 					// no more subcomment ids to compare; break loop
 					break
 				}
@@ -140,16 +170,27 @@ func DiscardContents(contents []SegregateDiscarderFinder, ids []string) []Segreg
 		total := len(contents)
 		removed := 0
 		for idx := 0; idx < len(contents); idx++ {
-			var discard bool
-			// discard the element at position idx if it fulfills the
-			// requirement ToDiscard.
-			if discard, ids = contents[idx].ToDiscard(ids); discard {
-				removed++
-				// copy last element in position idx
-				contents[idx] = contents[total - removed]
-				// re-slice contents, leaving out the last element
-				contents = contents[:total - removed]
-			} else if len(ids) == 0 {
+			// Discard the content at position idx and the contents that
+			// replace it if it fulfills the requirement ToDiscard.
+			for {
+				var discard bool
+				discard, ids = contents[idx].ToDiscard(ids)
+				if discard {
+					removed++
+					// copy last valid element in position idx
+					contents[idx] = contents[total - removed]
+					// re-slice contents, leaving out the last element
+					contents = contents[:total - removed]
+					// If there are still elements in contents, keep checking
+					// the element at position idx, which was replaced by the
+					// last content.
+					if len(contents) > 0 {
+						continue
+					}
+				}
+				break
+			}
+			if len(ids) == 0 {
 				// no more ids to compare; break loop
 				break
 			}
