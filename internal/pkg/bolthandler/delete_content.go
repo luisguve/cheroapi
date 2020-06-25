@@ -14,12 +14,12 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 	var (
 		id = thread.Id
 		sectionId = thread.SectionCtx.Id
+		usersWhoSaved []string
 	)
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
 		return ErrSectionNotFound
 	}
-
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
 		threadsBucket, err := getThreadBucket(tx, threadId)
 		if err != nil {
@@ -37,64 +37,129 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 		if pbThread.AuthorId != userId {
 			return ErrUsetNotAllowed
 		}
+		usersWhoSaved = pbThread.UsersWhoSaved
 		return threadsBucket.Delete([]byte(id))
 	})
 	if err != nil {
 		log.Println(err)
 		return err
 	}
-	err = h.users.Update(func(tx *bolt.Tx) error {
-		usersBucket := tx.Bucket(usersB)
-		if usersB == nil {
-			log.Printf("Bucket %s of users not found\n", usersB)
-			return ErrBucketNotFound
-		}
-		pbUserBytes := usersBucket.Get([]byte(userId))
-		if pbUserBytes == nil {
-			log.Printf("User %s not found\n", userId)
-			return ErrUserNotFound
-		}
-		pbUser := new(pbDataFormat.User)
-		err = proto.Unmarshal(pbUser, pbUserBytes)
-		if err != nil {
-			log.Printf("Could not unmarshal user: %v\n", err)
-			return err
-		}
-		if pbUser.RecentActivity == nil {
-			return nil
-		}
-		var found bool
-		// remove thread from list of recent activity of user
-		for i, t := range pbUser.RecentActivity.ThreadsCreated {
-			if (t.SectionCtx.Id == sectionId) && (t.Id == id) {
-				found = true
-				last := len(pbUser.RecentActivity.ThreadsCreated) - 1
-				pbUser.RecentActivity.ThreadsCreated[i] = pbUser.RecentActivity.ThreadsCreated[last]
-				pbUser.RecentActivity.ThreadsCreated = pbUser.RecentActivity.ThreadsCreated[:last]
-				break
+	var (
+		done = make(chan error)
+		quit = make(chan error)
+		// Users to be updated: the author of the thread and the users who
+		// saved it.
+		users = 1 + len(usersWhoSaved)
+	)
+	// Delete reference to the thread from the activity of the author.
+	go func(userId string) {
+		err := h.users.Update(func(tx *bolt.Tx) error {
+			usersBucket := tx.Bucket(usersB)
+			if usersBucket == nil {
+				log.Printf("Bucket %s of users not found\n", usersB)
+				return ErrBucketNotFound
 			}
-		}
-		if !found {
-			// remove thread from list of old activity of user
-			for i, t := range pbUser.OldActivity.ThreadsCreated {
+			pbUserBytes := usersBucket.Get([]byte(userId))
+			if pbUserBytes == nil {
+				log.Printf("User %s not found\n", userId)
+				return ErrUserNotFound
+			}
+			pbUser := new(pbDataFormat.User)
+			err = proto.Unmarshal(pbUser, pbUserBytes)
+			if err != nil {
+				log.Printf("Could not unmarshal user: %v\n", err)
+				return err
+			}
+			if pbUser.RecentActivity == nil {
+				return nil
+			}
+			var found bool
+			// remove thread from list of recent activity of user
+			for i, t := range pbUser.RecentActivity.ThreadsCreated {
 				if (t.SectionCtx.Id == sectionId) && (t.Id == id) {
+					found = true
 					last := len(pbUser.RecentActivity.ThreadsCreated) - 1
 					pbUser.RecentActivity.ThreadsCreated[i] = pbUser.RecentActivity.ThreadsCreated[last]
 					pbUser.RecentActivity.ThreadsCreated = pbUser.RecentActivity.ThreadsCreated[:last]
 					break
 				}
 			}
+			if !found {
+				// remove thread from list of old activity of user
+				for i, t := range pbUser.OldActivity.ThreadsCreated {
+					if (t.SectionCtx.Id == sectionId) && (t.Id == id) {
+						last := len(pbUser.RecentActivity.ThreadsCreated) - 1
+						pbUser.RecentActivity.ThreadsCreated[i] = pbUser.RecentActivity.ThreadsCreated[last]
+						pbUser.RecentActivity.ThreadsCreated = pbUser.RecentActivity.ThreadsCreated[:last]
+						break
+					}
+				}
+			}
+			pbUserBytes, err = proto.Marshal(pbUser)
+			if err != nil {
+				log.Printf("Could not marshal user: %v\n", err)
+				return err
+			}
+			return usersBucket.Put([]byte(userId), pbUserBytes)
+		})
+		select {
+		case done<- err:
+		case <-quit:
 		}
-		pbUserBytes, err = proto.Marshal(pbUser)
+	}(userId)
+	// Delete reference to the thread from the list of saved threads of every
+	// user who saved it.
+	for _, userId = range usersWhoSaved {
+		go func(userId string) {
+			err := h.users.Update(func(tx *bolt.Tx) error {
+				usersBucket := tx.Bucket(usersB)
+				if usersBucket == nil {
+					log.Printf("Bucket %s of users not found\n", usersB)
+					return ErrBucketNotFound
+				}
+				pbUserBytes := usersBucket.Get([]byte(userId))
+				if pbUserBytes == nil {
+					log.Printf("User %s not found\n", userId)
+					return ErrUserNotFound
+				}
+				pbUser := new(pbDataFormat.User)
+				err = proto.Unmarshal(pbUser, pbUserBytes)
+				if err != nil {
+					log.Printf("Could not unmarshal user: %v\n", err)
+					return err
+				}
+				// Find and remove saved thread.
+				for idx, t := range pbUser.SavedThreads {
+					if (t.SectionCtx.Id == thread.SectionCtx.Id) && (t.Id == thread.Id) {
+						last := len(pbUser.SavedThreads) - 1
+						pbUser.SavedThreads[idx] = pbUser.SavedThreads[last]
+						pbUser.SavedThreads = pbUser.SavedThreads[:last]
+						break
+					}
+				}
+				// Marshal and save.
+				pbUserBytes, err = proto.Marshal(pbUser)
+				if err != nil {
+					log.Printf("Could not marshal user: %v\n", err)
+					return err
+				}
+				return usersBucket.Put([]byte(userId), pbUserBytes)
+			})
+			select {
+			case done<- err:
+			case <-quit:
+			}
+		}(userId)
+	}
+	// Check for errors. It terminates every go-routine hung on the statement
+	// case "done<- err" and returns the first err received.
+	for i := 0; i < users; i++ {
+		err = <-done
 		if err != nil {
-			log.Printf("Could not marshal user: %v\n", err)
+			log.Println(err)
+			close(quit)
 			return err
 		}
-		return usersBucket.Put([]byte(userId), pbUserBytes)
-	})
-	if err != nil {
-		log.Println(err)
-		return err
 	}
 	return nil
 }
