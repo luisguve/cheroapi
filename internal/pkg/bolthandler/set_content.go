@@ -28,15 +28,15 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 		sectionId = section.Id
 	)
 
-	// check whether the section exists
+	// Check whether the section exists.
 	if sectionDB, ok := h.sections[sectionId]; !ok {
 		return dbmodel.ErrSectionNotFound
 	}
 
-	// build thread Id by replacing spaces with dashes and converting it to
-	// lowercase
+	// Build thread Id by replacing spaces with dashes and converting it to
+	// lowercase.
 	newId := strings.ToLower(strings.Replace(content.Title, " ", "-", -1))
-	// build permalink: /{section-id}/{thread-id}
+	// Build permalink: /{section-id}/{thread-id}.
 	permalink := fmt.Sprintf("/%s/%s", sectionId, newId)
 
 	pbContent := &pbDataFormat.Content{
@@ -71,50 +71,32 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 		log.Println(err)
 		return "", err
 	}
-	// append new thread context to users' recent activity
-	err = h.users.Update(func(tx *bolt.Tx) error {
-		usersBucket := tx.Bucket(usersB)
-		if usersB == nil {
-			log.Printf("Bucket %s of users not found\n", usersB)
-			return dbmodel.ErrBucketNotFound
-		}
-		pbUserBytes := usersBucket.Get([]byte(userId))
-		if pbUserBytes == nil {
-			log.Printf("User %s not found\n", userId)
-			return dbmodel.ErrUserNotFound
-		}
-		pbUser := new(pbDataFormat.User)
-		err = proto.Unmarshal(pbUser, pbUserBytes)
-		if err != nil {
-			log.Printf("Could not unmarshal user: %v\n", err)
-			return err
-		}
-		if pbUser.RecentActivity == nil {
-			pbUser.RecentActivity = new(pbDataFormat.Activity)
-		}
-		threadCtx := &pbContext.Thread{
-			Id:         newId,
-			SectionCtx: section,
-		}
-		pbUser.RecentActivity.ThreadsCreated = append(pbUser.RecentActivity.ThreadsCreated, threadCtx)
-		// Update last time created field.
-		pbUser.LastTimeCreated = content.PublishDate
-		pbUserBytes, err = proto.Marshal(pbUser)
-		if err != nil {
-			log.Printf("Could not marshal user: %v\n", err)
-			return err
-		}
-		return usersBucket.Put([]byte(userId), pbUserBytes)
-	})
+	// Update author data.
+	pbUser, err := h.User(userId)
 	if err != nil {
-		log.Println(err)
+		return "", err
+	}
+	if pbUser.RecentActivity == nil {
+		pbUser.RecentActivity = new(pbDataFormat.Activity)
+	}
+	// Append new thread context to users' recent activity.
+	threadCtx := &pbContext.Thread{
+		Id:         newId,
+		SectionCtx: section,
+	}
+	pbUser.RecentActivity.ThreadsCreated = append(pbUser.RecentActivity.ThreadsCreated, threadCtx)
+	// Update last time created field.
+	pbUser.LastTimeCreated = content.PublishDate
+	// Save user.
+	err = h.UpdateUser(pbUser, userId)
+	if err != nil {
 		return "", err
 	}
 	return permalink, nil
 }
 
-// SetThreadContent encodes the given content using Marshal from package proto,
-// then updates the value of the given thread with the resulting []byte.
+// SetThreadContent encodes the given content in protobuf bytes, then updates
+// the value of the given thread with the resulting []byte.
 // 
 // It may return an ErrSectionNotFound error in case of being called with an
 // invalid section context, ErrThreadNotFound if the thread does not exist, or
@@ -142,8 +124,8 @@ func (h *handler) SetThreadContent(thread *pbContext.Thread, content *pbDataForm
 	return err
 }
 
-// SetCommentContent encodes the given content using Marshal from package proto,
-// then updates the value of the given comment with the resulting []byte.
+// SetCommentContent encodes the given content in protobuf bytes, then updates
+// the value of the given comment with the resulting []byte.
 // 
 // It may return an ErrSectionNotFound error in case of being called with an
 // invalid section context, ErrCommentNotFound if either the comment or the 
@@ -172,8 +154,8 @@ func (h *handler) SetCommentContent(comment *pbContext.Comment, content *pbDataF
 	return err
 }
 
-// SetSubcommentContent encodes the given content using Marshal from package proto,
-// then updates the value of the given subcomment with the resulting []byte.
+// SetSubcommentContent encodes the given content in protobuf bytes, then
+// updates the value of the given subcomment with the resulting []byte.
 // 
 // It may return an ErrSectionNotFound error in case of being called with an
 // invalid section context, ErrSubcommentNotFound if either the subcomment, the

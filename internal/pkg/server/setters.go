@@ -65,17 +65,20 @@ func (s *Server) CreateThread(ctx context.Context, req *pbApi.CreateThreadReques
 		section = req.SectionCtx
 		content = req.Content
 	)
-	canPost, err := s.dbHandler.CheckUserCanPost(submitter)
+	pbUser, err := s.dbHandler.User(submitter)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return nil, status.Error(codes.Unauthenticated, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	if !canPost {
+
+	lastQA := s.dbHandler.LastQA()
+	// The last time this user created a thread must be before the last clean up.
+	if !(pbUser.LastTimeCreated.Seconds < lastQA) {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
-	
+
 	permalink, err := s.dbHandler.CreateThread(content, section, submitter)
 	if err != nil {
 		if errors.Is(err, ErrSectionNotFound) {

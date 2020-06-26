@@ -43,9 +43,6 @@ type Handler interface {
 	GetContentsByContext([]*pbContext.Context) ([]*pbApi.ContentRule, []error)
 	// Get metadata of saved threads of a given user
 	GetSavedThreadsOverview(user string) patillator.SegregateDiscarderFinder) (map[string][]patillator.SegregateDiscarderFinder, []error)
-	// Validate user credentials (login); returns the user id and true if the user
-	// credentials are valid, empty string and false otherwise.
-	CheckUser(username, password string) (string, bool)
 	// Add user credentials and data (sign in); returns the user id and a nil
 	// *status.Status on successful registering or an empty string an a *status.Status
 	// indicating what went wrong (email or username already in use) otherwise.

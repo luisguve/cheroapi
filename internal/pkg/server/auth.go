@@ -9,24 +9,40 @@ import(
 )
 
 // Validate user credentials to login
-func (s *Server) Login(ctx context.Context,
-	req *pbApi.LoginRequest) (*pbApi.LoginResponse, error) {
+func (s *Server) Login(ctx context.Context, req *pbApi.LoginRequest) (*pbApi.LoginResponse, error) {
 	if s.dbHandler == nil {
 		return nil, status.Error(codes.Internal, "No database connection")
 	}
+	userId, err := s.dbHandler.FindUserIdByUsername(req.Username)
+	if err != nil {
+		if errors.Is(err, dbmodel.ErrUsernameNotFound) {
+			return nil, status.Error(codes.PermissionDenied, "Invalid username or password")
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
 
-	userId, ok := s.dbHandler.CheckUser(req.Username, req.Password)
-	if !ok {
+	pbUser, err := s.dbHandler.User(string(userId))
+	if err != nil {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
+			return nil, status.Error(codes.PermissionDenied, "Invalid username or password")
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	hashedPw := pbUser.PrivateData.Password
+	// check whether the provided password and the stored password are equal
+	err = bcrypt.CompareHashAndPassword(hashedPw, []byte(req.Password))
+	if err != nil {
 		return nil, status.Error(codes.PermissionDenied, "Invalid username or password")
 	}
+
 	return &pbApi.LoginResponse{
-		UserId: userId,
+		UserId: string(userId),
 	}, nil
 }
 
 // Register new user
-func (s *Server) RegisterUser(ctx context.Context,
-	req *pbApi.RegisterUserRequest) (*pbApi.RegisterUserResponse, error) {
+func (s *Server) RegisterUser(ctx context.Context, req *pbApi.RegisterUserRequest) (*pbApi.RegisterUserResponse, error) {
 	if s.dbHandler == nil {
 		return nil, status.Error(codes.Internal, "No database connection")
 	}

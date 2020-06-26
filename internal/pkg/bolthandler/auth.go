@@ -65,50 +65,6 @@ func (h *handler) FindUserIdByEmail(email string) ([]byte, error) {
 	return userId, err
 }
 
-// CheckUser returns the user id associated with the given username, and true
-// if the given password and the stored password are equal, or an empty string
-// and false if either such username doesn't exist or the password check failed.
-func (h *handler) CheckUser(username, password string) (string, bool) {
-	userId, err := h.FindUserIdByUsername(username)
-	if err != nil {
-		log.Println(err)
-		return "", false
-	}
-
-	userData := new(pbDataFormat.User)
-	err = h.users.View(func(tx *bolt.Tx) error {
-		usersBucket := tx.Bucket([]byte(usersB))
-		if usersBucket == nil {
-			log.Printf("Bucket %s of users not found\n", usersB)
-			return dbmodel.ErrBucketNotFound
-		}
-		userDataBytes := usersBucket.Get(userId)
-		if userDataBytes == nil {
-			log.Printf("Could not find user data (id %s)\n", string(userId))
-			return dbmodel.ErrUserNotFound
-		}
-		err := proto.Unmarshal(userDataBytes, userData)
-		if err != nil {
-			log.Println("Could not unmarshal user")
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		log.Println(err)
-		return "", false
-	}
-	hashedPw := userData.PrivateData.Password
-	// check whether the provided password and the stored password are equal
-	err = bcrypt.CompareHashAndPassword(hashedPw, []byte(password))
-	if err != nil {
-		log.Println(err)
-		return "", false
-	}
-	// checked
-	return string(userId), true
-}
-
 // RegisterUser creates a new user with the provided data and returns the user id
 // of the just created and saved user and a nil *status.Status, or an empty string
 // and a given *status.Status indicating what went wrong: email or username already
@@ -219,38 +175,6 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 		return "", status.New(codes.Internal, "Failed to query database")
 	}
 	return userId, nil
-}
-
-// CheckUserCanPost returns a bool indicating whether the given user can create a
-// thread and an error which may indicate the user does not exist.
-// 
-// A user can create a thread if the field Seconds of its field LastTimeCreated is
-// less than trhe field Seconds of the field LastCleanUp of the QA field in h.
-func (h *handler) CheckUserCanPost(userId string) (bool, error) {
-	userData := new(pbDataFormat.User)
-	err := h.users.View(func(tx *bolt.Tx) error {
-		usersBucket := tx.Bucket([]byte(usersB))
-		if usersBucket == nil {
-			log.Printf("Bucket %s of users not found\n", usersB)
-			return dbmodel.ErrBucketNotFound
-		}
-		userDataBytes := usersBucket.Get(userId)
-		if userDataBytes == nil {
-			log.Printf("Could not find user data (id %s)\n", string(userId))
-			return dbmodel.ErrUserNotFound
-		}
-		err := proto.Unmarshal(userDataBytes, userData)
-		if err != nil {
-			log.Println("Could not unmarshal user")
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		return false, err
-	}
-	canPost := userData.LastTimeCreated.Seconds < h.QA.LastCleanUp.Seconds
-	return canPost, nil
 }
 
 // User gets the user bytes from the users bucket in the database of users, then

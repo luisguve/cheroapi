@@ -54,40 +54,12 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 	)
 	// Delete reference to the thread from the activity of the author.
 	go func(userId string) {
-		err := h.users.Update(func(tx *bolt.Tx) error {
-			usersBucket := tx.Bucket(usersB)
-			if usersBucket == nil {
-				log.Printf("Bucket %s of users not found\n", usersB)
-				return dbmodel.ErrBucketNotFound
-			}
-			pbUserBytes := usersBucket.Get([]byte(userId))
-			if pbUserBytes == nil {
-				log.Printf("User %s not found\n", userId)
-				return dbmodel.ErrUserNotFound
-			}
-			pbUser := new(pbDataFormat.User)
-			err = proto.Unmarshal(pbUser, pbUserBytes)
-			if err != nil {
-				log.Printf("Could not unmarshal user: %v\n", err)
-				return err
-			}
-			if pbUser.RecentActivity == nil {
-				return nil
-			}
-			var found bool
-			// remove thread from list of recent activity of user
-			for i, t := range pbUser.RecentActivity.ThreadsCreated {
-				if (t.SectionCtx.Id == sectionId) && (t.Id == id) {
-					found = true
-					last := len(pbUser.RecentActivity.ThreadsCreated) - 1
-					pbUser.RecentActivity.ThreadsCreated[i] = pbUser.RecentActivity.ThreadsCreated[last]
-					pbUser.RecentActivity.ThreadsCreated = pbUser.RecentActivity.ThreadsCreated[:last]
-					break
-				}
-			}
-			if !found {
-				// remove thread from list of old activity of user
-				for i, t := range pbUser.OldActivity.ThreadsCreated {
+		pbUser, err := h.User(userId)
+		if err == nil {
+			if pbUser.RecentActivity != nil {
+				var found bool
+				// Find and remove thread from list of recent activity of user.
+				for i, t := range pbUser.RecentActivity.ThreadsCreated {
 					if (t.SectionCtx.Id == sectionId) && (t.Id == id) {
 						found = true
 						last := len(pbUser.RecentActivity.ThreadsCreated) - 1
@@ -96,18 +68,26 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 						break
 					}
 				}
+				if !found {
+					// Find and remove thread from list of old activity of user.
+					for i, t := range pbUser.OldActivity.ThreadsCreated {
+						if (t.SectionCtx.Id == sectionId) && (t.Id == id) {
+							found = true
+							last := len(pbUser.RecentActivity.ThreadsCreated) - 1
+							pbUser.RecentActivity.ThreadsCreated[i] = pbUser.RecentActivity.ThreadsCreated[last]
+							pbUser.RecentActivity.ThreadsCreated = pbUser.RecentActivity.ThreadsCreated[:last]
+							break
+						}
+					}
+				}
+				if !found {
+					log.Printf("Could not find reference to thread %s in activity of user %s\n", id, userId)
+					err = dbmodel.ErrThreadNotFound
+				} else {
+					err = h.UpdateUser(pbUser, userId)
+				}
 			}
-			if !found {
-				log.Printf("Could not find reference to thread %s in activity of user %s\n", id, userId)
-				return dbmodel.ErrThreadNotFound
-			}
-			pbUserBytes, err = proto.Marshal(pbUser)
-			if err != nil {
-				log.Printf("Could not marshal user: %v\n", err)
-				return err
-			}
-			return usersBucket.Put([]byte(userId), pbUserBytes)
-		})
+		}
 		select {
 		case done<- err:
 		case <-quit:
@@ -117,23 +97,8 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 	// user who saved it.
 	for _, userId = range usersWhoSaved {
 		go func(userId string) {
-			err := h.users.Update(func(tx *bolt.Tx) error {
-				usersBucket := tx.Bucket(usersB)
-				if usersBucket == nil {
-					log.Printf("Bucket %s of users not found\n", usersB)
-					return dbmodel.ErrBucketNotFound
-				}
-				pbUserBytes := usersBucket.Get([]byte(userId))
-				if pbUserBytes == nil {
-					log.Printf("User %s not found\n", userId)
-					return dbmodel.ErrUserNotFound
-				}
-				pbUser := new(pbDataFormat.User)
-				err = proto.Unmarshal(pbUser, pbUserBytes)
-				if err != nil {
-					log.Printf("Could not unmarshal user: %v\n", err)
-					return err
-				}
+			pbUser, err := h.User(userId)
+			if err == nil {
 				// Find and remove saved thread.
 				for idx, t := range pbUser.SavedThreads {
 					if (t.SectionCtx.Id == thread.SectionCtx.Id) && (t.Id == thread.Id) {
@@ -143,14 +108,8 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 						break
 					}
 				}
-				// Marshal and save.
-				pbUserBytes, err = proto.Marshal(pbUser)
-				if err != nil {
-					log.Printf("Could not marshal user: %v\n", err)
-					return err
-				}
-				return usersBucket.Put([]byte(userId), pbUserBytes)
-			})
+				err = h.UpdateUser(pbUser, userId)
+			}
 			select {
 			case done<- err:
 			case <-quit:
@@ -238,28 +197,18 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 		log.Println(err)
 		return err
 	}
-	err = h.users.Update(func(tx *bolt.Tx) error {
-		usersBucket := tx.Bucket(usersB)
-		if usersB == nil {
-			log.Printf("Bucket %s of users not found\n", usersB)
-			return dbmodel.ErrBucketNotFound
-		}
-		pbUserBytes := usersBucket.Get([]byte(userId))
-		if pbUserBytes == nil {
-			log.Printf("User %s not found\n", userId)
-			return dbmodel.ErrUserNotFound
-		}
-		pbUser := new(pbDataFormat.User)
-		err = proto.Unmarshal(pbUser, pbUserBytes)
-		if err != nil {
-			log.Printf("Could not unmarshal user: %v\n", err)
-			return err
-		}
-		if pbUser.RecentActivity == nil {
-			return nil
-		}
-		var found bool
-		// remove comment from list of recent activity of user
+	// Update user; remove comment from its activity.
+	pbUser, err := h.User(userId)
+	if err != nil {
+		return err
+	}
+	if (pbUser.RecentActivity == nil) && (pbUser.OldActivity == nil) {
+		log.Printf("User %s has neither recent nor old activity\n", userId)
+		return nil
+	}
+	var found bool
+	if pbUser.RecentActivity != nil {
+		// Find and remove comment from list of recent activity of user.
 		for i, c := range pbUser.RecentActivity.Comments {
 			if (c.ThreadCtx.SectionCtx.Id == sectionId) &&
 			(c.ThreadCtx.Id == threadId) &&
@@ -271,12 +220,15 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 				break
 			}
 		}
-		if !found {
-			// remove comment from list of old activity of user
+	}
+	if !found {
+		if pbUser.OldActivity != nil{
+			// Find and remove comment from list of old activity of user.
 			for i, c := range pbUser.OldActivity.Comments {
 				if (c.ThreadCtx.SectionCtx.Id == sectionId) &&
 				(c.ThreadCtx.Id == threadId) &&
 				(c.Id == id) && {
+				found = true
 					last := len(pbUser.RecentActivity.Comments) - 1
 					pbUser.RecentActivity.Comments[i] = pbUser.RecentActivity.Comments[last]
 					pbUser.RecentActivity.Comments = pbUser.RecentActivity.Comments[:last]
@@ -284,18 +236,12 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 				}
 			}
 		}
-		pbUserBytes, err = proto.Marshal(pbUser)
-		if err != nil {
-			log.Printf("Could not marshal user: %v\n", err)
-			return err
-		}
-		return usersBucket.Put([]byte(userId), pbUserBytes)
-	})
-	if err != nil {
-		log.Println(err)
-		return err
 	}
-	return nil
+	if !found {
+		log.Printf("Could not find comment %v in neither recent nor old activity of user %s\n", comment, userId)
+		return nil
+	}
+	return h.UpdateUser(pbUser, userId)
 }
 
 // DeleteSubcomment removes the subcomment from the database only if the userId
