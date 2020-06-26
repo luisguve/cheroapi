@@ -91,42 +91,24 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		log.Println(err)
 		return nil, err
 	}
-	// update activity of submitter
-	err = h.users.Update(func(tx *bolt.Tx) error {
-		usersBucket := tx.Bucket(usersB)
-		if usersBucket == nil {
-			log.Printf("Bucket %s from users not found\n", usersB)
-			return dbmodel.ErrBucketNotFound
-		}
-		pbUserBytes := usersBucket.Get([]byte(reply.Submitter))
-		if pbUserBytes == nil {
-			log.Printf("Could not find user %v\n", reply.Submitter)
-			return dbmodel.ErrUserNotFound
-		}
-		pbUser := new(pbDataFormat.User)
-		err := proto.Unmarshal(pbUser, pbUserBytes)
-		if err != nil {
-			log.Printf("Could not unmarshal user %s: %v\n", reply.Submitter, err)
-			return err
-		}
-		if pbUser.RecentActivity == nil {
-			pbUser.RecentActivity = &pbDataFormat.Activity{}
-		}
-		subcommentCtx := &pbContext.Subcomment{
-			Id: subcommentId,
-			CommentCtx: comment,
-		}
-		pbUser.RecentActivity.Subcomments = append(pbUser.RecentActivity.Subcomments, subcommentCtx)
-		pbUserBytes, err = proto.Marshal(pbUser)
-		if err != nil {
-			log.Printf("Could not marshal user %s: %v\n", reply.Submitter, err)
-			return err
-		}
-		return usersBucket.Put([]byte(reply.Submitter), pbUserBytes)
-	})
+	// Update user; append subcomment to list of activity of user.
+	pbUser, err := h.User(reply.Submitter)
 	if err != nil {
 		log.Println(err)
-		return nil, err
+		return err
+	}
+	if pbUser.RecentActivity == nil {
+		pbUser.RecentActivity = new(pbDataFormat.Activity)
+	}
+	subcommentCtx := &pbContext.Subcomment{
+		Id:         subcommentId,
+		CommentCtx: comment,
+	}
+	pbUser.RecentActivity.Subcomments = append(pbUser.RecentActivity.Subcomments, subcommentCtx)
+	err = h.UpdateUser(pbUser, reply.Submitter)
+	if err != nil {
+		log.Println(err)
+		return err
 	}
 
 	// Update thread metadata
@@ -312,42 +294,24 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		log.Println(err)
 		return nil, err
 	}
-	// update activity of submitter
-	err = h.users.Update(func(tx *bolt.Tx) error {
-		usersBucket := tx.Bucket(usersB)
-		if usersBucket == nil {
-			log.Printf("Bucket %s from users not found\n", usersB)
-			return dbmodel.ErrBucketNotFound
-		}
-		pbUserBytes := usersBucket.Get([]byte(reply.Submitter))
-		if pbUserBytes == nil {
-			log.Printf("Could not find user %v\n", reply.Submitter)
-			return dbmodel.ErrUserNotFound
-		}
-		pbUser := new(pbDataFormat.User)
-		err := proto.Unmarshal(pbUser, pbUserBytes)
-		if err != nil {
-			log.Printf("Could not unmarshal user %s: %v\n", reply.Submitter, err)
-			return err
-		}
-		if pbUser.RecentActivity == nil {
-			pbUser.RecentActivity = &pbDataFormat.Activity{}
-		}
-		commentCtx := &pbContext.Comment{
-			Id: commentId,
-			ThreadCtx: thread,
-		}
-		pbUser.RecentActivity.Comments = append(pbUser.RecentActivity.Comments, commentCtx)
-		pbUserBytes, err = proto.Marshal(pbUser)
-		if err != nil {
-			log.Printf("Could not marshal user %s: %v\n", reply.Submitter, err)
-			return err
-		}
-		return usersBucket.Put([]byte(reply.Submitter), pbUserBytes)
-	})
+	// Update user; append comment to list of activity of user.
+	pbUser, err := h.User(reply.Submitter)
 	if err != nil {
 		log.Println(err)
-		return nil, err
+		return err
+	}
+	if pbUser.RecentActivity == nil {
+		pbUser.RecentActivity = new(pbDataFormat.Activity)
+	}
+	commentCtx := &pbContext.Comment{
+		Id:        commentId,
+		ThreadCtx: thread,
+	}
+	pbUser.RecentActivity.Comments = append(pbUser.RecentActivity.Comments, commentCtx)
+	err = h.UpdateUser(pbUser, reply.Submitter)
+	if err != nil {
+		log.Println(err)
+		return err
 	}
 
 	// Update thread metadata
