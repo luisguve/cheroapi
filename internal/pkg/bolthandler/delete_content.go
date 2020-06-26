@@ -4,8 +4,9 @@ import (
 	"log"
 
 	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
-	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	bolt "go.etcd.io/bbolt"
 )
 
 // DeleteThread removes the thread from the database only if the userId is the
@@ -56,8 +57,8 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 	go func(userId string) {
 		pbUser, err := h.User(userId)
 		if err == nil {
+			var found bool
 			if pbUser.RecentActivity != nil {
-				var found bool
 				// Find and remove thread from list of recent activity of user.
 				for i, t := range pbUser.RecentActivity.ThreadsCreated {
 					if (t.SectionCtx.Id == sectionId) && (t.Id == id) {
@@ -68,7 +69,9 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 						break
 					}
 				}
-				if !found {
+			}
+			if !found {
+				if pbUser.OldActivity != nil {
 					// Find and remove thread from list of old activity of user.
 					for i, t := range pbUser.OldActivity.ThreadsCreated {
 						if (t.SectionCtx.Id == sectionId) && (t.Id == id) {
@@ -80,12 +83,11 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 						}
 					}
 				}
-				if !found {
-					log.Printf("Could not find reference to thread %s in activity of user %s\n", id, userId)
-					err = dbmodel.ErrThreadNotFound
-				} else {
-					err = h.UpdateUser(pbUser, userId)
-				}
+			}
+			if !found {
+				log.Printf("Delete content: could not find thread %v in neither recent nor old activity of user %s\n", thread, userId)
+			} else {
+				err = h.UpdateUser(pbUser, userId)
 			}
 		}
 		select {
@@ -203,7 +205,7 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 		return err
 	}
 	if (pbUser.RecentActivity == nil) && (pbUser.OldActivity == nil) {
-		log.Printf("User %s has neither recent nor old activity\n", userId)
+		log.Printf("Delete content: user %s has neither recent nor old activity\n", userId)
 		return nil
 	}
 	var found bool
@@ -222,13 +224,13 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 		}
 	}
 	if !found {
-		if pbUser.OldActivity != nil{
+		if pbUser.OldActivity != nil {
 			// Find and remove comment from list of old activity of user.
 			for i, c := range pbUser.OldActivity.Comments {
 				if (c.ThreadCtx.SectionCtx.Id == sectionId) &&
 				(c.ThreadCtx.Id == threadId) &&
 				(c.Id == id) && {
-				found = true
+					found = true
 					last := len(pbUser.RecentActivity.Comments) - 1
 					pbUser.RecentActivity.Comments[i] = pbUser.RecentActivity.Comments[last]
 					pbUser.RecentActivity.Comments = pbUser.RecentActivity.Comments[:last]
@@ -238,7 +240,7 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 		}
 	}
 	if !found {
-		log.Printf("Could not find comment %v in neither recent nor old activity of user %s\n", comment, userId)
+		log.Printf("Delete content: could not find comment %v in neither recent nor old activity of user %s\n", comment, userId)
 		return nil
 	}
 	return h.UpdateUser(pbUser, userId)
@@ -339,28 +341,18 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 		log.Println(err)
 		return err
 	}
-	err = h.users.Update(func(tx *bolt.Tx) error {
-		usersBucket := tx.Bucket(usersB)
-		if usersB == nil {
-			log.Printf("Bucket %s of users not found\n", usersB)
-			return dbmodel.ErrBucketNotFound
-		}
-		pbUserBytes := usersBucket.Get([]byte(userId))
-		if pbUserBytes == nil {
-			log.Printf("User %s not found\n", userId)
-			return dbmodel.ErrUserNotFound
-		}
-		pbUser := new(pbDataFormat.User)
-		err = proto.Unmarshal(pbUser, pbUserBytes)
-		if err != nil {
-			log.Printf("Could not unmarshal user: %v\n", err)
-			return err
-		}
-		if pbUser.RecentActivity == nil {
-			return nil
-		}
-		var found bool
-		// remove subcomment from list of recent activity of user
+	// Update user; remove subcomment from its activity.
+	pbUser, err := h.User(userId)
+	if err != nil {
+		return err
+	}
+	if (pbUser.RecentActivity == nil) && (pbUser.OldActivity == nil) {
+		log.Printf("Delete content: user %s has neither recent nor old activity\n", userId)
+		return nil
+	}
+	var found bool
+	if pbUser.RecentActivity != nil {
+		// Find and remove subcomment from list of recent activity of user.
 		for i, s := range pbUser.RecentActivity.Subcomments {
 			if (s.CommentCtx.ThreadCtx.SectionCtx.Id == sectionId) &&
 			(s.CommentCtx.ThreadCtx.Id == threadId) &&
@@ -373,13 +365,16 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 				break
 			}
 		}
-		if !found {
-			// remove subcomment from list of old activity of user
+	}
+	if !found {
+		if pbUser.OldActivity != nil {
+			// Find and remove subcomment from list of old activity of user.
 			for i, s := range pbUser.OldActivity.Subcomments {
 				if (s.CommentCtx.ThreadCtx.SectionCtx.Id == sectionId) &&
 				(s.CommentCtx.ThreadCtx.Id == threadId) &&
 				(s.CommentCtx.Id == commentId) && 
 				(s.Id == id) {
+					found = true
 					last := len(pbUser.RecentActivity.Subcomments) - 1
 					pbUser.RecentActivity.Subcomments[i] = pbUser.RecentActivity.Subcomments[last]
 					pbUser.RecentActivity.Subcomments = pbUser.RecentActivity.Subcomments[:last]
@@ -387,16 +382,10 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 				}
 			}
 		}
-		pbUserBytes, err = proto.Marshal(pbUser)
-		if err != nil {
-			log.Printf("Could not marshal user: %v\n", err)
-			return err
-		}
-		return usersBucket.Put([]byte(userId), pbUserBytes)
-	})
-	if err != nil {
-		log.Println(err)
-		return err
 	}
-	return nil
+	if !found {
+		log.Printf("Delete content: could not find subcomment %v in neither recent nor old activity of user %s\n", subcomment, userId)
+		return nil
+	}
+	return h.UpdateUser(pbUser, userId)
 }
