@@ -14,6 +14,11 @@ import (
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
+type errNotif struct {
+	err error
+	notifyUser *pbApi.NotifyUser
+}
+
 // incInteractions increases by one the number of interactions of the given
 // *pbMetadata.Content, sets LastUpdated to time.Now().Unix() and calculates the
 // average update time difference by dividing the difference between LastUpdated
@@ -51,18 +56,14 @@ func inSlice(users []string, user string) (bool, int) {
 // submitter is the content author, or a nil *pbApi.NotifyUser and an
 // ErrThreadNotFound or proto marshal/unmarshal error on failure.
 func (h *handler) UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.NotifyUser, error) {
-	now := &pbTime.Timestamp{
-		Seconds: time.Now().Unix(),
-	}
-
 	pbContent, err := h.GetThreadContent(thread)
 	if err != nil {
 		return nil, err
 	}
 	pbContent.Upvotes++
 	pbContent.VoterIds = append(pbContent.VoterIds, userId)
-	// increment interactions and calculata new average update time only if this
-	// user has not undone an interaction on this content before.
+	// Increment interactions and calculata new average update time only if
+	// this user has not undone an interaction on this content before.
 	undoner, _ := inSlice(pbContent.UndonerIds, userId)
 	if !undoner {
 		incInteractions(pbContent.Metadata)
@@ -72,37 +73,19 @@ func (h *handler) UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.
 		log.Println(err)
 		return nil, err
 	}
-	// set notification and notify user only if the submitter is not the author
-	userToNotif := pbContent.AuthorId
-	if userId != userToNotif {
-		var notifMessage string
-		if pbContent.Upvotes > 1 {
-			notifMessage = fmt.Sprintf("%d users have upvoted your thread", pbContent.Upvotes)
+	// Set notification and notify user only if the submitter is not the author.
+	toNotify := pbContent.AuthorId
+	if userId != toNotify {
+		var msg string
+		if int(pbContent.Upvotes) > 1 {
+			msg = fmt.Sprintf("%d users have upvoted your thread", pbContent.Upvotes)
 		} else {
-			notifMessage = "1 user has upvoted your thread"
+			msg = "1 user has upvoted your thread"
 		}
-		notifSubject := fmt.Sprintf("On your thread %s", pbContent.Title)
-		notifPermalink := pbContent.Permalink
-		notifDetails := &pbDataFormat.Notif_NotifDetails{
-			LastUserIdInvolved: userId,
-			Type:               pbDataFormat.Notif_UPVOTE,
-		}
-		notifId := fmt.Sprintf("%s#%v", notifPermalink, notifDetails.Type)
-
-		notif := &pbDataFormat.Notif{
-			Message:   notifMessage,
-			Subject:   notifSubject,
-			Id:        notifId,
-			Permalink: notifPermalink,
-			Details:   notifDetails,
-			Timestamp: now,
-		}
-		go h.SaveNotif(userToNotif, notif)
-
-		return &pbApi.NotifyUser{
-			UserId:       userToNotif,
-			Notification: notif,
-		}, nil
+		subj := fmt.Sprintf("On your thread %s", pbContent.Title)
+		notifType := pbDataFormat.Notif_UPVOTE
+		notifyUser := h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbContent)
+		return notifyUser, nil
 	}
 	return nil, nil
 }
@@ -146,71 +129,59 @@ func (h *handler) UndoUpvoteThread(userId string, thread *pbContext.Thread) erro
 // either the thread or the comment.
 func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*pbApi.NotifyUser, error) {
 	var (
-		notifs [2]*pbApi.NotifyUser
-		done  = make(chan error)
-		quit  = make(chan error)
-		upvotes = make(chan int, 1)
-		now = &pbTime.Timestamp{ Seconds: time.Now().Unix() }
+		notifs []*pbApi.NotifyUser
+		done = make(chan errNotif)
+		quit = make(chan error)
+		// Buffered channel to send the comment from the go-routine that
+		// updates it to the go-routine that updates the thread it belongs to.
+		com = make(chan *pbDataFormat.Content, 1)
 	)
 
-	// get and update comment data and set notification
-	go func(upvotes chan<- int) {
+	// Get and update comment data and set notification for the comment author.
+	go func(com chan<- *pbDataFormat.Content) {
+		var errNotifyUser errNotif
 		pbComment, err := h.GetCommentContent(comment)
 		if err == nil {
 			pbComment.Upvotes++
 			pbComment.VoterIds = append(pbComment.VoterIds, userId)
-			// increment interactions and calculata new average update time only
+			// Increment interactions and calculata new average update time only
 			// if this user has not undone an interaction on this content before.
 			undoner, _ := inSlice(pbComment.UndonerIds, userId)
 			if !undoner {
 				incInteractions(pbComment.Metadata)
 			}
-			// save content
+			// Save comment.
 			err = h.SetCommentContent(comment, pbComment)
 			if (err == nil) {
-				upvotes<- int(pbComment.Upvotes)
-				userToNotif := pbComment.AuthorId
-				if (userId != userToNotif) {
+				com<- pbComment
+				// Set notification only if the submitter is not the comment
+				// author.
+				toNotify := pbComment.AuthorId
+				if (userId != toNotify) {
 					// set notification
-					var notifMessage string
+					var msg string
 					if pbComment.Upvotes > 1 {
-						notifMessage = fmt.Sprintf("%d users have upvoted your comment", pbComment.Upvotes)
+						msg = fmt.Sprintf("%d users have upvoted your comment", pbComment.Upvotes)
 					} else {
-						notifMessage = "1 user has upvoted your comment"
+						msg = "1 user has upvoted your comment"
 					}
-					notifSubject := fmt.Sprintf("On your comment on %s", pbComment.Title)
-					notifPermalink := pbComment.Permalink
-					notifDetails := &pbDataFormat.Notif_NotifDetails{
-						LastUserIdInvolved: userId,
-						Type:               pbDataFormat.Notif_UPVOTE_COMMENT,
-					}
-					notifId := fmt.Sprintf("%s#%v", notifPermalink, notifDetails.Type)
-
-					notif := &pbDataFormat.Notif{
-						Message:   notifMessage,
-						Subject:   notifSubject,
-						Id:        notifId,
-						Permalink: notifPermalink,
-						Details:   notifDetails,
-						Timestamp: now,
-					}
-					go h.SaveNotif(userToNotif, notif)
-					notifs[0] = &pbApi.NotifyUser{
-						UserId:       userToNotif,
-						Notification: notif,
-					}
+					subj := fmt.Sprintf("On your comment on %s", pbComment.Title)
+					notifType := pbDataFormat.Notif_UPVOTE_COMMENT
+					errNotifyUser.notifyUser = h.notifyInteraction(userId, toNotify, msg, notifType, pbComment)
 				}
 			}
 		}
+		errNotifyUser.err = err
 		close(upvotes)
 		select {
-		case done<- err:
+		case done<- errNotifyUser:
 		case <-quit:
 		}
-	}(upvotes)
-	// get and update thread data and set notification
-	go func(upvotes <-chan int) {
-		pbThread, err := h.GetThreadContent(comment.ThreadCtx)
+	}(com)
+	// Get and update thread data and set notification for the thread author.
+	go func(thread *pbContext.Thread, com <-chan *pbDataFormat.Content) {
+		var errNotifyUser errNotif
+		pbThread, err := h.GetThreadContent(thread)
 		if err == nil {
 			// increment interactions and calculata new average update time only
 			// if this user has not undone an interaction on this content before.
@@ -218,57 +189,44 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 			if !undoner {
 				incInteractions(pbThread.Metadata)
 			}
-			err = h.SetThreadContent(comment.ThreadCtx, pbThread)
-			userToNotif := pbThread.AuthorId
-			if (err == nil) && (userId != userToNotif) {
-				if contentUpvotes, ok := <-upvotes; ok {
+			err = h.SetThreadContent(thread, pbThread)
+			toNotify := pbThread.AuthorId
+			if (err == nil) && (userId != toNotify) {
+				if pbComment, ok := <-com; ok {
 					// set notification
-					var notifMessage string
-					if contentUpvotes > 1 {
-						notifMessage = fmt.Sprintf("%d users have upvoted a comment on your thread", 
-							contentUpvotes)
+					upvotes := int(pbComment.Upvotes)
+					var msg string
+					if upvotes > 1 {
+						msg = fmt.Sprintf("%d users have upvoted a comment on your thread", upvotes)
 					} else {
-						notifMessage = "1 user has upvoted a comment on your thread"
+						msg = "1 user has upvoted a comment on your thread"
 					}
-					notifSubject := fmt.Sprintf("On your thread %s", pbThread.Title)
-					notifPermalink := pbThread.Permalink
-					notifDetails := &pbDataFormat.Notif_NotifDetails{
-						LastUserIdInvolved: userId,
-						Type:               pbDataFormat.Notif_UPVOTE_COMMENT,
-					}
-					notifId := fmt.Sprintf("%s#%v", notifPermalink, notifDetails.Type)
-					notif := &pbDataFormat.Notif{
-						Message:   notifMessage,
-						Subject:   notifSubject,
-						Id:        notifId,
-						Permalink: notifPermalink,
-						Details:   notifDetails,
-						Timestamp: now,
-					}
-					go h.SaveNotif(userToNotif, notif)
-					notifs[1] = &pbApi.NotifyUser{
-						UserId:       userToNotif,
-						Notification: notif,
-					}
+					subj := fmt.Sprintf("On your thread %s", pbThread.Title)
+					notifType := pbDataFormat.Notif_UPVOTE_COMMENT
+					errNotifyUser.notifyUser = h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbComment)
 				}
 			}
 		}
+		errNotifyUser.err = err
 		select {
-		case done<- err:
+		case done<- errNotifyUser:
 		case <-quit:
 		}
-	}()
+	}(comment.ThreadCtx, com)
 
 	// check for errors
 	for i := 0; i < 2; i++ {
-		err := <-done
-		if err != nil {
-			log.Println(err)
+		errNotifyUser := <-done
+		if errNotifyUser.err != nil {
+			log.Println(errNotifyUser.err)
 			close(quit)
-			return nil, err
+			return nil, errNotifyUser.err
+		}
+		if errNotifyUser.notifyUser != nil {
+			notifs = append(notifs, errNotifyUser.notifyUser)
 		}
 	}
-	return notifs[:], nil
+	return notifs, nil
 }
 
 // UndoUpvoteComment decreases by one the number of upvotes that the comment has
@@ -310,14 +268,16 @@ func (h *handler) UndoUpvoteComment(userId string, comment *pbContext.Comment) e
 // either the thread, or the subcomment.
 func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomment) ([]*pbApi.NotifyUser, error) {
 	var (
-		notifs [2]*pbApi.NotifyUser
-		done = make(chan error)
+		notifs []*pbApi.NotifyUser
+		done = make(chan errNotif)
 		quit = make(chan error)
-		upvotes = make(chan int, 1)
-		now = &pbTime.Timestamp{ Seconds: time.Now().Unix() }
+		// Buffered channel to send the subcomment from the go-routine that
+		// updates it to the go-routine that updates the thread it belongs to.
+		subcom = make(chan *pbDataFormat.Content, 1)
 	)
 	// get and update subcomment data and set notification
-	go func(upvotes chan<- int) {
+	go func(subcom chan<- *pbDataFormat.Content) {
+		var errNotifyUser errNotif
 		pbSubcomment, err := h.GetSubcommentContent(subcomment)
 		if err == nil {
 			pbSubcomment.Upvotes++
@@ -330,46 +290,29 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 			}
 			err = h.SetSubcommentContent(subcomment, pbSubcomment)
 			if err == nil {
-				userToNotif := pbSubcomment.AuthorId
-				upvotes<- int(pbSubcomment.Upvotes)
-				if userId != userToNotif {
+				subcom<- pbSubcomment
+				toNotify := pbSubcomment.AuthorId
+				if userId != toNotify {
 					// set notification
-					var notifMessage string
+					var msg string
 					if pbSubcomment.Upvotes > 1 {
-						notifMessage = fmt.Sprintf("%d users have upvoted your comment", pbSubcomment.Upvotes)
+						msg = fmt.Sprintf("%d users have upvoted your comment", pbSubcomment.Upvotes)
 					} else {
-						notifMessage = "1 user has upvoted your comment"
+						msg = "1 user has upvoted your comment"
 					}
-					notifSubject := fmt.Sprintf("On your comment on %s", pbSubcomment.Title)
-					notifPermalink := pbSubcomment.Permalink
-					notifDetails := &pbDataFormat.Notif_NotifDetails{
-						LastUserIdInvolved: userId,
-						Type:               pbDataFormat.Notif_UPVOTE_SUBCOMMENT,
-					}
-					notifId := fmt.Sprintf("%s#%v", notifPermalink,	notifDetails.Type)
-
-					notif := &pbDataFormat.Notif{
-						Message:   notifMessage,
-						Subject:   notifSubject,
-						Id:        notifId,
-						Permalink: notifPermalink,
-						Details:   notifDetails,
-						Timestamp: now,
-					}
-					go h.SaveNotif(userToNotif, notif)
-					notifs[0] = &pbApi.NotifyUser{
-						UserId:       userToNotif,
-						Notification: notif,
-					}
+					subj := fmt.Sprintf("On your comment on %s", pbSubcomment.Title)
+					notifType := pbDataFormat.Notif_UPVOTE_SUBCOMMENT
+					errNotifyUser.notifyUser = h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbSubcomment)
 				}
 			}
 		}
-		close(upvotes)
+		errNotifyUser.err = err
+		close(subcom)
 		select {
-		case done<- err:
+		case done<- errNotifyUser:
 		case <-quit:
 		}
-	}(upvotes)
+	}(subcom)
 	// get and update comment data
 	go func(comment *pbContext.Comment) {
 		pbComment, err := h.GetCommentContent(comment)
@@ -389,7 +332,8 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 		}
 	}(subcomment.CommentCtx)
 	// get and update thread data and set notification
-	go func(thread *pbContext.Thread, upvotes <-chan int) {
+	go func(thread *pbContext.Thread, subcom <-chan *pbDataFormat.Content) {
+		var errNotifyUser errNotif
 		pbThread, err := h.GetThreadContent(thread)
 		if err == nil {
 			// increment interactions and calculata new average update time only
@@ -399,55 +343,43 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 				incInteractions(pbThread.Metadata)
 			}
 			err = h.SetThreadContent(thread, pbThread)
-			userToNotif := pbThread.AuthorId
-			if (err == nil) && (userId != userToNotif) {
-				if contentUpvotes, ok := <-upvotes; ok {
+			toNotify := pbThread.AuthorId
+			if (err == nil) && (userId != toNotify) {
+				if pbSubcomment, ok := <-subcom; ok {
+					upvotes := int(pbSubcomment.Upvotes)
 					// set notification
-					var notifMessage string
-					if contentUpvotes > 1 {
-						notifMessage = fmt.Sprintf("%d users have upvoted a comment in your thread", contentUpvotes)
+					var msg string
+					if upvotes > 1 {
+						msg = fmt.Sprintf("%d users have upvoted a comment in your thread", upvotes)
 					} else {
-						notifMessage = "1 user has upvoted a comment in your thread"
+						msg = "1 user has upvoted a comment in your thread"
 					}
-					notifSubject := fmt.Sprintf("On your thread %s", pbThread.Title)
-					notifPermalink := pbThread.Permalink
-					notifDetails := &pbDataFormat.Notif_NotifDetails{
-						LastUserIdInvolved: userId,
-						Type:               pbDataFormat.Notif_UPVOTE_SUBCOMMENT,
-					}
-					notifId := fmt.Sprintf("%s#%v", notifPermalink, notifDetails.Type)
-					notif := &pbDataFormat.Notif{
-						Message:   notifMessage,
-						Subject:   notifSubject,
-						Id:        notifId,
-						Permalink: notifPermalink,
-						Details:   notifDetails,
-						Timestamp: now,
-					}
-					go h.SaveNotif(userToNotif, notif)
-					notifs[1] = &pbApi.NotifyUser{
-						UserId:       userToNotif,
-						Notification: notif,
-					}
+					subj := fmt.Sprintf("On your thread %s", pbThread.Title)
+					notifType := pbDataFormat.Notif_UPVOTE_SUBCOMMENT
+					errNotifyUser.notifyUser = h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbSubcomment)
 				}
 			}
 		}
+		errNotifyUser.err = err
 		select {
-		case done<- err:
+		case done<- errNotifyUser:
 		case <-quit:
 		}
-	}(subcomment.CommentCtx.ThreadCtx, upvotes)
+	}(subcomment.CommentCtx.ThreadCtx, subcom)
 
 	// check for errors
 	for i := 0; i < 2; i++ {
-		err := <-done
-		if err != nil {
-			log.Println(err)
+		errNotifyUser := <-done
+		if errNotifyUser.err != nil {
+			log.Println(errNotifyUser.err)
 			close(quit)
-			return nil, err
+			return nil, errNotifyUser.err
+		}
+		if errNotifyUser.notifyUser != nil {
+			notifs = append(notifs, errNotifyUser.notifyUser)
 		}
 	}
-	return notifs[:], nil
+	return notifs, nil
 }
 
 // UndoUpvoteSubcomment decreases by one the number of upvotes that the subcomment

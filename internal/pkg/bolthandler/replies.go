@@ -45,8 +45,8 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		return nil, err
 	}
 
-	// format, marshal and save comment
-	err := sectionDB.Contents.Update(func(tx *bolt.Tx) error {
+	// Format, marshal and save comment.
+	err = sectionDB.Contents.Update(func(tx *bolt.Tx) error {
 		subcommentsBucket, err := getActiveSubcommentsBucket(tx, threadId, comment.Id)
 		if err != nil {
 			if errors.Is(err, dbmodel.ErrSubcommentsBucketNotFound) {
@@ -60,7 +60,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 				return err
 			}
 		}
-		// generate Id for the subcomment
+		// Generate Id for the subcomment.
 		sequence, _ := subcommentsBucket.NextSequence()
 		subcommentId, _ = strconv.Itoa(int(sequence))
 		permalink := fmt.Sprintf("%s-sc_id=%s", pbComment.Permalink, subcommentId)
@@ -91,141 +91,109 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		log.Println(err)
 		return nil, err
 	}
-	// Update user; append subcomment to list of activity of user.
-	pbUser, err := h.User(reply.Submitter)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
-	if pbUser.RecentActivity == nil {
-		pbUser.RecentActivity = new(pbDataFormat.Activity)
-	}
-	subcommentCtx := &pbContext.Subcomment{
-		Id:         subcommentId,
-		CommentCtx: comment,
-	}
-	pbUser.RecentActivity.Subcomments = append(pbUser.RecentActivity.Subcomments, subcommentCtx)
-	err = h.UpdateUser(pbUser, reply.Submitter)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
-
-	// Update thread metadata
-	pbThread.Replies++
-	incInteractions(pbThread.Metadata)
-	if err = h.SetThreadContent(comment.ThreadCtx, pbThread); err != nil {
-		log.Println(err)
-		return nil, err
-	}
-
-	// Update comment metadata
-	pbComment.Replies++
-	replied, _ := inSlice(pbComment.ReplierIds, reply.Submitter)
-	if !replied {
+	var (
+		done = make(chan error)
+		quit = make(chan error)
+	)
+	// Update user; append subcomment to list of activity of author.
+	go func() {
+		pbUser, err := h.User(reply.Submitter)
+		if err == nil {
+			if pbUser.RecentActivity == nil {
+				pbUser.RecentActivity = new(pbDataFormat.Activity)
+			}
+			subcommentCtx := &pbContext.Subcomment{
+				Id:         subcommentId,
+				CommentCtx: comment,
+			}
+			pbUser.RecentActivity.Subcomments = append(pbUser.RecentActivity.Subcomments, subcommentCtx)
+			err = h.UpdateUser(pbUser, reply.Submitter)
+		}
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	var wg sync.WaitGroup
+	// Update thread metadata.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		pbThread.Replies++
+		incInteractions(pbThread.Metadata)
+		err := h.SetThreadContent(comment.ThreadCtx, pbThread) {
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	// Update comment metadata.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		pbComment.Replies++
 		pbComment.ReplierIds = append(pbComment.ReplierIds, reply.Submitter)
+		incInteractions(pbComment.Metadata)
+		err := h.SetCommentContent(comment, pbComment) {
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	// Check for errors. It terminastes every go-routine hung on the statement
+	// "case done<- err" by closing the channel quit and returns the first err
+	// read.
+	for i := 0; i < 3; i++ {
+		err = <-done
+		if err != nil {
+			log.Println(err)
+			close(quit)
+			break
+		}
 	}
-	incInteractions(pbComment.Metadata)
-	if err = h.SetCommentContent(comment, pbComment); err != nil {
-		log.Println(err)
-		return nil, err
-	}
-
+	wg.Wait()
 	// notify thread author
-	userToNotif := pbThread.AuthorId
-	if reply.Submitter != userToNotif {
-		var notifMessage string
+	toNotify := pbThread.AuthorId
+	if reply.Submitter != toNotify {
+		var msg string
 		if pbThread.Replies > 1 {
-			notifMessage = fmt.Sprintf("%d users have commented out your thread", pbThread.Replies)
+			msg = fmt.Sprintf("%d users have commented out your thread", pbThread.Replies)
 		} else {
-			notifMessage = "1 user has commented out your thread"
+			msg = "1 user has commented out your thread"
 		}
-		notifSubject := fmt.Sprintf("On your thread %s", pbThread.Title)
-		notifPermalink := pbThread.Permalink
-		notifDetails := &pbDataFormat.Notif_NotifDetails{
-			LastUserIdInvolved: reply.Submitter,
-			Type:               pbDataFormat.Notif_SUBCOMMENT,
-		}
-		notifId := fmt.Sprintf("%s#%v", notifPermalink, notifDetails.Type)
-
-		notif := &pbDataFormat.Notif{
-			Message:   notifMessage,
-			Subject:   notifSubject,
-			Id:        notifId,
-			Permalink: notifPermalink,
-			Details:   notifDetails,
-			Timestamp: reply.PublishDate,
-		}
-		go h.SaveNotif(userToNotif, notif)
-
-		notifyUsers = append(notifyUsers, &pbApi.NotifyUser{
-			UserId:       userToNotif,
-			Notification: notif,
-		})
+		subj := fmt.Sprintf("On your thread %s", pbThread.Title)
+		notifType := pbDataFormat.Notif_SUBCOMMENT.
+		notifyUser := h.notifyInteraction(reply.Submitter, toNotify, msg, subj, notifType, pbComment)
+		
+		notifyUsers = append(notifyUsers, notifyUser)
 	}
-
 	// notify comment author
-	userToNotif = pbComment.AuthorId
-	if reply.Submitter != userToNotif {
-		var notifMessage string
+	toNotify = pbComment.AuthorId
+	if reply.Submitter != toNotify {
+		var msg string
 		if pbComment.Replies > 1 {
-			notifMessage = fmt.Sprintf("%d users have commented out your comment", pbComment.Replies)
+			msg = fmt.Sprintf("%d users have commented out your comment", pbComment.Replies)
 		} else {
-			notifMessage = "1 user has commented out your comment"
+			msg = "1 user has commented out your comment"
 		}
-		notifSubject := fmt.Sprintf("On your comment on %s", pbComment.Title)
-		notifPermalink := pbComment.Permalink
-		notifDetails := &pbDataFormat.Notif_NotifDetails{
-			LastUserIdInvolved: reply.Submitter,
-			Type:               pbDataFormat.Notif_SUBCOMMENT,
-		}
-		notifId := fmt.Sprintf("%s#%v", notifPermalink, notifDetails.Type)
+		subj := fmt.Sprintf("On your comment on %s", pbComment.Title)
+		notifType := pbDataFormat.Notif_SUBCOMMENT
+		notifyUser := h.notifyInteraction(reply.Submitter, toNotify, msg, subj, notifType, pbComment)
 
-		notif := &pbDataFormat.Notif{
-			Message:   notifMessage,
-			Subject:   notifSubject,
-			Id:        notifId,
-			Permalink: notifPermalink,
-			Details:   notifDetails,
-			Timestamp: reply.PublishDate,
-		}
-		go h.SaveNotif(userToNotif, notif)
-
-		notifyUsers = append(notifyUsers, &pbApi.NotifyUser{
-			UserId:       userToNotif,
-			Notification: notif,
-		})
+		notifyUsers = append(notifyUsers, notifyUser)
 	}
-
 	// notify other repliers of the comment
-	for _, userToNotif = range pbComment.ReplierIds {
-		if reply.Submitter != userToNotif {
-			notifMessage := "Other users have followed the discussion"
-			notifSubject := fmt.Sprintf("On your comment on %s", pbSubcomment.Title)
-			notifPermalink := pbSubcomment.Permalink
-			notifDetails := &pbDataFormat.Notif_NotifDetails{
-				LastUserIdInvolved: reply.Submitter,
-				Type:               pbDataFormat.Notif_SUBCOMMENT,
-			}
-			notifId := fmt.Sprintf("%s#%v", notifPermalink, notifDetails.Type)
+	for _, toNotify = range pbComment.ReplierIds {
+		if reply.Submitter != toNotify {
+			msg := "Other users have followed the discussion"
+			subj := fmt.Sprintf("On your comment on %s", pbComment.Title)
+			notifType := pbDataFormat.Notif_SUBCOMMENT
+			notifyUser := h.notifyInteraction(reply.Submitter, toNotify, msg, subj, notifType, pbComment)
 
-			notif := &pbDataFormat.Notif{
-				Message:   notifMessage,
-				Subject:   notifSubject,
-				Id:        notifId,
-				Permalink: notifPermalink,
-				Details:   notifDetails,
-				Timestamp: reply.PublishDate,
-			}
-			go h.SaveNotif(userToNotif, notif)
-
-			notifyUsers = append(notifyUsers, &pbApi.NotifyUser{
-				UserId:       userToNotif,
-				Notification: notif,
-			})
+			notifyUsers = append(notifyUsers, notifyUser)
 		}
 	}
-	return notifyUsers, nil
+	return notifyUsers, err
 }
 
 // ReplyThread performs a few tasks:
@@ -246,12 +214,12 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 	var (
 		commentId string
 		sectionId = thread.SectionCtx.Id
+		pbComment *pbDataFormat.Content
 	)
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
-
 	pbThread, err := h.GetThreadContent(thread)
 	if err != nil {
 		return nil, err
@@ -268,7 +236,7 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		commentId, _ = strconv.Itoa(int(sequence))
 		permalink := fmt.Sprintf("%s#c_id=%s", pbThread.Permalink, commentId)
 
-		pbComment := &pbDataFormat.Content{
+		pbComment = &pbDataFormat.Content{
 			Title:       pbThread.Title,
 			Content:     reply.Content,
 			FtFile:      reply.FtFile,
@@ -294,70 +262,75 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		log.Println(err)
 		return nil, err
 	}
-	// Update user; append comment to list of activity of user.
-	pbUser, err := h.User(reply.Submitter)
-	if err != nil {
-		log.Println(err)
-		return err
+	var (
+		done = make(chan error)
+		quit = make(chan error)
+	)
+	go func() {
+		// Update user; append comment to list of activity of user.
+		pbUser, err := h.User(reply.Submitter)
+		if err == nil {
+			if pbUser.RecentActivity == nil {
+				pbUser.RecentActivity = new(pbDataFormat.Activity)
+			}
+			commentCtx := &pbContext.Comment{
+				Id:        commentId,
+				ThreadCtx: thread,
+			}
+			pbUser.RecentActivity.Comments = append(pbUser.RecentActivity.Comments, commentCtx)
+			err = h.UpdateUser(pbUser, reply.Submitter)
+		}
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	var wg sync.WaitGroup
+	// Update thread metadata.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		pbThread.Replies++
+		replied, _ := inSlice(pbThread.ReplierIds, reply.Submitter)
+		if !replied {
+			pbThread.ReplierIds = append(pbThread.ReplierIds, reply.Submitter)
+		}
+		incInteractions(pbThread.Metadata)
+		err := h.SetThreadContent(thread, pbThread)
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	// Check for errors. It terminastes every go-routine hung on the statement
+	// "case done<- err" by closing the channel quit and returns the first err
+	// read.
+	for i := 0; i < 2; i++ {
+		err = <-done
+		if err != nil {
+			log.Println(err)
+			close(quit)
+			break
+		}
 	}
-	if pbUser.RecentActivity == nil {
-		pbUser.RecentActivity = new(pbDataFormat.Activity)
-	}
-	commentCtx := &pbContext.Comment{
-		Id:        commentId,
-		ThreadCtx: thread,
-	}
-	pbUser.RecentActivity.Comments = append(pbUser.RecentActivity.Comments, commentCtx)
-	err = h.UpdateUser(pbUser, reply.Submitter)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
-
-	// Update thread metadata
-	pbThread.Replies++
-	replied, _ := inSlice(pbThread.ReplierIds, reply.Submitter)
-	if !replied {
-		pbThread.ReplierIds = append(pbThread.ReplierIds, reply.Submitter)
-	}
-	incInteractions(pbThread.Metadata)
-	if err = h.SetThreadContent(thread, pbThread); err != nil {
-		log.Println(err)
-		return nil, err
-	}
-	// set notification and notify user only if the submitter is not the author
-	userToNotif := pbThread.AuthorId
-	if reply.Submitter != userToNotif {
-		var notifMessage string
-		if pbThread.Replies > 1 {
-			notifMessage = fmt.Sprintf("%d users have commented out your thread", pbThread.Replies)
+	wg.Wait()
+	// Set notification and notify user only if the submitter is not the author
+	toNotify := pbThread.AuthorId
+	if reply.Submitter != toNotify {
+		replies := pbThread.Replies
+		var msg string
+		if replies > 1 {
+			msg = fmt.Sprintf("%d users have commented out your thread", replies)
 		} else {
-			notifMessage = "1 user has commented out your thread"
+			msg = "1 user has commented out your thread"
 		}
-		notifSubject := fmt.Sprintf("On your thread %s", pbThread.Title)
-		notifPermalink := pbThread.Permalink
-		notifDetails := &pbDataFormat.Notif_NotifDetails{
-			LastUserIdInvolved: reply.Submitter,
-			Type:               pbDataFormat.Notif_COMMENT,
-		}
-		notifId := fmt.Sprintf("%s#%v", notifPermalink, notifDetails.Type)
+		subj := fmt.Sprintf("On your thread %s", pbThread.Title)
+		notifType := pbDataFormat.Notif_COMMENT
+		notifyUser := h.notifyInteraction(reply.Submitter, toNotify, msg, subj, notifType, pbComment)
 
-		notif := &pbDataFormat.Notif{
-			Message:   notifMessage,
-			Subject:   notifSubject,
-			Id:        notifId,
-			Permalink: notifPermalink,
-			Details:   notifDetails,
-			Timestamp: reply.PublishDate,
-		}
-		go h.SaveNotif(userToNotif, notif)
-
-		return &pbApi.NotifyUser{
-			UserId:       userToNotif,
-			Notification: notif,
-		}, nil
+		return notifyUser, err
 	}
-	return nil, nil
+	return nil, err
 }
 
 // uitob returns an 8-byte big endian representation of v.
