@@ -1,4 +1,4 @@
-package bolthandler
+package bolt
 
 import(
 	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
