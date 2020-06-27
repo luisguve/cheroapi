@@ -66,6 +66,9 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		case <-quit:
 		}
 	}()
+	// Check for errors. It terminates every go-routine hung on the statement
+	// "case done<- err" by closing the channel quit and returns the first err
+	// read.
 	var err error
 	for i := 0; i < 3; i++ {
 		err = <-done
@@ -160,7 +163,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		case <-quit:
 		}
 	}()
-	// Check for errors. It terminastes every go-routine hung on the statement
+	// Check for errors. It terminates every go-routine hung on the statement
 	// "case done<- err" by closing the channel quit and returns the first err
 	// read.
 	for i := 0; i < 2; i++ {
@@ -232,20 +235,49 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 // - unprepared database or proto marshal/unmarshal error
 func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*pbApi.NotifyUser, error) {
 	var (
-		commentId string
 		sectionId = thread.SectionCtx.Id
 		pbComment *pbDataFormat.Content
+		pbThread *pbDataFormat.Content
+		pbUser *pbDataFormat.User
 	)
 	// check whether the section exists
 	if sectionDB, ok := h.sections[sectionId]; !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
-	pbThread, err := h.GetThreadContent(thread)
-	if err != nil {
-		return nil, err
+	var (
+		done = make(chan error)
+		quit = make(chan error)
+	)
+	go func() {
+		var err error
+		pbThread, err = h.GetThreadContent(thread)
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	go func() {
+		var err error
+		pbUser, err = h.User(reply.Submitter)
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	// Check for errors. It terminates every go-routine hung on the statement
+	// "case done<- err" by closing the channel quit and returns the first err
+	// read.
+	var err error
+	for i := 0; i < 2; i++ {
+		err = <-done
+		if err != nil {
+			log.Println(err)
+			close(quit)
+			return nil, err
+		}
 	}
-	// format, marshal and save comment
-	err := sectionDB.Contents.Update(func(tx *bolt.Tx) error {
+	// Format, marshal and save comment and update user in the same transaction.
+	err = sectionDB.Contents.Update(func(tx *bolt.Tx) error {
 		commentsBucket, err := getActiveCommentsBucket(tx, thread.Id)
 		if err != nil {
 			log.Printf("Could not find comments bucket: %v\n", err)
@@ -253,7 +285,7 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		}
 		// generate Id for the comment
 		sequence, _ := commentsBucket.NextSequence()
-		commentId, _ = strconv.Itoa(int(sequence))
+		commentId, _ := strconv.Itoa(int(sequence))
 		permalink := fmt.Sprintf("%s#c_id=%s", pbThread.Permalink, commentId)
 
 		pbComment = &pbDataFormat.Content{
@@ -276,64 +308,36 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 			log.Printf("Could not marshal comment: %v\n", err)
 			return err
 		}
-		return commentsBucket.Put([]byte(commentId), pbCommentBytes)
+		if err = commentsBucket.Put([]byte(commentId), pbCommentBytes); err != nil {
+			return err
+		}
+		// Update user; append comment to list of activity of user.
+		if pbUser.RecentActivity == nil {
+			pbUser.RecentActivity = new(pbDataFormat.Activity)
+		}
+		commentCtx := &pbContext.Comment{
+			Id:        commentId,
+			ThreadCtx: thread,
+		}
+		pbUser.RecentActivity.Comments = append(pbUser.RecentActivity.Comments, commentCtx)
+		return h.UpdateUser(pbUser, reply.Submitter)
 	})
 	if err != nil {
 		log.Println(err)
 		return nil, err
 	}
-	var (
-		done = make(chan error)
-		quit = make(chan error)
-	)
-	go func() {
-		// Update user; append comment to list of activity of user.
-		pbUser, err := h.User(reply.Submitter)
-		if err == nil {
-			if pbUser.RecentActivity == nil {
-				pbUser.RecentActivity = new(pbDataFormat.Activity)
-			}
-			commentCtx := &pbContext.Comment{
-				Id:        commentId,
-				ThreadCtx: thread,
-			}
-			pbUser.RecentActivity.Comments = append(pbUser.RecentActivity.Comments, commentCtx)
-			err = h.UpdateUser(pbUser, reply.Submitter)
-		}
-		select {
-		case done<- err:
-		case <-quit:
-		}
-	}()
-	var wg sync.WaitGroup
 	// Update thread metadata.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		pbThread.Replies++
-		replied, _ := inSlice(pbThread.ReplierIds, reply.Submitter)
-		if !replied {
-			pbThread.ReplierIds = append(pbThread.ReplierIds, reply.Submitter)
-		}
-		incInteractions(pbThread.Metadata)
-		err := h.SetThreadContent(thread, pbThread)
-		select {
-		case done<- err:
-		case <-quit:
-		}
-	}()
-	// Check for errors. It terminastes every go-routine hung on the statement
-	// "case done<- err" by closing the channel quit and returns the first err
-	// read.
-	for i := 0; i < 2; i++ {
-		err = <-done
-		if err != nil {
-			log.Println(err)
-			close(quit)
-			break
-		}
+	pbThread.Replies++
+	replied, _ := inSlice(pbThread.ReplierIds, reply.Submitter)
+	if !replied {
+		pbThread.ReplierIds = append(pbThread.ReplierIds, reply.Submitter)
 	}
-	wg.Wait()
+	incInteractions(pbThread.Metadata)
+	err = h.SetThreadContent(thread, pbThread)
+	if err != nil {
+		log.Println(err)
+	}
+
 	// Set notification and notify user only if the submitter is not the author
 	toNotify := pbThread.AuthorId
 	if reply.Submitter != toNotify {
