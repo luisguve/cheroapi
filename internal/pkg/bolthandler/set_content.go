@@ -59,18 +59,6 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 		log.Printf("Could not marshal content: %v\n", err)
 		return "", err
 	}
-	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		activeContentsBucket := tx.Bucket(activeContentsB)
-		if activeContentsBucket == nil {
-			log.Printf("Bucket %s not found\n", activeContentsB)
-			return dbmodel.ErrBucketNotFound
-		}
-		return activeContentsBucket.Put([]byte(newId), pbContentBytes)
-	})
-	if err != nil {
-		log.Println(err)
-		return "", err
-	}
 	// Update author data.
 	pbUser, err := h.User(userId)
 	if err != nil {
@@ -87,9 +75,21 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 	pbUser.RecentActivity.ThreadsCreated = append(pbUser.RecentActivity.ThreadsCreated, threadCtx)
 	// Update last time created field.
 	pbUser.LastTimeCreated = content.PublishDate
-	// Save user.
-	err = h.UpdateUser(pbUser, userId)
+
+	// Save thread and user in the same transaction.
+	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
+		activeContentsBucket := tx.Bucket(activeContentsB)
+		if activeContentsBucket == nil {
+			log.Printf("Bucket %s not found\n", activeContentsB)
+			return dbmodel.ErrBucketNotFound
+		}
+		if err = activeContentsBucket.Put([]byte(newId), pbContentBytes); err != nil {
+			return err
+		}
+		return h.UpdateUser(pbUser, userId)
+	})
 	if err != nil {
+		log.Println(err)
 		return "", err
 	}
 	return permalink, nil
