@@ -332,9 +332,27 @@ func getActiveCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error)
 	comments := commentsBucket.Bucket([]byte(threadId))
 	if comments == nil {
 		log.Printf("subbucket %s of bucket %s not found\n", threadId, commentsB)
-		return nil, dbmodel.ErrBucketNotFound
+		return nil, dbmodel.ErrCommentsBucketNotFound
 	}
 	return comments, nil
+}
+// createCommentsBucket creates a bucket for comments, associated to the given
+// thread.
+// 
+// It returns an ErrBucketNotFound if the thread does not exist in the bucket of
+// active contents in the database associated to tx.
+func createCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
+	contents, err := getActiveThreadBucket(tx, threadId)
+	if err != nil {
+		return nil, err
+	}
+
+	commentsBucket := contents.Bucket([]byte(commentsB))
+	if commentsBucket == nil {
+		log.Printf("subbucket %s not found\n", commentsB)
+		return nil, dbmodel.ErrBucketNotFound
+	}
+	return commentsBucket.CreateBucketIfNotExists([]byte(threadId))
 }
 
 // getSubcommentsBucket looks for a subcomments bucket associated to the given
