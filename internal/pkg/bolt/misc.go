@@ -305,7 +305,6 @@ func getCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 
 	comments := commentsBucket.Bucket([]byte(threadId))
 	if comments == nil {
-		log.Printf("subbucket %s of bucket %s not found\n", threadId, commentsB)
 		return nil, dbmodel.ErrBucketNotFound
 	}
 	return comments, nil
@@ -331,7 +330,6 @@ func getActiveCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error)
 
 	comments := commentsBucket.Bucket([]byte(threadId))
 	if comments == nil {
-		log.Printf("subbucket %s of bucket %s not found\n", threadId, commentsB)
 		return nil, dbmodel.ErrCommentsBucketNotFound
 	}
 	return comments, nil
@@ -374,7 +372,6 @@ func getSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.Bucket
 
 	subcomments := subcommentsBucket.Bucket([]byte(commentId))
 	if subcomments == nil {
-		log.Printf("subbucket %s of bucket %s not found\n", commentId, subcommentsB)
 		return nil, dbmodel.ErrBucketNotFound
 	}
 	return subcomments, nil
