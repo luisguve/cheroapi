@@ -32,7 +32,7 @@ func incInteractions(m *pbMetadata.Content) {
 
 	diff := now.Seconds - lastUpdated.Seconds
 
-	m.Diff = diff + m.Diff
+	m.Diff += diff
 
 	m.AvgUpdateTime = float64(m.Diff) / float64(m.Interactions)
 }
