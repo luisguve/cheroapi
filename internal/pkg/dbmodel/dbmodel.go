@@ -109,6 +109,7 @@ var (
 	ErrCommentNotFound = errors.New("Comment not found")
 	ErrSubcommentNotFound = errors.New("Subcomment not found")
 	ErrBucketNotFound = errors.New("Bucket not found")
+	ErrCommentsBucketNotFound = errors.New("Comments bucket not found")
 	ErrSubcommentsBucketNotFound = errors.New("Subcomments bucket not found")
 )
 
