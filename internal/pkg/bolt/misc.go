@@ -395,8 +395,7 @@ func getActiveSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.
 
 	subcommentsBucket := contents.Bucket([]byte(subcommentsB))
 	if subcommentsBucket == nil {
-		log.Printf("subbucket %s not found\n", subcommentsB)
-		return nil, dbmodel.ErrBucketNotFound
+		return nil, dbmodel.ErrSubcommentsBucketNotFound
 	}
 
 	subcomments := subcommentsBucket.Bucket([]byte(commentId))
@@ -418,10 +417,10 @@ func createSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.Buc
 		return nil, err
 	}
 
-	subcommentsBucket := contents.Bucket([]byte(subcommentsB))
-	if subcommentsBucket == nil {
-		log.Printf("subbucket %s not found\n", subcommentsB)
-		return nil, dbmodel.ErrBucketNotFound
+	subcommentsBucket, err := contents.CreateBucketIfNotExists([]byte(subcommentsB))
+	if err != nil {
+		log.Printf("Could not create bucket: %v\n", err)
+		return nil, err
 	}
 	return subcommentsBucket.CreateBucketIfNotExists([]byte(commentId))
 }
