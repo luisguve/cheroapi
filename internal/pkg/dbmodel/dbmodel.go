@@ -85,6 +85,10 @@ type Handler interface {
 	MapUsername(username, userId string) error
 	// Update data of user.
 	UpdateUser(pbUser *pbDataFormat.User, userId string) error
+	// Return the last time a clean up was done.
+	LastQA() int64
+	// Clean up every section database.
+	QA()
 }
 
 // Reply holds the data of a reply
