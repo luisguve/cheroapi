@@ -280,8 +280,16 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 	err = sectionDB.Contents.Update(func(tx *bolt.Tx) error {
 		commentsBucket, err := getActiveCommentsBucket(tx, thread.Id)
 		if err != nil {
-			log.Printf("Could not find comments bucket: %v\n", err)
-			return err
+			if errors.Is(err, dbmodel.ErrCommentsBucketNotFound) {
+				// this is the first comment; create the comments bucket
+				// associated to the thread.
+				commentsBucket, err = createCommentsBucket(tx, thread.Id)
+				if err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
 		}
 		// generate Id for the comment
 		sequence, _ := commentsBucket.NextSequence()
