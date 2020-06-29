@@ -5,19 +5,10 @@ package bolt
 
 import(
 	"log"
-	"fmt"
-	"sync"
 	"time"
-	"errors"
-	"math/rand"
 
 	bolt "go.etcd.io/bbolt"
 	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
-	"google.golang.org/protobuf/proto"
-	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
-	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
-	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
-	pbContext "github.com/luisguve/cheroproto-go/context"
 )
 
 // names of buckets
@@ -36,6 +27,8 @@ type handler struct {
 	users *bolt.DB
 	// section ids (lowercased, space-trimmed name) mapped to section.
 	sections map[string]section
+	// Last time a clean up was done.
+	lastQA int64
 }
 
 type section struct {
@@ -134,8 +127,11 @@ func New() (dbmodel.Handler, error) {
 		return nil, err
 	}
 
+	now := time.Now()
+
 	return &handler{
 		users: usersDB,
 		sections: sectionsDBs,
+		lastQA: now.Unix(),
 	}
 }
