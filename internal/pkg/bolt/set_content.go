@@ -76,14 +76,25 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 	// Update last time created field.
 	pbUser.LastTimeCreated = content.PublishDate
 
-	// Save thread and user in the same transaction.
+	// Create bucket for comments and save thread and user in the same
+	// transaction.
 	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		activeContentsBucket := tx.Bucket(activeContentsB)
-		if activeContentsBucket == nil {
+		activeContents := tx.Bucket(activeContentsB)
+		if activeContents == nil {
 			log.Printf("Bucket %s not found\n", activeContentsB)
 			return dbmodel.ErrBucketNotFound
 		}
-		if err = activeContentsBucket.Put([]byte(newId), pbContentBytes); err != nil {
+		comments := activeContents.Bucket([]byte(commentsB))
+		if comments == nil {
+			log.Printf("Bucket %s not found\n", commentsB)
+			return dbmodel.ErrBucketNotFound
+		}
+		_, err := comments.CreateBucketIfNotExists([]byte(newId))
+		if err != nil {
+			log.Printf("Could not create comments bucket %s: %v\n", newId, err)
+			return err
+		}
+		if err = activeContents.Put([]byte(newId), pbContentBytes); err != nil {
 			return err
 		}
 		return h.UpdateUser(pbUser, userId)
