@@ -60,15 +60,25 @@ func New() (dbmodel.Handler, error) {
 		// create bucket for active contents and for archived contents
 		err = db.Update(func(tx *bolt.Tx) error {
 			// active
-			_, err = tx.CreateBucketIfNotExists([]byte(activeContentsB))
+			b, err = tx.CreateBucketIfNotExists([]byte(activeContentsB))
 			if err != nil {
 				log.Printf("Could not create bucket %s: %v\n", activeContentsB, err)
 				return err
 			}
+			_, err = b.CreateBucketIfNotExists([]byte(commentsB))
+			if err != nil {
+				log.Printf("Could not create bucket %s: %v\n", commentsB, err)
+				return err
+			}
 			// archived
-			_, err = tx.CreateBucketIfNotExists([]byte(archivedContentsB))
+			b, err = tx.CreateBucketIfNotExists([]byte(archivedContentsB))
 			if err != nil {
 				log.Printf("Could not create bucket %s: %v\n", archivedContentsB, err)
+				return err
+			}
+			_, err = b.CreateBucketIfNotExists([]byte(commentsB))
+			if err != nil {
+				log.Printf("Could not create bucket %s: %v\n", commentsB, err)
 				return err
 			}
 			return nil
