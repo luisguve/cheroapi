@@ -22,7 +22,7 @@ type errNotif struct {
 // incInteractions increases by one the number of interactions of the given
 // *pbMetadata.Content, sets LastUpdated to time.Now().Unix() and calculates the
 // average update time difference by dividing the accumulated difference between
-// interactions by Interactions + 1
+// interactions by the number of Interactions.
 func incInteractions(m *pbMetadata.Content) {
 	now := &pbTime.Timestamp{ Seconds: time.Now().Unix() }
 	m.Interactions++
