@@ -23,8 +23,8 @@ func (h *handler) QA() {
 }
 
 // Move unpopular contents from the bucket of active contents to the bucket of
-// archived contents. It will only evaluate threads with 1 day or longer for
-// relevance and move them accordingly, along with its comments and subcomments.
+// archived contents. It will only evaluate the relevante of threads with 1 day
+// or longer and move them accordingly, along with its comments and subcomments.
 func (s section) QA() {
 	now := time.Now().Unix()
 	err := s.contents.Update(func(tx *bolt.Tx) error {
@@ -46,10 +46,42 @@ func (s section) QA() {
 				log.Printf("Could not unmarshal content %s: %v\n", string(k), err)
 				continue
 			}
-			// Check whether the thread has been around for more than one day.
-			published := pbThread.PublishDate.Seconds
-			diff := now - published
-			if diff > time.Day()
+			// Check whether the thread has been around for less than one day.
+			// If so, it doesn't qualify for the relevance evaluation and it
+			// will be skipped.
+			published := time.Unix(pbThread.PublishDate.Seconds, 0)
+			diff := now.Sub(published)
+			if diff < (24 * time.Hour) {
+				continue
+			}
+			m := pbThread.Metadata
+
+			lastUpdated := time.Unix(m.LastUpdated.Seconds, 0)
+
+			diff = now.Sub(lastUpdated)
+			diff += time.Duration(m.Diff) * time.Second
+
+			avgUpdateTime := diff.Seconds() / float64(m.Interactions)
+			// Check whether the thread is still relevant. It should have more
+			// than 100 interactions and the average time difference between
+			// interactions must be no longer than 1 hour.
+			// If so, it will be skipped.
+			if (m.Interactions > 100) && (avgUpdateTime <= 1 * time.Hour) {
+				continue
+			}
+			// Otherwise, it will be moved to the bucket of archived contents for
+			// read only, along with the contents associated to it; comments and
+			// subcomments.
+			if err = archivedContents.Put(k, v); err != nil {
+				log.Printf("Could not PUT thread to archived contents: %v\n", err)
+				return err
+			}
+			if err = activeContents.Delete(k); err != nil {
+				log.Printf("Could not DEL thread from active contents: %v\n", err)
+				return err
+			}
+			// Move comments to archived contents bucket
+			
 		}
 	})
 }
