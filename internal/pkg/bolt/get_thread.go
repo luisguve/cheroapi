@@ -37,7 +37,12 @@ func (h *handler) GetThreadsOverview(section *pbContext.Section) ([]patillator.S
 			c = activeContents.Cursor()
 			elems = 0
 		)
-		for _, v := c.First(); v != nil; _, v = c.Next() {
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			// Check whether the value is a nested bucket. If so, just continue.
+			// Cursors see nested buckets with value == nil.
+			if v == nil {
+				continue
+			}
 			elems++
 			wg.Add(1)
 			// Do the unmarshaling, content setting and content appending in its
@@ -302,11 +307,10 @@ func (h *handler) GetThread(thread *pbContext.Thread) (*pbApi.ContentRule, error
 	return contentRule, nil
 }
 
-func (h *handler) GetSavedThreadsOverview(user string) (map[string][]patillator.SegregateDiscarderFinder, []error) {
+func (h *handler) GetSavedThreadsOverview(userId string) (map[string][]patillator.SegregateDiscarderFinder, []error) {
 	var (
 		contents map[string][]patillator.SegregateDiscarderFinder
 		errs []error
-		pbUser = new(pbDataFormat.User)
 	)
 
 	setContent := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
@@ -317,32 +321,15 @@ func (h *handler) GetSavedThreadsOverview(user string) (map[string][]patillator.
 		return patillator.GeneralContent(gc)
 	}
 
-	err = h.users.View(func(tx *bolt.Tx) error {
-		usersBucket := tx.Bucket([]byte(usersB))
-		if usersBucket == nil {
-			log.Printf("Bucket %s of users not found\n", usersB)
-			return dbmodel.ErrBucketNotFound
-		}
-
-		userBytes := usersBucket.Get([]byte(user))
-		if userBytes == nil {
-			log.Printf("User (id: %s) not found\n", user)
-			return dbmodel.ErrUserNotFound
-		}
-
-		if err := proto.Unmarshal(userBytes, pbUser); err != nil {
-			log.Printf("Could not unmarshal user: %v\n", err)
-			return err
-		}
-
-		if len(pbUser.SavedThreads) == 0 {
-			log.Println("This user has not saved any thread yet.")
-			return dbmodel.ErrNoSavedThreads
-		}
-		return nil
-	}
+	pbUser, err := h.User(userId)
 	if err != nil {
+		log.Println(err)
 		errs = append(errs, err)
+		return nil, errs
+	}
+	if len(pbUser.SavedThreads) == 0 {
+		log.Println("This user has not saved any thread yet.")
+		errs = append(errs, dbmodel.ErrNoSavedThreads)
 		return nil, errs
 	}
 	var (
