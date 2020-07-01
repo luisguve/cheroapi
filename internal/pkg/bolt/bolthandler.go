@@ -20,6 +20,8 @@ const (
 	emailsB = "EmailMappings"
 	commentsB = "Comments"
 	subcommentsB = "Subcomments"
+	deletedThreadsB = "DeletedThreads"
+	deletedCommentsB = "DeletedComments"
 )
 
 type handler struct {
@@ -44,9 +46,34 @@ type section struct {
 // New returns a dbmodel.Handler with a few just open bolt databases; one for
 // all the users and one for each section.
 //
-// The section databases hold a couple of buckets: one for active contents with 
+// The section databases hold a couple of buckets: one for active contents with
 // read-write access and other for archived content with read-only access. If
 // they already exists, they aren't created again.
+// 
+// The top-level bucket of active contents holds key/value pairs representing
+// thread ids and thread contents, respectively, a comments bucket and a bucket
+// for deleted threads, which hold the thread-id/thread-content pairs of deleted
+// threads.
+// 
+// The bucket of comments has a bucket for each thread, where the keys are the
+// same as the key of the thread the comments belong to. Each of these buckets
+// have key/value pairs representing comment ids and comment contents,
+// respectively, a bucket for subcomments and a bucket for deleted comments,
+// which hold the comment-id/comment-content pairs of deleted comments.
+// 
+// Finally, the subcomments bucket has a bucket for each comment, where the keys
+// are the same as the key of the comment the subcomments belong to. Each of
+// these buckets have key/value pairs representing subcomment ids and subcomment
+// contents, respectively.
+// 
+// Both comments and subcomments have numeric, sequential ids.
+// 
+// The bucket of archived contents has almost the same structure. The only
+// difference is that it doesn't have buckets for deleted contents.
+// 
+// New only creates the bucket of active contents and the bucket of archived
+// contents, along with their top-level bucket for comments. In the bucket of
+// active contents, it also creates a bucket for deleted threads.
 func New() (dbmodel.Handler, error) {
 	sectionsDBs := make(map[string]section)
 
@@ -68,6 +95,11 @@ func New() (dbmodel.Handler, error) {
 			_, err = b.CreateBucketIfNotExists([]byte(commentsB))
 			if err != nil {
 				log.Printf("Could not create bucket %s: %v\n", commentsB, err)
+				return err
+			}
+			_, err = b.CreateBucketIfNotExists([]byte(deletedThreadsB))
+			if err != nil {
+				log.Printf("Could not create bucket %s: %v\n", deletedThreadsB, err)
 				return err
 			}
 			// archived
