@@ -27,7 +27,7 @@ func (h *handler) GetCommentsOverview(thread *pbContext.Thread) ([]patillator.Se
 
 	// query database
 	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
-		comments, err := getCommentsBucket(tx, id)
+		comments, _, err := getCommentsBucket(tx, id)
 		if err != nil {
 			log.Printf("There are no comments for the thread %s. %v\n", id, err)
 			return dbmodel.ErrNoComments
@@ -103,7 +103,7 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 	}
 
 	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
-		comments, err := getCommentsBucket(tx, id)
+		comments, _, err := getCommentsBucket(tx, id)
 		if err != nil {
 			log.Printf("There are no comments for the thread %s. %v\n", id, err)
 			return dbmodel.ErrNoComments
@@ -290,7 +290,7 @@ func (h *handler) GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.Co
 	}
 
 	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
-		subcommentsBucket, err := getSubcommentsBucket(tx, threadId, commentId)
+		subcommentsBucket, _, err := getSubcommentsBucket(tx, threadId, commentId)
 		if err != nil {
 			return err
 		}
