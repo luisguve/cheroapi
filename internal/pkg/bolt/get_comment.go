@@ -41,7 +41,12 @@ func (h *handler) GetCommentsOverview(thread *pbContext.Thread) ([]patillator.Se
 			done = make(chan error)
 			elems = 0
 		)
-		for _, v := c.First(); v != nil; _, v = c.Next() {
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			// Check whether the value is a nested bucket. If so, just continue.
+			// Cursors see nested buckets with value == nil.
+			if v == nil {
+				continue
+			}
 			elems++
 			wg.Add(1)
 			// Do the unmarshaling, content setting and content appending in its
@@ -298,7 +303,7 @@ func (h *handler) GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.Co
 		)
 		for k, v := c.First(); (k != nil) && (count < (n + Q)); k, v = c.Next() {
 			count++
-			// skip first n subcomments
+			// Skip first n subcomments.
 			if count < n {
 				continue
 			}
@@ -311,7 +316,7 @@ func (h *handler) GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.Co
 				defer wg.Done()
 				pbContent := new(pbDataFormat.Content)
 				contentRule := new(pbApi.ContentRule)
-				err := proto.Unmarshal(pbContent, v)
+				err := proto.Unmarshal(v, pbContent)
 				if err == nil {
 					contentRule = h.formatSubcommentContentRule(pbContent, comment, string(k))
 				}
