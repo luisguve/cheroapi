@@ -34,29 +34,14 @@ func (h *handler) GetActivity(users ...string) (map[string]patillator.UserActivi
 	}
 
 	err := h.users.View(func(tx *bolt.Tx) error {
-		usersBucket := tx.Bucket([]byte(usersB))
-		if usersBucket == nil {
-			return fmt.Errorf("Bucket %s of users not found\n", usersB)
-		}
-
 		for _, user := range users {
 			wg.Add(1)
 			go func(user string) {
 				defer wg.Done()
-
-				userBytes := usersBucket.Get([]byte(user))
-				if userBytes == nil {
-					log.Printf("Could not find user (id %s)\n", user)
-					return
-				}
-
-				pbUser := new(pbDataFormat.User)
-
-				if err := proto.Unmarshal(userBytes, pbUser); err != nil {
-					log.Printf("Could not unmarshal user: %v\n", err)
-					m.Lock()
-					defer m.Unlock()
-					errs = append(errs, err)
+				
+				pbUser, err := h.User(user)
+				if err != nil {
+					log.Println(err)
 					return
 				}
 				// check whether the user has recent activity
