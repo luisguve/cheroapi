@@ -22,25 +22,41 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 	if sectionDB, ok := h.sections[sectionId]; !ok {
 		return dbmodel.ErrSectionNotFound
 	}
+
+	// Find thread, check whether the submitter is the author, insert thread into
+	// the bucket of deleted threads if the thread is active and delete thread
+	// from active contents.
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		threadsBucket, err := getThreadBucket(tx, threadId)
+		contents, name, err := getThreadBucket(tx, id)
 		if err != nil {
 			return err
 		}
-		threadBytes := threadsBucket.Get([]byte(id))
+		threadBytes := contents.Get([]byte(id))
 		if threadBytes == nil {
 			return dbmodel.ErrThreadNotFound
 		}
 		pbThread := new(pbDataFormat.Content)
-		if err = proto.Unmarshal(pbThread, threadBytes); err != nil {
+		if err = proto.Unmarshal(threadBytes, pbThread); err != nil {
 			log.Printf("Could not unmarshal content: %v\n", err)
 			return err
 		}
 		if pbThread.AuthorId != userId {
 			return dbmodel.ErrUsetNotAllowed
 		}
+		// Check whether the thread is active. If so, it inserts it into the
+		// bucket of deleted threads.
+		if name == activeContentsB {
+			delContents := contents.Bucket([]byte(deletedThreadsB))
+			if delContents == nil {
+				log.Printf("bucket %s not found\n", deletedThreadsB)
+				return dbmodel.ErrBucketNotFound
+			}
+			if err = delContents.Put([]byte(id), threadBytes); err != nil {
+				return err
+			}
+		}
 		usersWhoSaved = pbThread.UsersWhoSaved
-		return threadsBucket.Delete([]byte(id))
+		return contents.Delete([]byte(id))
 	})
 	if err != nil {
 		log.Println(err)
@@ -145,8 +161,11 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 		return dbmodel.ErrSectionNotFound
 	}
 
+	// Find comment, check whether the submitter is the author, insert comment
+	// in the bucket of deleted comments if the comment is in an active thread,
+	// decrease replies of thread by 1 and remove user from list of repliers.
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		commentsBucket, err := getCommentsBucket(tx, threadId)
+		commentsBucket, name, err := getCommentsBucket(tx, threadId)
 		if err != nil {
 			return err
 		}
@@ -155,12 +174,24 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 			return dbmodel.ErrCommentNotFound
 		}
 		pbComment := new(pbDataFormat.Content)
-		if err = proto.Unmarshal(pbComment, commentBytes); err != nil {
+		if err = proto.Unmarshal(commentBytes, pbComment); err != nil {
 			log.Printf("Could not unmarshal content: %v\n", err)
 			return err
 		}
 		if pbComment.AuthorId != userId {
-			return dbmodel.ErrUsetNotAllowed
+			return dbmodel.ErrUserNotAllowed
+		}
+		// Check whether the comment belongs to an active thread. If so, it
+		// inserts it into the bucket of deleted comments.
+		if name == activeContentsB {
+			delContents := commentsBucket.Bucket([]byte(deletedCommentsB))
+			if delContents == nil {
+				log.Printf("bucket %s not found\n", deletedCommentsB)
+				return dbmodel.ErrBucketNotFound
+			}
+			if err = delContents.Put([]byte(id), commentBytes); err != nil {
+				return err
+			}
 		}
 		err = commentsBucket.Delete([]byte(id))
 		if err != nil {
@@ -168,7 +199,7 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 		}
 		// Update the thread which the comment belongs to; decrease Replies by 1
 		// and remove user id from list of repliers.
-		threadsBucket, err := getThreadBucket(tx, threadId)
+		threadsBucket, _, err := getThreadBucket(tx, threadId)
 		if err != nil {
 			return err
 		}
@@ -177,7 +208,7 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 			return dbmodel.ErrThreadNotFound
 		}
 		pbThread := new(pbDataFormat.Content)
-		if err = proto.Unmarshal(pbThread, threadBytes); err != nil {
+		if err = proto.Unmarshal(threadBytes, pbThread); err != nil {
 			log.Printf("Could not unmarshal content: %v\n", err)
 			return err
 		}
@@ -262,8 +293,11 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 		return dbmodel.ErrSectionNotFound
 	}
 
+	// Find subcomment, check whether the submitter is the author, delete
+	// subcomment, decrease replies of both the comment and thread the subcomment
+	// belongs to by 1 and remove user from list of repliers of the comment.
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		subcommentsBucket, err := getSubcommentsBucket(tx, threadId, commentId)
+		subcommentsBucket, _, err := getSubcommentsBucket(tx, threadId, commentId)
 		if err != nil {
 			return err
 		}
@@ -272,20 +306,19 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 			return dbmodel.ErrSubcommentNotFound
 		}
 		pbSubcomment := new(pbDataFormat.Content)
-		if err = proto.Unmarshal(pbSubcomment, subcommentBytes); err != nil {
+		if err = proto.Unmarshal(subcommentBytes, pbSubcomment); err != nil {
 			log.Printf("Could not unmarshal content: %v\n", err)
 			return err
 		}
 		if pbSubcomment.AuthorId != userId {
 			return dbmodel.ErrUsetNotAllowed
 		}
-		err = subcommentsBucket.Delete([]byte(id))
-		if err != nil {
+		if err = subcommentsBucket.Delete([]byte(id)); err != nil {
 			return err
 		}
 		// Update the comment which the subcomment belongs to; decrease replies
 		// by 1 and remove user id from list of repliers.
-		commentsBucket, err := getCommentsBucket(tx, threadId)
+		commentsBucket, _, err := getCommentsBucket(tx, threadId)
 		if err != nil {
 			return err
 		}
@@ -294,7 +327,7 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 			return dbmodel.ErrCommentNotFound
 		}
 		pbComment := new(pbDataFormat.Content)
-		if err = proto.Unmarshal(pbComment, commentBytes); err != nil {
+		if err = proto.Unmarshal(commentBytes, pbComment); err != nil {
 			log.Printf("Could not unmarshal content: %v\n", err)
 			return err
 		}
@@ -316,7 +349,7 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 		}
 		// Update the thread which both the subcomment and the comment belongs
 		// to; decrease replies by 1.
-		threadsBucket, err := getThreadBucket(tx, threadId)
+		threadsBucket, _, err := getThreadBucket(tx, threadId)
 		if err != nil {
 			return err
 		}
@@ -325,7 +358,7 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 			return dbmodel.ErrThreadNotFound
 		}
 		pbThread := new(pbDataFormat.Content)
-		if err = proto.Unmarshal(pbThread, threadBytes); err != nil {
+		if err = proto.Unmarshal(threadBytes, pbThread); err != nil {
 			log.Printf("Could not unmarshal content: %v\n", err)
 			return err
 		}
