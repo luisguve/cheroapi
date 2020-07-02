@@ -20,9 +20,16 @@ func (h *handler) LastQA() int64 {
 // Clean up every section database.
 // 
 // It moves unpopular contents from the bucket of active contents to the bucket
-// of archived contents. It will only evaluate the relevance of threads with 1
-// day or longer and move them accordingly, along with its comments and
-// subcomments.
+// of archived contents. It will only test the relevance of threads with 1 day
+// or longer and move them accordingly, along with its comments and subcomments.
+// 
+// It will also move comments and subcomments of deleted threads to the bucket
+// of archived contents, even if the thread has been around for less than one
+// day.
+// 
+// In addition to moving the contents to the bucket of archived contents, it also
+// updates the activity of the users involved, moving contexts from the list of
+// recent activity of the users to their list of old activity.
 func (h *handler) QA() {
 	now := time.Now().Unix()
 	for _, s := range h.sections {
@@ -78,13 +85,38 @@ func (h *handler) QA() {
 					wg.Add(1)
 					go h.moveContents(s, k, v, wg)
 				}
+				// Move comments and subcomments associated to deleted threads.
+				deletedContents := activeContents.Bucket([]byte(deletedThreadsB))
+				if deletedContents == nil {
+					log.Printf("Could not find bucket %s\n", deletedThreadsB)
+					return dbmodel.ErrBucketNotFound
+				}
+				c = deletedContents.Cursor()
+				for k, v := c.First(); k != nil; k, v = c.Next() {
+					// Check whether the value is a nested bucket. If so, just continue.
+					// Cursors see nested buckets with value == nil.
+					if v == nil {
+						continue
+					}
+					wg.Add(1)
+					go h.deleteThread(s, k, wg)
+				}
 				wg.Wait()
 			})
 		}(s)
 	}
 }
 
-// moveContents
+// Update the given section by moving the thread, its comments and subcomments
+// from the bucket of active contents to the bucket of archived contents.
+// 
+// It will copy the contents in almost exactly the same format as in the bucket
+// of active contents; the only difference is that the resulting structure will
+// not have any bucket that registers deleted content.
+// 
+// Note that it will also move all of the subcomments of the deleted comments,
+// if any, to the bucket of archived contents under the same Id of the deleted
+// comment.
 func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.WaitGroup) {
 	defer wg.Done()
 	err := s.contents.Update(func(tx *bolt.Tx) error {
@@ -103,6 +135,7 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.
 			quit = make(chan error)
 			count = 0
 		)
+		defer close(quit)
 		// Put thread into archived contents.
 		count += 2 // Two go-routines will be launched.
 		go func() {
@@ -123,6 +156,112 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.
 			case <-quit:
 			}
 		}()
+
+		commentsBucket := activeContents.Bucket([]byte(commentsB))
+		if commentsBucket == nil {
+			log.Printf("Could not find bucket %s\n", commentsB)
+			return dbmodel.ErrBucketNotFound
+		}
+		// Check whether there are comments and move them to archived contents.
+		if actComments := commentsBucket.Bucket(threadId); actComments != nil {
+			// Get comments bucket in archived contents.
+			commentsBucket = archivedContents.Bucket([]byte(commentsB))
+			if commentsBucket == nil {
+				log.Printf("Bucket %s not found\n", commentsB)
+				return dbmodel.ErrBucketNotFound
+			}
+			archComments, err := commentsBucket.CreateBucketIfNotExists(threadId)
+			if err != nil {
+				log.Printf("Could not create archived comments bucket %s: %v\n", threadId, err)
+				return err
+			}
+			count++
+			go func() {
+				err := h.moveComments(string(threadId), actComments, archComments)
+				select {
+				case done<- err:
+				case <-quit:
+				}
+			}()
+			// Check whether there are subcomments and move them to archived
+			// contents.
+			actSubcomKeys := actComments.Bucket([]byte(subcommentsB))
+			if actSubcomKeys != nil {
+				archSubcomKeys, err := archComments.CreateBucketIfNotExists([]byte(subcommentsB))
+				if err != nil {
+					log.Printf("Could not create bucket %s: %v\n", subcommentsB, err)
+					return err
+				}
+				count++
+				go func() {
+					err := h.moveSubcomments(actSubcomKeys, archSubcomKeys)
+					select {
+					case done<- err:
+					case <-quit:
+					}
+				}()
+			}
+			// Now the comments and subcomments are in the bucket of archived
+			// contents, with exactly the same structure as it were in the bucket
+			// of active contents: under the commentsB bucket in a bucket with
+			// the same key as the thread id they belong to.
+			// 
+			// Get bucket of comments from active contents again, since
+			// commentsBucket was set to the comments bucket from archived
+			// contents.
+			commentsBucket = activeContents.Bucket([]byte(commentsB))
+			if commentsBucket == nil {
+				log.Printf("Could not find bucket %s\n", commentsB)
+				return dbmodel.ErrBucketNotFound
+			}
+			// Delete the comments and subcomments from the bucket of active
+			// contents. Deleting the comments bucket will also delete the
+			// subcomments bucket.
+			if err = commentsBucket.DeleteBucket(threadId); err != nil {
+				log.Printf("Could not DEL comments bucket of thread %s: %v\n", string(threadId), err)
+				return err
+			}
+		}
+		// Finally, delete thread from active contents.
+		if err = activeContents.Delete(threadId); err != nil {
+			log.Printf("Could not DEL thread from active contents: %v\n", err)
+			return err
+		}
+		// Check for errors.
+		for i := 0; i < count; i++ {
+			err = <-done
+			if err != nil {
+				log.Println(err)
+				break
+			}
+		}
+		return err
+	})
+}
+
+// Move comments and subcomments associated to the given thread, which has been
+// deleted, to the bucket of archived contents under the thread id as the key,
+// then remove the reference to the deleted thread from the bucket of deleted
+// contents.
+func (h *handler) deleteThread(s section, threadId []byte, wg sync.WaitGroup) error {
+	defer wg.Done()
+	return s.contents.Update(func(tx *bolt.Tx) error {
+		// These buckets must have been defined.
+		activeContents := tx.Bucket([]byte(activeContentsB))
+		if activeContents == nil {
+			log.Printf("Could not find bucket %s\n", activeContentsB)
+			return dbmodel.ErrBucketNotFound
+		}
+		archivedContents := tx.Bucket([]byte(archivedContentsB))
+		if archivedContents == nil {
+			log.Printf("Could not find bucket %s\n", archivedContentsB)
+			return dbmodel.ErrBucketNotFound
+		}
+		deletedContents := activeContents.Bucket([]byte(deletedThreadsB))
+		if deletedContents == nil {
+			log.Printf("Could not find bucket %s\n", deletedThreadsB)
+			return dbmodel.ErrBucketNotFound
+		}
 		commentsBucket := activeContents.Bucket([]byte(commentsB))
 		if commentsBucket == nil {
 			log.Printf("Could not find bucket %s\n", commentsB)
@@ -142,122 +281,193 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.
 				log.Printf("Could not create archived comments bucket %s: %v\n", threadId, err)
 				return err
 			}
-			// Put comments from active comments into archived comments.
-			c := actComments.Cursor()
-			for k, v := c.First(); k != nil; k, v = c.Next() {
-				// Check whether the value is a nested bucket. If so, just
-				// continue. Cursors see nested buckets with value == nil.
-				if v == nil {
-					continue
+			var (
+				count = 1 // At least 1 go-routine will be launched.
+				done = make(chan error)
+				quit = make(chan error)
+			)
+			defer close(quit)
+			go func() {
+				err := h.moveComments(string(threadId), actComments, archComments)
+				select {
+				case done<- err:
+				case <-quit:
 				}
-				count += 2 // Two go-routines will be launched.
-				go func(k, v []byte) {
-					pbContent := new(pbDataFormat.Content)
-					if err := proto.Unmarshal(v, pbContent); err == nil {
-						ctx := &pbContext.Comment{
-							Id:        string(k),
-							ThreadCtx: &pbContext.Thread{
-								Id:         string(threadId),
-								SectionCtx: &pbContext.Section{
-									Id: pbContent.SectionId,
-								},
-							},
-						}
-						userId := pbContent.AuthorId
-						go h.markCommentAsOld(userId, ctx, done, quit)
-						err = archComments.Put(k, v)
-					}
-					select {
-					case done<- err:
-					case <-quit:
-					}
-				}(k, v)
-			}
-
+			}()
 			// Check whether there are subcomments and move them to archived
 			// contents.
-			if actSubcomKeys := actComments.Bucket([]byte(subcommentsB)); actSubcomKeys != nil {
+			actSubcomKeys := actComments.Bucket([]byte(subcommentsB))
+			if actSubcomKeys != nil {
 				archSubcomKeys, err := archComments.CreateBucketIfNotExists([]byte(subcommentsB))
 				if err != nil {
 					log.Printf("Could not create bucket %s: %v\n", subcommentsB, err)
 					return err
 				}
-
-				c = actSubcomKeys.Cursor()
-				// subcommentsB bucket only holds nested buckets, hence the values
-				// are discarded and the keys are used to find the buckets, which
-				// store the actual active subcomments.
-				for comKey, _ := c.First(); comKey != nil; comKey, _ = c.Next() {
-					actSubcom := actSubcomKeys.Bucket(comKey)
-					if actSubcom == nil {
-						log.Printf("Could not FIND subcomments bucket %s\n", string(comKey))
-						continue
+				count++
+				go func() {
+					err := h.moveSubcomments(actSubcomKeys, archSubcomKeys)
+					select {
+					case done<- err:
+					case <-quit:
 					}
-					// Create the corresponding bucket in archSubcomKeys.
-					archSubcom, err := archSubcomKeys.CreateBucketIfNotExists(comKey)
-					if err != nil {
-						log.Printf("Could not create bucket %s: %v\n", string(comKey), err)
-						return err
-					}
-					// Put subcomments from active comments into archived comments.
-					subcomCursor := actSubcom.Cursor()
-					for k, v = subcomCursor.First(); k != nil; k, v = subcomCursor.Next() {
-						count += 2 // Two go-routines will be launched.
-						go func(k, v []byte) {
-							pbContent := new(pbDataFormat.Content)
-							if err := proto.Unmarshal(v, pbContent); err == nil {
-								ctx := &pbContext.Subcomment{
-									Id: string(k),
-									CommentCtx: &pbContext.Comment{
-										Id:        string(comKey),
-										ThreadCtx: &pbContext.Thread{
-											Id:         string(threadId),
-											SectionCtx: &pbContext.Section{
-												Id: pbContent.SectionId,
-											},
-										},
-									},
-								}
-								userId := pbContent.AuthorId
-								go h.markSubcommentAsOld(userId, ctx, done, quit)
-								err = archSubcom.Put(k, v)
-							}
-							select {
-							case done<- err:
-							case <-quit:
-							}
-						}(k, v)
-					}
+				}()
+			}
+			// Check for errors. No need to close quit channel since it was
+			// deferred.
+			for i := 0; i < count; i++ {
+				err = <-done
+				if err != nil {
+					log.Println(err)
+					return err
 				}
 			}
-			// Done. Now the comments and subcomments are in the bucket of archived
+			// Now the comments and subcomments are in the bucket of archived
 			// contents, with exactly the same structure as it were in the bucket
-			// of active contents, i.e. under the commentsB bucket.
+			// of active contents: under the commentsB bucket in a bucket with
+			// the same key as the thread id they belong to.
 			// 
-			// The next step is to delete the comments and the subcomments from
-			// the bucket of active contents. Deleting the comments bucket will
-			// also delete the subcomments bucket.
+			// Get bucket of comments from active contents again, since
+			// commentsBucket was set to the comments bucket from archived
+			// contents.
+			commentsBucket = activeContents.Bucket([]byte(commentsB))
+			if commentsBucket == nil {
+				log.Printf("Could not find bucket %s\n", commentsB)
+				return dbmodel.ErrBucketNotFound
+			}
+			// Delete the comments and subcomments from the bucket of active
+			// contents. Deleting the comments bucket will also delete the
+			// subcomments bucket.
 			if err = commentsBucket.DeleteBucket(threadId); err != nil {
 				log.Printf("Could not DEL comments bucket of thread %s: %v\n", string(threadId), err)
 				return err
 			}
 		}
-		// Finally, delete thread from active contents.
-		if err = activeContents.Delete(threadId); err != nil {
-			log.Printf("Could not DEL thread from active contents: %v\n", err)
+		// Finally, delete thread from deleted contents.
+		if err = deletedContents.Delete(threadId); err != nil {
+			log.Printf("Could not DEL thread from deleted contents: %v\n", err)
 			return err
 		}
-		// Check for errors.
-		for i := 0; i < count; i++ {
-			err = <-done
-			if err != nil {
-				log.Println(err)
-				close(quit)
-				break
-			}
-		}
-		return err
+		return nil
 	})
+}
+
+// Move the comments associated to the given thread, from actComments to
+// archComments.
+func (h *handler) moveComments(threadId string, actComments, archComments *bolt.Bucket) error {
+	// Put comments from active comments into archived comments.
+	var (
+		count = 0
+		c = actComments.Cursor()
+		done = make(chan error)
+		quit = make(chan error)
+	)
+	for k, v := c.First(); k != nil; k, v = c.Next() {
+		// Check whether the value is a nested bucket. If so, just continue.
+		// Cursors see nested buckets with value == nil.
+		if v == nil {
+			continue
+		}
+		count += 2 // Two go-routines will be launched.
+		go func(k, v []byte) {
+			pbContent := new(pbDataFormat.Content)
+			if err := proto.Unmarshal(v, pbContent); err == nil {
+				ctx := &pbContext.Comment{
+					Id:        string(k),
+					ThreadCtx: &pbContext.Thread{
+						Id:         pbContent.Id,
+						SectionCtx: &pbContext.Section{
+							Id: pbContent.SectionId,
+						},
+					},
+				}
+				userId := pbContent.AuthorId
+				go h.markCommentAsOld(userId, ctx, done, quit)
+				err = archComments.Put(k, v)
+			}
+			select {
+			case done<- err:
+			case <-quit:
+			}
+		}(k, v)
+	}
+	// Check for errors. It terminates every go-routine hung on the statement
+	// "case done<- err:" by closing the channel quit and returns the first err
+	// received.
+	for i := 0; i < count; i++ {
+		err := <-done
+		if err != nil {
+			close(quit)
+			return err
+		}
+	}
+	return nil
+}
+
+// Move subcoments from every bucket in actSubcomKeys to a new bucket with the
+// same key in archSubcomKeys.
+func (h *handler) moveSubcomments(actSubcomKeys, archSubcomKeys *bolt.Bucket) error {
+	var (
+		count = 0
+		c = actSubcomKeys.Cursor()
+		done = make(chan error)
+		quit = make(chan error)
+	)
+	// actSubcomKeys bucket only holds nested buckets, hence the values are
+	// discarded and the keys are used to find the buckets, which store the
+	// actual active subcomments.
+	for comKey, _ := c.First(); comKey != nil; comKey, _ = c.Next() {
+		activeSubcom := actSubcomKeys.Bucket(comKey)
+		if activeSubcom == nil {
+			log.Printf("Could not FIND subcomments bucket %s\n", string(comKey))
+			continue
+		}
+		// Create the corresponding bucket in archSubcomKeys.
+		archivedSubcom, err := archSubcomKeys.CreateBucketIfNotExists(comKey)
+		if err != nil {
+			log.Printf("Could not create bucket %s: %v\n", string(comKey), err)
+			return err
+		}
+		// Put subcomments from active comments into archived comments.
+		subcomCursor := activeSubcom.Cursor()
+		for k, v = subcomCursor.First(); k != nil; k, v = subcomCursor.Next() {
+			count += 2 // Two go-routines will be launched.
+			go func(k, v []byte) {
+				pbContent := new(pbDataFormat.Content)
+				if err := proto.Unmarshal(v, pbContent); err == nil {
+					ctx := &pbContext.Subcomment{
+						Id: string(k),
+						CommentCtx: &pbContext.Comment{
+							Id:        string(comKey),
+							ThreadCtx: &pbContext.Thread{
+								Id:         pbContent.Id,
+								SectionCtx: &pbContext.Section{
+									Id: pbContent.SectionId,
+								},
+							},
+						},
+					}
+					userId := pbContent.AuthorId
+					go h.markSubcommentAsOld(userId, ctx, done, quit)
+					err = archivedSubcom.Put(k, v)
+				}
+				select {
+				case done<- err:
+				case <-quit:
+				}
+			}(k, v)
+		}
+	}
+	// Check for errors. It terminates every go-routine hung on the statement
+	// "case done<- err:" by closing the channel quit and returns the first err
+	// received.
+	for i := 0; i < count; i++ {
+		err := <-done
+		if err != nil {
+			close(quit)
+			return err
+		}
+	}
+	return nil
 }
 
 func (h *handler) markThreadAsOld(userId string, ctx *pbContext.Thread, done, quit chan error) {
@@ -277,7 +487,7 @@ func (h *handler) markThreadAsOld(userId string, ctx *pbContext.Thread, done, qu
 					if pbUser.OldActivity == nil {
 						pbUser.OldActivity = new(pbDataFormat.Activity)
 					}
-					// Copy to old activity.
+					// Append to old activity.
 					tc := pbUser.OldActivity.ThreadsCreated
 					pbUser.OldActivity.ThreadsCreated = append(tc, t)
 					// Remove from recent activity.
@@ -320,7 +530,7 @@ func (h *handler) markCommentAsOld(userId string, ctx *pbContext.Comment, done, 
 					if pbUser.OldActivity == nil {
 						pbUser.OldActivity = new(pbDataFormat.Activity)
 					}
-					// Copy to old activity.
+					// Append to old activity.
 					comments := pbUser.OldActivity.Comments
 					pbUser.OldActivity.Comments = append(comments, c)
 					// Remove from recent activity.
@@ -365,7 +575,7 @@ func (h *handler) markSubcommentAsOld(userId string, ctx *pbContext.Subcomment, 
 					if pbUser.OldActivity == nil {
 						pbUser.OldActivity = new(pbDataFormat.Activity)
 					}
-					// Copy to old activity.
+					// Append to old activity.
 					subcomments := pbUser.OldActivity.Subcomments
 					pbUser.OldActivity.Subcomments = append(subcomments, s)
 					// Remove from recent activity.
