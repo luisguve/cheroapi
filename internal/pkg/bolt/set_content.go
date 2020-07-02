@@ -4,6 +4,8 @@ import (
 	"strings"
 	"log"
 	"fmt"
+	"crypto/sha1"
+	"encoding/binary"
 
 	"google.golang.org/protobuf/proto"
 	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
@@ -13,6 +15,13 @@ import (
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
+
+// itob returns an 8-byte big endian representation of v.
+func itob(v uint64) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, v)
+	return b
+}
 
 // CreateThread inserts the given content in the given section, after formatting
 // it into a pbDataFormat.Content and marshaling it in protobuf-encoded bytes.
@@ -32,49 +41,11 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 	if sectionDB, ok := h.sections[sectionId]; !ok {
 		return dbmodel.ErrSectionNotFound
 	}
-
-	// Build thread Id by replacing spaces with dashes and converting it to
-	// lowercase.
-	newId := strings.ToLower(strings.Replace(content.Title, " ", "-", -1))
-	// Build permalink: /{section-id}/{thread-id}.
-	permalink := fmt.Sprintf("/%s/%s", sectionId, newId)
-
-	pbContent := &pbDataFormat.Content{
-		Title:       content.Title,
-		Content:     content.Content,
-		FtFile:      content.FtFile,
-		PublishDate: content.PublishDate,
-		AuthorId:    userId,
-		Id:          newId,
-		SectionName: sectionDB.name,
-		SectionId:   sectionId,
-		Permalink:   permalink,
-		Metadata:    &pbMetadata.Content{
-			LastUpdated: content.PublishDate,
-			DataKey:     newId,
-		},
-	}
-	pbContentBytes, err := proto.Marshal(pbContent)
-	if err != nil {
-		log.Printf("Could not marshal content: %v\n", err)
-		return "", err
-	}
-	// Update author data.
+	// Get author data.
 	pbUser, err := h.User(userId)
 	if err != nil {
 		return "", err
 	}
-	if pbUser.RecentActivity == nil {
-		pbUser.RecentActivity = new(pbDataFormat.Activity)
-	}
-	// Append new thread context to users' recent activity.
-	threadCtx := &pbContext.Thread{
-		Id:         newId,
-		SectionCtx: section,
-	}
-	pbUser.RecentActivity.ThreadsCreated = append(pbUser.RecentActivity.ThreadsCreated, threadCtx)
-	// Update last time created field.
-	pbUser.LastTimeCreated = content.PublishDate
 
 	// Save thread and user in the same transaction.
 	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
@@ -83,6 +54,54 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 			log.Printf("Bucket %s not found\n", activeContentsB)
 			return dbmodel.ErrBucketNotFound
 		}
+		seq, _ := activeContents.NextSequence()
+		seqB := itob(seq)
+		h := sha1.New()
+		h.Write(seqB)
+
+		hashSum := h.Sum(nil)
+		// Keep just the first 6 bytes of the hashed sequence.
+		hashSeq := fmt.Sprintf("%x", hashSum[:6])
+
+		// Build thread Id by replacing spaces with dashes and converting it to
+		// lowercase, then appending to it the hashed sequence.
+		newId := strings.ToLower(strings.Replace(content.Title, " ", "-", -1))
+		newId += fmt.Sprintf("-%s", hashSeq)
+		// Build permalink: /{section-id}/{thread-id}.
+		permalink := fmt.Sprintf("/%s/%s", sectionId, newId)
+
+		pbContent := &pbDataFormat.Content{
+			Title:       content.Title,
+			Content:     content.Content,
+			FtFile:      content.FtFile,
+			PublishDate: content.PublishDate,
+			AuthorId:    userId,
+			Id:          newId,
+			SectionName: sectionDB.name,
+			SectionId:   sectionId,
+			Permalink:   permalink,
+			Metadata:    &pbMetadata.Content{
+				LastUpdated: content.PublishDate,
+				DataKey:     newId,
+			},
+		}
+		pbContentBytes, err := proto.Marshal(pbContent)
+		if err != nil {
+			log.Printf("Could not marshal content: %v\n", err)
+			return "", err
+		}
+		if pbUser.RecentActivity == nil {
+			pbUser.RecentActivity = new(pbDataFormat.Activity)
+		}
+		// Append new thread context to users' recent activity.
+		threadCtx := &pbContext.Thread{
+			Id:         newId,
+			SectionCtx: section,
+		}
+		pbUser.RecentActivity.ThreadsCreated = append(pbUser.RecentActivity.ThreadsCreated, threadCtx)
+		// Update last time created field.
+		pbUser.LastTimeCreated = content.PublishDate
+
 		if err = activeContents.Put([]byte(newId), pbContentBytes); err != nil {
 			return err
 		}
