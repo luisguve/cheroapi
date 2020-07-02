@@ -165,7 +165,7 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 	// in the bucket of deleted comments if the comment is in an active thread,
 	// decrease replies of thread by 1 and remove user from list of repliers.
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		commentsBucket, name, err := getCommentsBucket(tx, threadId)
+		commentsBucket, _, err := getCommentsBucket(tx, threadId)
 		if err != nil {
 			return err
 		}
@@ -180,21 +180,6 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 		}
 		if pbComment.AuthorId != userId {
 			return dbmodel.ErrUserNotAllowed
-		}
-		// Check whether the comment belongs to an active thread. If so, it
-		// inserts it into the bucket of deleted comments.
-		if name == activeContentsB {
-			delContents := commentsBucket.Bucket([]byte(deletedCommentsB))
-			if delContents == nil {
-				// This is the first deleted comment on this thread.
-				delContents, err = commentsBucket.CreateBucketIfNotExists([]byte(deletedCommentsB))
-				if err != nil {
-					return err
-				}
-			}
-			if err = delContents.Put([]byte(id), commentBytes); err != nil {
-				return err
-			}
 		}
 		err = commentsBucket.Delete([]byte(id))
 		if err != nil {
