@@ -16,3 +16,7 @@ func New(dbh dbmodel.Handler) *Server {
 type Server struct {
 	dbHandler dbmodel.Handler
 }
+
+func (s *Server) QA() {
+	s.dbHandler.QA()
+}
