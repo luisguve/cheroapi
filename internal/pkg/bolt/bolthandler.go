@@ -43,8 +43,8 @@ type section struct {
 	name string
 }
 
-// New returns a dbmodel.Handler with a few just open bolt databases; one for
-// all the users and one for each section.
+// New returns a dbmodel.Handler with a few just open bolt databases under the
+// directory specified by path; one for all the users and one for each section.
 //
 // The section databases hold a couple of buckets: one for active contents with
 // read-write access and other for archived content with read-only access. If
@@ -74,12 +74,12 @@ type section struct {
 // New only creates the bucket of active contents and the bucket of archived
 // contents, along with their top-level bucket for comments. In the bucket of
 // active contents, it also creates a bucket for deleted threads.
-func New() (dbmodel.Handler, error) {
+func New(path string) (dbmodel.Handler, error) {
 	sectionsDBs := make(map[string]section)
 
 	// open or create section databases
 	for sectionName, sectionId := range dbmodel.SectionIds {
-		dbPath := sectionId + "/contents.db"
+		dbPath := fmt.Sprintf("%s/%s/contents.db", path, sectionId)
 		db, err := bolt.Open(dbPath, 0600, nil)
 		if err != nil {
 			return nil, err
@@ -127,7 +127,7 @@ func New() (dbmodel.Handler, error) {
 	}
 
 	// open or create users database
-	usersPath := "users/users.db"
+	usersPath := path + "/users/users.db"
 	usersDB, err := bolt.Open(usersPath, 0600, nil)
 	if err != nil {
 		return nil, err

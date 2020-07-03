@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	h, err := bolt.New()
+	h, err := bolt.New("db")
 	if err != nil {
 		log.Fatalf("Could not setup database: %v\n", err)
 	}
