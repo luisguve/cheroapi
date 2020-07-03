@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"google.golang.org/protobuf/proto"
-	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	bolt "go.etcd.io/bbolt"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbContext"github.com/luisguve/cheroproto-go/context"

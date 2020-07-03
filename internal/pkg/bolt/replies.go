@@ -5,7 +5,7 @@ import(
 	"encoding/binary"
 
 	"google.golang.org/protobuf/proto"
-	"github.com/luisguve/cheroapi/dbmodel"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"

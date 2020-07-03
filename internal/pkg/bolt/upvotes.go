@@ -5,7 +5,7 @@ import (
 	"time"
 	"fmt"
 
-	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	bolt "go.etcd.io/bbolt"
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"

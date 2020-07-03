@@ -6,6 +6,7 @@ import(
 
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/codes"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 )
 
@@ -41,13 +42,13 @@ func (s *Server) DeleteContent(ctx context.Context, req *pbApi.DeleteContentRequ
 		err = s.dbHandler.DeleteSubcomment(ctx.SubcommentCtx, submitter)
 	}
 	if err != nil {
-		if errors.Is(err, ErrSectionNotFound) ||
-			errors.Is(err, ErrThreadNotFound) ||
-			errors.Is(err, ErrCommentNotFound) ||
-			errors.Is(err, ErrSubcommentNotFound) {
+		if errors.Is(err, dbmodel.ErrSectionNotFound) ||
+			errors.Is(err, dbmodel.ErrThreadNotFound) ||
+			errors.Is(err, dbmodel.ErrCommentNotFound) ||
+			errors.Is(err, dbmodel.ErrSubcommentNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
-		if errors.Is(err, ErrUserNotAllowed) {
+		if errors.Is(err, dbmodel.ErrUserNotAllowed) {
 			return nil, status.Error(codes.Unauthenticated, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -67,7 +68,7 @@ func (s *Server) CreateThread(ctx context.Context, req *pbApi.CreateThreadReques
 	)
 	pbUser, err := s.dbHandler.User(submitter)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.Unauthenticated, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -81,7 +82,7 @@ func (s *Server) CreateThread(ctx context.Context, req *pbApi.CreateThreadReques
 
 	permalink, err := s.dbHandler.CreateThread(content, section, submitter)
 	if err != nil {
-		if errors.Is(err, ErrSectionNotFound) {
+		if errors.Is(err, dbmodel.ErrSectionNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -98,7 +99,7 @@ func (s *Server) UpdateBasicUserData(ctx context.Context, req *pbApi.UpdateBasic
 	}
 	pbUser, err := s.dbHandler.User(req.UserId)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -106,7 +107,7 @@ func (s *Server) UpdateBasicUserData(ctx context.Context, req *pbApi.UpdateBasic
 	if req.Username != "" {
 		err = s.dbHandler.MapUsername(req.Username, req.UserId)
 		if err != nil {
-			if errors.Is(err, ErrUsernameAlreadyExists) {
+			if errors.Is(err, dbmodel.ErrUsernameAlreadyExists) {
 				return nil, status.Error(codes.AlreadyExists, "Username already taken")
 			}
 			return nil, status.Error(codes.Internal, err.Error())
@@ -136,7 +137,7 @@ func (s *Server) MarkAllAsRead(ctx context.Context, req *pbApi.ReadNotifsRequest
 	}
 	pbUser, err := s.dbHandler.User(req.UserId)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -162,7 +163,7 @@ func (s *Server) ClearNotifs(ctx context.Context, req *pbApi.ClearNotifsRequest)
 	}
 	pbUser, err := s.dbHandler.User(req.UserId)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -217,7 +218,7 @@ func (s *Server) FollowUser(ctx context.Context, req *pbApi.FollowUserRequest) (
 		err = <-done
 		if err != nil {
 			close(quit)
-			if errors.Is(err, ErrUserNotFound) {
+			if errors.Is(err, dbmodel.ErrUserNotFound) {
 				return nil, status.Error(codes.NotFound, err.Error())
 			}
 			return nil, status.Error(codes.Internal, err.Error())
@@ -248,7 +249,7 @@ func (s *Server) FollowUser(ctx context.Context, req *pbApi.FollowUserRequest) (
 		err = <-done
 		if err != nil {
 			close(quit)
-			if errors.Is(err, ErrUserNotFound) {
+			if errors.Is(err, dbmodel.ErrUserNotFound) {
 				return nil, status.Error(codes.NotFound, err.Error())
 			}
 			return nil, status.Error(codes.Internal, err.Error())
@@ -300,7 +301,7 @@ func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserReques
 		err = <-done
 		if err != nil {
 			close(quit)
-			if errors.Is(err, ErrUserNotFound) {
+			if errors.Is(err, dbmodel.ErrUserNotFound) {
 				return nil, status.Error(codes.NotFound, err.Error())
 			}
 			return nil, status.Error(codes.Internal, err.Error())
@@ -342,7 +343,7 @@ func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserReques
 		err = <-done
 		if err != nil {
 			close(quit)
-			if errors.Is(err, ErrUserNotFound) {
+			if errors.Is(err, dbmodel.ErrUserNotFound) {
 				return nil, status.Error(codes.NotFound, err.Error())
 			}
 			return nil, status.Error(codes.Internal, err.Error())
@@ -362,7 +363,7 @@ func (s *Server) SaveThread(ctx context.Context, req *pbApi.SaveThreadRequest) (
 	)
 	pbUser, err := s.dbHandler.User(userId)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -377,8 +378,8 @@ func (s *Server) SaveThread(ctx context.Context, req *pbApi.SaveThreadRequest) (
 	if !saved {
 		_, err = s.dbHandler.GetThreadContent(thread)
 		if err != nil {
-			if (errors.Is(err, ErrSectionNotFound)) ||
-				(errors.Is(err, ErrThreadNotFound)) {
+			if (errors.Is(err, dbmodel.ErrSectionNotFound)) ||
+				(errors.Is(err, dbmodel.ErrThreadNotFound)) {
 				return nil, status.Error(codes.NotFound, err.Error())
 			}
 			return nil, status.Error(codes.Internal, err.Error())
@@ -404,7 +405,7 @@ func (s *Server) UndoSaveThread(ctx context.Context, req *pbApi.UndoSaveThreadRe
 	)
 	pbUser, err := s.dbHandler.User(userId)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())

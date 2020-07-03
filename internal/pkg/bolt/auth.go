@@ -10,7 +10,7 @@ import(
 	"golang.org/x/crypto/bcrypt"
 	bolt "go.etcd.io/bbolt"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
-	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 )
 
 // FindUserIdByUsername looks for a user id with the given username as the key

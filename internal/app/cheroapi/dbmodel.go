@@ -1,8 +1,4 @@
-// package dbmodel provides the Handler interface defining the set of CRUD
-// operations on any sort of DBMS, specifically designed for the cheroapi
-// service.
-
-package dbmodel
+package cheroapi
 
 import(
 	"errors"

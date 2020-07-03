@@ -8,7 +8,7 @@ import (
 	"encoding/binary"
 
 	"google.golang.org/protobuf/proto"
-	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	bolt "go.etcd.io/bbolt"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"

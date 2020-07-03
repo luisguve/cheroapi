@@ -5,7 +5,6 @@ import(
 
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/codes"
-	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"

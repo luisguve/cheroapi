@@ -6,6 +6,7 @@ import(
 
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/codes"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 )
 
@@ -34,10 +35,10 @@ func (s *Server) Upvote(req *pbApi.UpvoteRequest, stream pbApi.CrudCheropatilla_
 		notifyUsers, err = s.dbHandler.UpvoteSubcomment(submitter, ctx.SubcommentCtx)
 	}
 	if err != nil {
-		if (errors.Is(err, ErrSectionNotFound)) || 
-			(errors.Is(err, ErrThreadNotFound)) || 
-			(errors.Is(err, ErrCommentNotFound)) || 
-			(errors.Is(err, ErrSubcommentNotFound)) {
+		if (errors.Is(err, dbmodel.ErrSectionNotFound)) || 
+		(errors.Is(err, dbmodel.ErrThreadNotFound)) || 
+		(errors.Is(err, dbmodel.ErrCommentNotFound)) || 
+		(errors.Is(err, dbmodel.ErrSubcommentNotFound)) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return status.Error(codes.Internal, err.Error())
@@ -71,13 +72,13 @@ func (s *Server) UndoUpvote(ctx context.Context, req *pbApi.UndoUpvoteRequest) (
 		err = s.dbHandler.UndoUpvoteSubcomment(submitter, ctx.SubcommentCtx)
 	}
 	if err != nil {
-		if errors.Is(err, ErrNotUpvoted) {
+		if errors.Is(err, dbmodel.ErrNotUpvoted) {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
-		if (errors.Is(err, ErrSectionNotFound)) || 
-			(errors.Is(err, ErrThreadNotFound)) || 
-			(errors.Is(err, ErrCommentNotFound)) || 
-			(errors.Is(err, ErrSubcommentNotFound)) {
+		if (errors.Is(err, dbmodel.ErrSectionNotFound)) || 
+		(errors.Is(err, dbmodel.ErrThreadNotFound)) || 
+		(errors.Is(err, dbmodel.ErrCommentNotFound)) || 
+		(errors.Is(err, dbmodel.ErrSubcommentNotFound)) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -114,10 +115,10 @@ func (s *Server) Comment(req *pbApi.CommentRequest, stream pbApi.CrudCheropatill
 		notifyUsers, err = s.dbHandler.ReplyComment(ctx.CommentCtx, reply)
 	}
 	if err != nil {
-		if (errors.Is(err, ErrSectionNotFound)) || 
-			(errors.Is(err, ErrThreadNotFound)) || 
-			(errors.Is(err, ErrCommentNotFound)) || 
-			(errors.Is(err, ErrSubcommentNotFound)) {
+		if (errors.Is(err, dbmodel.ErrSectionNotFound)) || 
+		(errors.Is(err, dbmodel.ErrThreadNotFound)) || 
+		(errors.Is(err, dbmodel.ErrCommentNotFound)) || 
+		(errors.Is(err, dbmodel.ErrSubcommentNotFound)) {
 			return status.Error(codes.NotFound, err.Error())
 		}
 		return status.Error(codes.Internal, err.Error())

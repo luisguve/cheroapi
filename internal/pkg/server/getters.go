@@ -1,7 +1,7 @@
 package server
 
 import(
-	
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 )
 
 // Get a user's basic data to be displayed in the header navigation section
@@ -11,7 +11,7 @@ func (s *Server) GetUserHeaderData(ctx context.Context, req *pbApi.GetBasicUserD
 	}
 	pbUser, err := s.dbHandler.User(req.UserId)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -32,7 +32,7 @@ func (s *Server) GetBasicUserData(ctx context.Context, req *pbApi.GetBasicUserDa
 	}
 	pbUser, err := s.dbHandler.User(req.UserId)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -47,7 +47,7 @@ func (s *Server) GetUserFollowingIds(ctx context.Context, req *pbApi.GetBasicUse
 	}
 	pbUser, err := s.dbHandler.User(req.UserId)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -64,7 +64,8 @@ func (s *Server) GetThread(ctx context.Context, req *pbApi.GetThreadRequest) (*p
 	}
 	contentRule, err := s.dbHandler.GetThread(req.Thread)
 	if err != nil {
-		if errors.Is(err, ErrSectionNotFound) || errors.Is(err, ErrThreadNotFound) {
+		if errors.Is(err, dbmodel.ErrSectionNotFound) ||
+		errors.Is(err, dbmodel.ErrThreadNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -86,12 +87,12 @@ func (s *Server) GetSubcomments(req *pbApi.GetSubcommentsRequest, stream pbApi.C
 	)
 	contentRules, err = d.dbHandler.GetSubcomments(ctx, offset)
 	if err != nil {
-		if errors.Is(err, ErrSectionNotFound) ||
-			errors.Is(err, ErrThreadNotFound) ||
-			errors.Is(err, ErrCommentNotFound) {
+		if errors.Is(err, dbmodel.ErrSectionNotFound) ||
+			errors.Is(err, dbmodel.ErrThreadNotFound) ||
+			errors.Is(err, dbmodel.ErrCommentNotFound) {
 			return status.Error(codes.NotFound, err.Error())
 		}
-		if errors.Is(err, ErrOffsetOutOfRange) {
+		if errors.Is(err, dbmodel.ErrOffsetOutOfRange) {
 			return status.Error(codes.OutOfRange, err.Error())
 		}
 		return status.Error(codes.Internal, err.Error())
@@ -121,7 +122,7 @@ func (s *Server) ViewUsers(ctx context.Context, req *pbApi.ViewUsersRequest) (*p
 	)
 	pbUser, err := s.dbHandler.User(userId)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -204,7 +205,7 @@ func (s *Server) ViewUserByUsername(ctx context.Context, req *pbApi.ViewUserByUs
 	}
 	userIdB, err := s.dbHandler.FindUserIdByUsername(req.Username)
 	if err != nil {
-		if errors.Is(err, ErrUsernameNotFound) {
+		if errors.Is(err, dbmodel.ErrUsernameNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -212,7 +213,7 @@ func (s *Server) ViewUserByUsername(ctx context.Context, req *pbApi.ViewUserByUs
 	userId := string(userIdB)
 	pbUser, err := s.dbHandler.User(userId)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -236,7 +237,7 @@ func (s *Server) GetDashboardData(ctx context.Context, req *pbApi.GetDashboardDa
 	}
 	pbUser, err := s.dbHandler.User(req.UserId)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())

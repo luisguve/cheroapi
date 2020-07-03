@@ -3,8 +3,7 @@ package bolt
 import (
 	"log"
 	"time"
-
-	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
+	
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"

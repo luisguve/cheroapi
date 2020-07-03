@@ -8,7 +8,7 @@ import(
 	"time"
 
 	bolt "go.etcd.io/bbolt"
-	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 )
 
 // names of buckets

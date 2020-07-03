@@ -4,7 +4,7 @@
 package server
 
 import(
-	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 )
 
 func New(dbh dbmodel.Handler) *Server {

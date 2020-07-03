@@ -3,7 +3,7 @@ package bolt
 import(
 	"log"
 
-	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbApi "github.com/luisguve/cheroapi/internal/protogen/cheroapi"
 	pbDataFormat "github.com/luisguve/cheroapi/internal/protogen/dataformat"
 	pbMetadata "github.com/luisguve/cheroapi/internal/protogen/metadata"

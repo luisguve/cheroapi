@@ -6,6 +6,7 @@ import(
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/codes"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 )
 
 // Validate user credentials to login

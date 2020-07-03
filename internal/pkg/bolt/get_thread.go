@@ -1,7 +1,7 @@
 package bolt
 
 import(
-	"github.com/luisguve/cheroapi/internal/pkg/dbmodel"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 )
 
 // Get metadata of all the active threads in a section. It returns
