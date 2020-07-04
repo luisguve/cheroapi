@@ -9,8 +9,6 @@ import (
 	"github.com/luisguve/cheroapi/internal/pkg/bolt"
 )
 
-var db dbmodel.Handler
-
 type user struct {
 	email, name, patillavatar, username, alias, about, password string
 }
@@ -18,8 +16,7 @@ type user struct {
 // Register users, get them, get their ids through they usernames and emails,
 // update their data, and update their usernames.
 func TestAuthUser(t *testing.T) {
-	var err error
-	db, err = bolt.New("db")
+	db, err := bolt.New("db")
 	if err != nil {
 		t.Errorf("DB open error: %v\n", err)
 	}
