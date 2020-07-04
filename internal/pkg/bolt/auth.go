@@ -118,6 +118,7 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 			Username: username,
 			PicUrl: patillavatar,
 			About: about,
+			Name: name,
 		},
 		PrivateData: &pbDataFormat.PrivateData{
 			Email: email,
