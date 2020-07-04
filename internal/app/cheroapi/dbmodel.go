@@ -64,9 +64,6 @@ type Handler interface {
 	ReplyThread(userId string, thread *pbContext.Thread, r Reply) (*pbApi.NotifyUser, error)
 	// Post a comment on a comment
 	ReplyComment(userId string, comment *pbContext.Comment, r Reply) ([]*pbApi.NotifyUser, error)
-	// Returns a bool indicating whether the given user can create a thread and an
-	// error which may indicate the user does not exist.
-	CheckUserCanPost(userId string) (bool, error)
 	// Create a new thread, save it and return its permalink.
 	CreateThread(content *pbApi.Content, section *pbContext.Section, author string) (string, error)
 	// Delete the given thread and the contents associated to it.
