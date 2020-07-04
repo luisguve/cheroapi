@@ -39,7 +39,7 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 
 	// Check whether the section exists.
 	if sectionDB, ok := h.sections[sectionId]; !ok {
-		return dbmodel.ErrSectionNotFound
+		return "", dbmodel.ErrSectionNotFound
 	}
 	// Get author data.
 	pbUser, err := h.User(userId)
@@ -63,8 +63,8 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 		// Keep just the first 6 bytes of the hashed sequence.
 		hashSeq := fmt.Sprintf("%x", hashSum[:6])
 
-		// Build thread Id by replacing spaces with dashes and converting it to
-		// lowercase, then appending to it the hashed sequence.
+		// Build thread Id by replacing spaces with dashes, converting it to
+		// lowercase and appending the hashed sequence to it.
 		newId := strings.ToLower(strings.Replace(content.Title, " ", "-", -1))
 		newId += fmt.Sprintf("-%s", hashSeq)
 		// Build permalink: /{section-id}/{thread-id}.
