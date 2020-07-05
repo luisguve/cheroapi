@@ -4,6 +4,7 @@ import(
 	"net"
 
 	"google.golang.org/grpc"
+	"github.com/go-co-op/gocron"
 	"github.com/luisguve/cheroapi/internal/pkg/server"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 )
@@ -26,6 +27,9 @@ func (a *App) Run() error {
 	s := grpc.NewServer()
 
 	pbApi.RegisterCrudCheropatillaServer(s, a.srv)
-
+	QAscheduler := gocron.NewScheduler(time.UTC)
+	// Quality Assurance the databases every day.
+	QAscheduler.Every(1).Day().Do(s.srv.QA())
+	QAscheduler.StartAsync()
 	return s.Serve(lis)
 }
