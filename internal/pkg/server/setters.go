@@ -1,12 +1,13 @@
 package server
 
 import(
-	"log"
+	"context"
 	"errors"
 
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/codes"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 )
 
@@ -26,7 +27,7 @@ import(
 // Delete a thread, comment or subcomment
 func (s *Server) DeleteContent(ctx context.Context, req *pbApi.DeleteContentRequest) (*pbApi.DeleteContentResponse, error) {
 	if s.dbHandler == nil {
-		return status.Error(codes.Internal, "No database connection")
+		return nil, status.Error(codes.Internal, "No database connection")
 	}
 	var (
 		submitter = req.UserId
@@ -59,7 +60,7 @@ func (s *Server) DeleteContent(ctx context.Context, req *pbApi.DeleteContentRequ
 // Post a thread to create
 func (s *Server) CreateThread(ctx context.Context, req *pbApi.CreateThreadRequest) (*pbApi.CreateThreadResponse, error) {
 	if s.dbHandler == nil {
-		return status.Error(codes.Internal, "No database connection")
+		return nil, status.Error(codes.Internal, "No database connection")
 	}
 	var (
 		submitter = req.UserId
@@ -283,7 +284,7 @@ func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserReques
 		}
 	}()
 	go func() {
-		ufIdB, err := s.dbHandler.FindUserIdByUsername(req.UserToUnFollow)
+		ufIdB, err := s.dbHandler.FindUserIdByUsername(req.UserToUnfollow)
 		if err == nil {
 			ufId = string(ufIdB)
 			pbUf, err = s.dbHandler.User(ufId)

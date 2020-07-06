@@ -6,6 +6,7 @@ package bolt
 import(
 	"log"
 	"time"
+	"fmt"
 
 	bolt "go.etcd.io/bbolt"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
@@ -16,8 +17,10 @@ const (
 	activeContentsB = "ActiveContents"
 	archivedContentsB = "ArchivedContents"
 	usersB = "Everyone"
-	usernamesB = "UsernameMappings"
-	emailsB = "EmailMappings"
+	usernameIdsB = "UsernameIdMappings"
+	idUsernamesB = "IdUsernameMappings"
+	emailIdsB = "EmailIdMappings"
+	idEmailsB = "IdEmailMappings"
 	commentsB = "Comments"
 	subcommentsB = "Subcomments"
 	deletedThreadsB = "DeletedThreads"
@@ -87,7 +90,7 @@ func New(path string) (dbmodel.Handler, error) {
 		// create bucket for active contents and for archived contents
 		err = db.Update(func(tx *bolt.Tx) error {
 			// active
-			b, err = tx.CreateBucketIfNotExists([]byte(activeContentsB))
+			b, err := tx.CreateBucketIfNotExists([]byte(activeContentsB))
 			if err != nil {
 				log.Printf("Could not create bucket %s: %v\n", activeContentsB, err)
 				return err
@@ -147,9 +150,9 @@ func New(path string) (dbmodel.Handler, error) {
 
 	// create bucket for usernames to user ids mapping
 	err = usersDB.Update(func(tx *bolt.Tx) error {
-		_, err = tx.CreateBucketIfNotExists([]byte(usernamesB))
+		_, err = tx.CreateBucketIfNotExists([]byte(usernameIdsB))
 		if err != nil {
-			log.Printf("Could not create bucket %s: %v\n", usernamesB, err)
+			log.Printf("Could not create bucket %s: %v\n", usernameIdsB, err)
 		}
 		return err
 	})
@@ -159,9 +162,33 @@ func New(path string) (dbmodel.Handler, error) {
 
 	// create bucket for emails to user ids mapping
 	err = usersDB.Update(func(tx *bolt.Tx) error {
-		_, err = tx.CreateBucketIfNotExists([]byte(emailsB))
+		_, err = tx.CreateBucketIfNotExists([]byte(emailIdsB))
 		if err != nil {
-			log.Printf("Could not create bucket %s: %v\n", emailsB, err)
+			log.Printf("Could not create bucket %s: %v\n", emailIdsB, err)
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// create bucket for ids to emails mapping
+	err = usersDB.Update(func(tx *bolt.Tx) error {
+		_, err = tx.CreateBucketIfNotExists([]byte(idEmailsB))
+		if err != nil {
+			log.Printf("Could not create bucket %s: %v\n", idEmailsB, err)
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// create bucket for ids to usernames mapping
+	err = usersDB.Update(func(tx *bolt.Tx) error {
+		_, err = tx.CreateBucketIfNotExists([]byte(idUsernamesB))
+		if err != nil {
+			log.Printf("Could not create bucket %s: %v\n", idUsernamesB, err)
 		}
 		return err
 	})
@@ -175,5 +202,5 @@ func New(path string) (dbmodel.Handler, error) {
 		users: usersDB,
 		sections: sectionsDBs,
 		lastQA: now.Unix(),
-	}
+	}, nil
 }

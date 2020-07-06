@@ -3,6 +3,7 @@ package server
 import(
 	"log"
 	"errors"
+	"context"
 
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/codes"
@@ -17,7 +18,7 @@ func (s *Server) Upvote(req *pbApi.UpvoteRequest, stream pbApi.CrudCheropatilla_
 	}
 	var (
 		submitter = req.UserId
-		notifyUsers []*pbApi.NotifyUsers
+		notifyUsers []*pbApi.NotifyUser
 		err error
 		sendErr error
 	)
@@ -39,7 +40,7 @@ func (s *Server) Upvote(req *pbApi.UpvoteRequest, stream pbApi.CrudCheropatilla_
 		(errors.Is(err, dbmodel.ErrThreadNotFound)) || 
 		(errors.Is(err, dbmodel.ErrCommentNotFound)) || 
 		(errors.Is(err, dbmodel.ErrSubcommentNotFound)) {
-			return nil, status.Error(codes.NotFound, err.Error())
+			return status.Error(codes.NotFound, err.Error())
 		}
 		return status.Error(codes.Internal, err.Error())
 	}
@@ -92,8 +93,7 @@ func (s *Server) Comment(req *pbApi.CommentRequest, stream pbApi.CrudCheropatill
 		return status.Error(codes.Internal, "No database connection")
 	}
 	var (
-		submitter = req.UserId
-		notifyUsers []*pbApi.NotifyUsers
+		notifyUsers []*pbApi.NotifyUser
 		err error
 		sendErr error
 	)

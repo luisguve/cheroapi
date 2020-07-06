@@ -7,7 +7,6 @@ import(
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
-	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
@@ -16,7 +15,7 @@ import(
 // database.
 type Handler interface {
 	// Get metadata of threads in a section
-	GetThreadsOverview(*pbContext.Section) ([]patillator.SegregateDiscarderFinder, error)
+	GetThreadsOverview(*pbContext.Section, ...patillator.SetSDF) ([]patillator.SegregateDiscarderFinder, error)
 	// Get content of the given thread ids in a section
 	GetThreads(*pbContext.Section, []string) ([]*pbApi.ContentRule, error)
 	// Get metadata of comments in a thread
@@ -38,7 +37,7 @@ type Handler interface {
 	// Get contents by context
 	GetContentsByContext([]*pbContext.Context) ([]*pbApi.ContentRule, []error)
 	// Get metadata of saved threads of a given user
-	GetSavedThreadsOverview(user string) patillator.SegregateDiscarderFinder) (map[string][]patillator.SegregateDiscarderFinder, []error)
+	GetSavedThreadsOverview(user string) (map[string][]patillator.SegregateDiscarderFinder, []error)
 	// Add user credentials and data (sign in); returns the user id and a nil
 	// *status.Status on successful registering or an empty string an a *status.Status
 	// indicating what went wrong (email or username already in use) otherwise.
@@ -61,9 +60,9 @@ type Handler interface {
 	// Undo upvote on a subcomment from the given user id
 	UndoUpvoteSubcomment(userId string, subcomment *pbContext.Subcomment) error
 	// Post a comment on a thread
-	ReplyThread(userId string, thread *pbContext.Thread, r Reply) (*pbApi.NotifyUser, error)
+	ReplyThread(thread *pbContext.Thread, r Reply) (*pbApi.NotifyUser, error)
 	// Post a comment on a comment
-	ReplyComment(userId string, comment *pbContext.Comment, r Reply) ([]*pbApi.NotifyUser, error)
+	ReplyComment(comment *pbContext.Comment, r Reply) ([]*pbApi.NotifyUser, error)
 	// Create a new thread, save it and return its permalink.
 	CreateThread(content *pbApi.Content, section *pbContext.Section, author string) (string, error)
 	// Delete the given thread and the contents associated to it.
@@ -78,6 +77,10 @@ type Handler interface {
 	MapUsername(username, userId string) error
 	// Update data of user.
 	UpdateUser(pbUser *pbDataFormat.User, userId string) error
+	// Get user id with the given username.
+	FindUserIdByUsername(username string) ([]byte, error)
+	// Get user id with the given email.
+	FindUserIdByEmail(email string) ([]byte, error)
 	// Return the last time a clean up was done.
 	LastQA() int64
 	// Clean up every section database.
@@ -127,12 +130,12 @@ var (
 )
 
 var SectionIds = map[string]string{
-	"My Life": "mylife",
+	"My Life": "mylife",/*
 	"Food": "food",
 	"Technology": "tech",
 	"Art": "art",
 	"Music": "music",
 	"Do it yourself": "diy",
 	"Questions": "questions",
-	"Literature": "literature",
+	"Literature": "literature",*/
 }

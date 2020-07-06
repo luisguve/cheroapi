@@ -2,6 +2,7 @@ package patillator
 
 import(
 	"log"
+	"sync"
 	
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )

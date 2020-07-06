@@ -5,7 +5,7 @@ import (
 	"log"
 	"sync"
 
-	"google.golang.org/protobuf/proto"
+	"github.com/golang/protobuf/proto"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	bolt "go.etcd.io/bbolt"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
@@ -31,10 +31,10 @@ func (h *handler) LastQA() int64 {
 // updates the activity of the users involved, moving contexts from the list of
 // recent activity of the users to their list of old activity.
 func (h *handler) QA() {
-	now := time.Now().Unix()
+	now := time.Now()
 	for _, s := range h.sections {
 		go func(s section) {
-			err := s.contents.View(func(tx *bolt.Tx) error {
+			s.contents.View(func(tx *bolt.Tx) error {
 				activeContents := tx.Bucket([]byte(activeContentsB))
 				if activeContents == nil {
 					log.Printf("Could not find bucket %s\n", activeContentsB)
@@ -76,7 +76,8 @@ func (h *handler) QA() {
 					// than 100 interactions and the average time difference between
 					// interactions must be no longer than 1 hour.
 					// If so, it will be skipped.
-					if (m.Interactions > 100) && (avgUpdateTime <= 1 * time.Hour) {
+					min := 1 * time.Hour
+					if (m.Interactions > 100) && (avgUpdateTime <= min.Seconds()) {
 						continue
 					}
 					// Otherwise, it will be moved to the bucket of archived contents for
@@ -102,6 +103,7 @@ func (h *handler) QA() {
 					go h.deleteThread(s, k, wg)
 				}
 				wg.Wait()
+				return nil
 			})
 		}(s)
 	}
@@ -119,7 +121,7 @@ func (h *handler) QA() {
 // comment.
 func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.WaitGroup) {
 	defer wg.Done()
-	err := s.contents.Update(func(tx *bolt.Tx) error {
+	s.contents.Update(func(tx *bolt.Tx) error {
 		activeContents := tx.Bucket([]byte(activeContentsB))
 		if activeContents == nil {
 			log.Printf("Could not find bucket %s\n", activeContentsB)
@@ -140,10 +142,11 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.
 		count += 2 // Two go-routines will be launched.
 		go func() {
 			pbContent := new(pbDataFormat.Content)
-			if err := proto.Unmarshal(threadBytes, pbContent); err == nil {
+			err := proto.Unmarshal(threadBytes, pbContent)
+			if  err == nil {
 				ctx := &pbContext.Thread{
 					Id:         string(threadId),
-					SectionCtx: &pbDataFormat.Section{
+					SectionCtx: &pbContext.Section{
 						Id: pbContent.SectionId,
 					},
 				}
@@ -223,19 +226,18 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.
 			}
 		}
 		// Finally, delete thread from active contents.
-		if err = activeContents.Delete(threadId); err != nil {
+		if err := activeContents.Delete(threadId); err != nil {
 			log.Printf("Could not DEL thread from active contents: %v\n", err)
 			return err
 		}
 		// Check for errors.
 		for i := 0; i < count; i++ {
-			err = <-done
-			if err != nil {
+			if err := <-done; err != nil {
 				log.Println(err)
-				break
+				return err
 			}
 		}
-		return err
+		return nil
 	})
 }
 
@@ -343,7 +345,7 @@ func (h *handler) deleteThread(s section, threadId []byte, wg sync.WaitGroup) er
 			}
 		}
 		// Finally, delete thread from deleted contents.
-		if err = deletedContents.Delete(threadId); err != nil {
+		if err := deletedContents.Delete(threadId); err != nil {
 			log.Printf("Could not DEL thread from deleted contents: %v\n", err)
 			return err
 		}
@@ -370,7 +372,8 @@ func (h *handler) moveComments(threadId string, actComments, archComments *bolt.
 		count += 2 // Two go-routines will be launched.
 		go func(k, v []byte) {
 			pbContent := new(pbDataFormat.Content)
-			if err := proto.Unmarshal(v, pbContent); err == nil {
+			err := proto.Unmarshal(v, pbContent)
+			if err == nil {
 				ctx := &pbContext.Comment{
 					Id:        string(k),
 					ThreadCtx: &pbContext.Thread{
@@ -429,7 +432,7 @@ func (h *handler) moveSubcomments(actSubcomKeys, archSubcomKeys *bolt.Bucket) er
 		}
 		// Put subcomments from active comments into archived comments.
 		subcomCursor := activeSubcom.Cursor()
-		for k, v = subcomCursor.First(); k != nil; k, v = subcomCursor.Next() {
+		for k, v := subcomCursor.First(); k != nil; k, v = subcomCursor.Next() {
 			count += 2 // Two go-routines will be launched.
 			go func(k, v []byte) {
 				pbContent := new(pbDataFormat.Content)
@@ -525,7 +528,7 @@ func (h *handler) markCommentAsOld(userId string, ctx *pbContext.Comment, done, 
 			for i, c := range pbUser.RecentActivity.Comments {
 				if (c.ThreadCtx.SectionCtx.Id == sectionId) &&
 				(c.ThreadCtx.Id == threadId) &&
-				(c.Id == id) && {
+				(c.Id == id) {
 					found = true
 					if pbUser.OldActivity == nil {
 						pbUser.OldActivity = new(pbDataFormat.Activity)

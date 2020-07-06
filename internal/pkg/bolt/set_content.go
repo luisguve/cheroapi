@@ -7,7 +7,7 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 
-	"google.golang.org/protobuf/proto"
+	"github.com/golang/protobuf/proto"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	bolt "go.etcd.io/bbolt"
 	pbContext "github.com/luisguve/cheroproto-go/context"
@@ -35,10 +35,12 @@ func itob(v uint64) []byte {
 func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Section, userId string) (string, error) {
 	var (
 		sectionId = section.Id
+		permalink string
 	)
 
 	// Check whether the section exists.
-	if sectionDB, ok := h.sections[sectionId]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return "", dbmodel.ErrSectionNotFound
 	}
 	// Get author data.
@@ -49,17 +51,17 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 
 	// Save thread and user in the same transaction.
 	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		activeContents := tx.Bucket(activeContentsB)
+		activeContents := tx.Bucket([]byte(activeContentsB))
 		if activeContents == nil {
 			log.Printf("Bucket %s not found\n", activeContentsB)
 			return dbmodel.ErrBucketNotFound
 		}
 		seq, _ := activeContents.NextSequence()
 		seqB := itob(seq)
-		h := sha1.New()
-		h.Write(seqB)
+		hash := sha1.New()
+		hash.Write(seqB)
 
-		hashSum := h.Sum(nil)
+		hashSum := hash.Sum(nil)
 		// Keep just the first 6 bytes of the hashed sequence.
 		hashSeq := fmt.Sprintf("%x", hashSum[:6])
 
@@ -68,7 +70,7 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 		newId := strings.ToLower(strings.Replace(content.Title, " ", "-", -1))
 		newId += fmt.Sprintf("-%s", hashSeq)
 		// Build permalink: /{section-id}/{thread-id}.
-		permalink := fmt.Sprintf("/%s/%s", sectionId, newId)
+		permalink = fmt.Sprintf("/%s/%s", sectionId, newId)
 
 		pbContent := &pbDataFormat.Content{
 			Title:       content.Title,
@@ -88,7 +90,7 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 		pbContentBytes, err := proto.Marshal(pbContent)
 		if err != nil {
 			log.Printf("Could not marshal content: %v\n", err)
-			return "", err
+			return err
 		}
 		if pbUser.RecentActivity == nil {
 			pbUser.RecentActivity = new(pbDataFormat.Activity)
@@ -127,7 +129,8 @@ func (h *handler) SetThreadContent(thread *pbContext.Thread, content *pbDataForm
 	)
 
 	// check whether the section exists
-	if sectionDB, ok := h.sections[sectionId]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return dbmodel.ErrSectionNotFound
 	}
 
@@ -157,7 +160,8 @@ func (h *handler) SetCommentContent(comment *pbContext.Comment, content *pbDataF
 	)
 
 	// check whether the section exists
-	if sectionDB, ok := h.sections[sectionId]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return dbmodel.ErrSectionNotFound
 	}
 
@@ -189,9 +193,11 @@ func (h *handler) SetSubcommentContent(subcomment *pbContext.Subcomment, content
 	)
 
 	// check whether the section exists
-	if sectionDB, ok := h.sections[sectionId]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return dbmodel.ErrSectionNotFound
 	}
+	
 	contentBytes, err := proto.Marshal(content)
 	if err != nil {
 		log.Printf("Could not marshal content: %v\n", err)

@@ -2,6 +2,8 @@ package server
 
 import(
 	"context"
+	"errors"
+	"golang.org/x/crypto/bcrypt"
 
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/codes"

@@ -1,12 +1,14 @@
 package patillator
 
 import(
+	"time"
+
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 )
 
 // Content holds only the thread Id. The caller should know the section Id it
 // belongs to.
-type Content *pbMetadata.Content
+type Content pbMetadata.Content
 
 // ToDiscard iterates over the received list of ids, compares the ids to the
 // field DataKey of the underlying *pbMetadata.Content and returns true if it
@@ -18,7 +20,7 @@ type Content *pbMetadata.Content
 // last element.
 func (c Content) ToDiscard(ids []string) (bool, []string) {
 	// type cast for ease of use
-	metadata := *pbMetadata.Content(c)
+	metadata := pbMetadata.Content(c)
 	discard := false
 
 	for i := 0; i < len(ids); i++ {
@@ -41,8 +43,9 @@ func (c Content) ToDiscard(ids []string) (bool, []string) {
 // comparison on the Interactions and AvgUpdateTime fields, respectively.
 func (c Content) IsRelevant() bool {
 	// type cast for ease of use
-	metadata := *pbMetadata.Content(c)
-	return (metadata.Interactions > 10) && (metadata.AvgUpdateTime <= 10 * time.Minute)
+	metadata := pbMetadata.Content(c)
+	min := 10 * time.Minute
+	return (metadata.Interactions > 10) && (metadata.AvgUpdateTime <= min.Minutes())
 }
 
 // IsLessRelevantThan compares the field Interactions and the field AvgUpdateTime
@@ -54,26 +57,27 @@ func (c Content) IsRelevant() bool {
 // a Content.
 func (c Content) IsLessRelevantThan(other interface{}) bool {
 	// type assert to get access to fields Interactions and AvgUpdateTime
-	if otherC, ok := other.(Content); !ok {
+	otherC, ok := other.(Content)
+	if !ok {
 		return false
 	}
 	// type cast for ease of use
-	metadata := *pbMetadata.Content(c)
-	otherMetadata := *pbMetadata.Content(otherC)
+	metadata := pbMetadata.Content(c)
+	otherMetadata := pbMetadata.Content(otherC)
 	return (metadata.Interactions < otherMetadata.Interactions) &&
 		(metadata.AvgUpdateTime >= otherMetadata.AvgUpdateTime)
 }
 
-// DataKey returns a string containing the field DataKey of c, which represents
+// Key returns a string containing the field DataKey of c, which represents
 // a thread Id. The caller should know the section it belongs to.
-func (c Content) DataKey() interface{} {
+func (c Content) Key() interface{} {
 	// type cast for ease of use
-	metadata := *pbMetadata.Content(c)
+	metadata := pbMetadata.Content(c)
 	return metadata.DataKey
 }
 
 // GeneralContent holds the thread Id as well as the section Id it belongs to.
-type GeneralContent *pbMetadata.GeneralContent
+type GeneralContent pbMetadata.GeneralContent
 
 // ToDiscard iterates over the received list of ids, compares the ids to the
 // field DataKey of the Content of the underlying *pbMetadata.GeneralContent
@@ -85,7 +89,7 @@ type GeneralContent *pbMetadata.GeneralContent
 // last element.
 func (gc GeneralContent) ToDiscard(ids []string) (bool, []string) {
 	// type cast for ease of use
-	metadata := *pbMetadata.GeneralContent(gc)
+	metadata := pbMetadata.GeneralContent(gc)
 	discard := false
 
 	for i := 0; i < len(ids); i++ {
@@ -108,9 +112,10 @@ func (gc GeneralContent) ToDiscard(ids []string) (bool, []string) {
 // comparison on the Interactions and AvgUpdateTime fields, respectively.
 func (gc GeneralContent) IsRelevant() bool {
 	// type cast for ease of use
-	metadata := *pbMetadata.GeneralContent(gc)
+	metadata := pbMetadata.GeneralContent(gc)
+	min := 10 * time.Minute
 	return (metadata.Content.Interactions > 10) && 
-		(metadata.Content.AvgUpdateTime <= 10 * time.Minute)
+		(metadata.Content.AvgUpdateTime <= min.Minutes())
 }
 
 // IsLessRelevantThan compares the field Interactions and the field AvgUpdateTime
@@ -122,21 +127,22 @@ func (gc GeneralContent) IsRelevant() bool {
 // a GeneralContent.
 func (gc GeneralContent) IsLessRelevantThan(other interface{}) bool {
 	// type assert to get access to fields Contents.Interactions and Contents.AvgUpdateTime
-	if otherGC, ok := other.(GeneralContent); !ok {
+	otherGC, ok := other.(GeneralContent)
+	if !ok {
 		return false
 	}
 	// type cast for ease of use
-	metadata := *pbMetadata.GeneralContent(gc)
-	otherMetadata := *pbMetadata.GeneralContent(otherGC)
+	metadata := pbMetadata.GeneralContent(gc)
+	otherMetadata := pbMetadata.GeneralContent(otherGC)
 	return (metadata.Content.Interactions < otherMetadata.Content.Interactions) &&
 		(metadata.Content.AvgUpdateTime >= otherMetadata.Content.AvgUpdateTime)
 }
 
-// DataKey returns a GeneralId, which holds a thread id and the section it
-// belongs to.
-func (gc GeneralContent) DataKey() interface{} {
+// Key returns a GeneralId, which holds a thread id and the section it belongs
+// to.
+func (gc GeneralContent) Key() interface{} {
 	// type cast for ease of use
-	metadata := *pbMetadata.GeneralContent(gc)
+	metadata := pbMetadata.GeneralContent(gc)
 	return GeneralId{
 		Id:        metadata.Content.DataKey,
 		SectionId: metadata.SectionId,

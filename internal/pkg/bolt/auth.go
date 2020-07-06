@@ -8,13 +8,14 @@ import(
 	"google.golang.org/grpc/status"
 	"github.com/satori/go.uuid"
 	"golang.org/x/crypto/bcrypt"
+	"github.com/golang/protobuf/proto"
 	bolt "go.etcd.io/bbolt"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 )
 
 // FindUserIdByUsername looks for a user id with the given username as the key
-// in the bucket usernamesB from the users database of h, and returns it and a
+// in the bucket usernameIdsB from the users database of h, and returns it and a
 // nil error if it could be found, or a nil []byte and an ErrUsernameNotFound
 // if the username could not be found or an ErrBucketNotFound if the query could
 // not be completed.
@@ -24,23 +25,22 @@ func (h *handler) FindUserIdByUsername(username string) ([]byte, error) {
 		err error
 	)
 	err = h.users.View(func(tx *bolt.Tx) error {
-		usernamesBucket := tx.Bucket([]byte(usernamesB))
+		usernamesBucket := tx.Bucket([]byte(usernameIdsB))
 		if usernamesBucket == nil {
-			log.Printf("Bucket %s of users not found\n", usernamesB)
+			log.Printf("Bucket %s of users not found\n", usernameIdsB)
 			return dbmodel.ErrBucketNotFound
 		}
-		userIdBytes := usernamesBucket.Get([]byte(username))
-		if userIdBytes == nil {
+		userId = usernamesBucket.Get([]byte(username))
+		if userId == nil {
 			return dbmodel.ErrUsernameNotFound
 		}
-		copy(userId, userIdBytes)
 		return nil
 	})
 	return userId, err
 }
 
 // FindUserIdByEmail looks for a user id with the given email as the key in the
-// bucket usernamesB from the users database of h, and returns it and a nil
+// bucket usernameIdsB from the users database of h, and returns it and a nil
 // error if it could be found, or a nil []byte and an ErrEmailNotFound if the
 // username could not be found or an ErrBucketNotFound if the query could not
 // not be completed.
@@ -50,16 +50,15 @@ func (h *handler) FindUserIdByEmail(email string) ([]byte, error) {
 		err error
 	)
 	err = h.users.View(func(tx *bolt.Tx) error {
-		emailsBucket := tx.Bucket([]byte(emailsB))
+		emailsBucket := tx.Bucket([]byte(emailIdsB))
 		if emailsBucket == nil {
-			log.Printf("Bucket %s of users not found\n", emailsB)
+			log.Printf("Bucket %s of users not found\n", emailIdsB)
 			return dbmodel.ErrBucketNotFound
 		}
-		userIdBytes := emailsBucket.Get([]byte(email))
-		if userIdBytes == nil {
+		userId = emailsBucket.Get([]byte(email))
+		if userId == nil {
 			return dbmodel.ErrEmailNotFound
 		}
-		copy(userId, userIdBytes)
 		return nil
 	})
 	return userId, err
@@ -73,7 +72,7 @@ func (h *handler) FindUserIdByEmail(email string) ([]byte, error) {
 func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about,
 	password string) (string, *status.Status) {
 	// check whether the username has been already taken
-	_, err := FindUserIdByUsername(username)
+	_, err := h.FindUserIdByUsername(username)
 	// there must be an error, which should be ErrUsernameNotFound, otherwise the
 	// query could not be completed or the username has already been taken.
 	if err != nil {
@@ -85,7 +84,7 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 	}
 
 	// check whether the email has been already taken
-	_, err := FindUserIdByEmail(email)
+	_, err = h.FindUserIdByEmail(email)
 	// there must be an error, which should be ErrEmailNotFound, otherwise the
 	// query could not be completed or the email has already been taken.
 	if err != nil {
@@ -146,10 +145,10 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 			return err
 		}
 
-		// associate username to user id
-		usernamesBucket := tx.Bucket([]byte(usernamesB))
+		// Associate username to user id and user id to username.
+		usernamesBucket := tx.Bucket([]byte(usernameIdsB))
 		if usernamesBucket == nil {
-			log.Printf("Bucket %s of users not found\n", usernamesB)
+			log.Printf("Bucket %s of users not found\n", usernameIdsB)
 			return dbmodel.ErrBucketNotFound
 		}
 		err = usernamesBucket.Put([]byte(username), []byte(userId))
@@ -157,14 +156,36 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 			log.Printf("Could not put username: %v\n", err)
 			return err
 		}
+		// Like above, but vice-versa.
+		usernamesBucket = tx.Bucket([]byte(idUsernamesB))
+		if usernamesBucket == nil {
+			log.Printf("Bucket %s of users not found\n", idUsernamesB)
+			return dbmodel.ErrBucketNotFound
+		}
+		err = usernamesBucket.Put([]byte(userId), []byte(username))
+		if err != nil {
+			log.Printf("Could not put username: %v\n", err)
+			return err
+		}
 
 		// associate email to user id
-		emailsBucket := tx.Bucket([]byte(emailsB))
+		emailsBucket := tx.Bucket([]byte(emailIdsB))
 		if emailsBucket == nil {
-			log.Printf("Bucket %s of users not found\n", emailsB)
+			log.Printf("Bucket %s of users not found\n", emailIdsB)
 			return dbmodel.ErrBucketNotFound
 		}
 		err = emailsBucket.Put([]byte(email), []byte(userId))
+		if err != nil {
+			log.Printf("Could not put user email: %v\n", err)
+			return err
+		}
+		// Like above, but vice-versa.
+		emailsBucket = tx.Bucket([]byte(idEmailsB))
+		if emailsBucket == nil {
+			log.Printf("Bucket %s of users not found\n", idEmailsB)
+			return dbmodel.ErrBucketNotFound
+		}
+		err = emailsBucket.Put([]byte(userId), []byte(email))
 		if err != nil {
 			log.Printf("Could not put user email: %v\n", err)
 			return err
@@ -183,7 +204,7 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 func (h *handler) User(userId string) (*pbDataFormat.User, error) {
 	pbUser := new(pbDataFormat.User)
 	err := h.users.View(func(tx *bolt.Tx) error {
-		usersBucket := tx.Bucket(usersB)
+		usersBucket := tx.Bucket([]byte(usersB))
 		if usersBucket == nil {
 			log.Printf("Bucket %s of users not found\n", usersB)
 			return dbmodel.ErrBucketNotFound
@@ -206,21 +227,40 @@ func (h *handler) User(userId string) (*pbDataFormat.User, error) {
 	return pbUser, nil
 }
 
-// MapUsername associates username to user id, returns ErrUsernameAlreadyExists
+// MapUsername associates newUsername to user id, returns ErrUsernameAlreadyExists
 // if the username is not available.
-func (h *handler) MapUsername(username, userId string) error {
+func (h *handler) MapUsername(newUsername, userId string) error {
 	return h.users.Update(func(tx *bolt.Tx) error {
-		// associate username to user id
-		usernamesBucket := tx.Bucket([]byte(usernamesB))
+		usernamesBucket := tx.Bucket([]byte(usernameIdsB))
 		if usernamesBucket == nil {
-			log.Printf("Bucket %s of users not found\n", usernamesB)
+			log.Printf("Bucket %s of users not found\n", usernameIdsB)
 			return dbmodel.ErrBucketNotFound
 		}
-		userIdBytes := usernamesBucket.Get([]byte(username))
+		userIdBytes := usernamesBucket.Get([]byte(newUsername))
 		if userIdBytes != nil {
 			return dbmodel.ErrUsernameAlreadyExists
 		}
-		return usernamesBucket.Put([]byte(username), []byte(userId))
+		idsBucket := tx.Bucket([]byte(idUsernamesB))
+		if idsBucket == nil {
+			log.Printf("Bucket %s of users not found\n", idUsernamesB)
+			return dbmodel.ErrBucketNotFound
+		}
+		oldUsername := idsBucket.Get([]byte(userId))
+		if oldUsername == nil {
+			return dbmodel.ErrUsernameNotFound
+		}
+		// Delete old username
+		err := usernamesBucket.Delete(oldUsername)
+		if err != nil {
+			return err
+		}
+		// Set new username.
+		err = usernamesBucket.Put([]byte(newUsername), []byte(userId))
+		if err != nil {
+			return err
+		}
+		// Reset value in ids to usernames mapping.
+		return idsBucket.Put([]byte(userId), []byte(newUsername))
 	})
 }
 
@@ -240,5 +280,5 @@ func (h *handler) UpdateUser(pbUser *pbDataFormat.User, userId string) error {
 			return dbmodel.ErrBucketNotFound
 		}
 		return usersBucket.Put([]byte(userId), pbUserBytes)
-	}
+	})
 }

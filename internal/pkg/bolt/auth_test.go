@@ -1,11 +1,11 @@
 package bolt_test
 
 import (
+	"fmt"
 	"testing"
-	"strconv"
 
-	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	"github.com/luisguve/cheroapi/internal/pkg/bolt"
 )
 
@@ -16,7 +16,7 @@ type user struct {
 // Register users, get them, get their ids through they usernames and emails,
 // update their data, and update their usernames.
 func TestAuthUser(t *testing.T) {
-	db, err := bolt.New("db")
+	db, err := bolt.New("../../../db")
 	if err != nil {
 		t.Errorf("DB open error: %v\n", err)
 	}
@@ -56,7 +56,7 @@ func TestAuthUser(t *testing.T) {
 	for _, u := range users {
 		userId, st := db.RegisterUser(u.email, u.name, u.patillavatar, u.username, u.alias, u.about, u.password)
 		if st != nil {
-			t.Errorf("Got status %v: %v\n", st.Code(). st.Message())
+			t.Errorf("Got status %v: %v\n", st.Code(), st.Message())
 		}
 		ids = append(ids, userId)
 		userKeys[userId] = u
@@ -123,20 +123,24 @@ func TestAuthUser(t *testing.T) {
 			t.Errorf("Expected %v\nGot: %v\n", id, string(idBytes))
 		}
 	}
+	var oldUsernames []string
 	// Change username of users, append a number to it.
-	num := 1
 	for _, id := range ids {
-		sNum := strconv.Itoa(num)
+		oldUsernames = append(oldUsernames, userKeys[id].username)
 		// Build new username.
-		username := pbUsers[id].BasicUserData.Username + sNum
+		username := pbUsers[id].BasicUserData.Username + "-2"
 		err := db.MapUsername(username, id)
 		if err != nil {
 			t.Errorf("Got err: %v\n", err)
 		}
-		num++
 		// Set new username and save user.
-		userKeys[id].username = username
-		pbUsers[id].BasicUserData.Username = username
+		user := userKeys[id]
+		user.username = username
+		userKeys[id] = user
+
+		pbUser := pbUsers[id]
+		pbUser.BasicUserData.Username = username
+		pbUsers[id] = pbUser
 		err = db.UpdateUser(pbUser, id)
 		if err != nil {
 			t.Errorf("Got err: %v\n", err)
@@ -144,13 +148,20 @@ func TestAuthUser(t *testing.T) {
 	}
 	// Get user id by username again.
 	for _, id := range ids {
-		username := pbUser[id].BasicUserData.Username
+		username := pbUsers[id].BasicUserData.Username
 		idBytes, err := db.FindUserIdByUsername(username)
 		if err != nil {
 			t.Errorf("Got err: %v\n", err)
 		}
 		if !(id == string(idBytes)) {
 			t.Errorf("Expected %v\nGot: %v\n", id, string(idBytes))
+		}
+	}
+	// Try to get id associated to old usernames.
+	for _, username := range oldUsernames {
+		_, err := db.FindUserIdByUsername(username)
+		if err != dbmodel.ErrUsernameNotFound {
+			t.Errorf("Expected: %v\nGot: %v\n", dbmodel.ErrUsernameNotFound, err)
 		}
 	}
 }

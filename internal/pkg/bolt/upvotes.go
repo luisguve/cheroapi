@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
-	bolt "go.etcd.io/bbolt"
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
@@ -169,12 +168,12 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 					}
 					subj := fmt.Sprintf("On your comment on %s", pbComment.Title)
 					notifType := pbDataFormat.Notif_UPVOTE_COMMENT
-					errNotifyUser.notifyUser = h.notifyInteraction(userId, toNotify, msg, notifType, pbComment)
+					errNotifyUser.notifyUser = h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbComment)
 				}
 			}
 		}
 		errNotifyUser.err = err
-		close(upvotes)
+		close(com)
 		select {
 		case done<- errNotifyUser:
 		case <-quit:
@@ -317,6 +316,7 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 	}(subcom)
 	// get and update comment data
 	go func(comment *pbContext.Comment) {
+		var errNotifyUser errNotif
 		pbComment, err := h.GetCommentContent(comment)
 		if err == nil {
 			// increment interactions and calculata new average update time only
@@ -328,8 +328,9 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 
 			err = h.SetCommentContent(comment, pbComment)
 		}
+		errNotifyUser.err = err
 		select {
-		case done<- err:
+		case done<- errNotifyUser:
 		case <-quit:
 		}
 	}(subcomment.CommentCtx)

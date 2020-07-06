@@ -1,14 +1,14 @@
-package Server
+package server
 
 import(
-	"context"
+	"log"
+	"fmt"
+	"sync"
 
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/codes"
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
-	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
-	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
@@ -53,9 +53,9 @@ func (s *Server) RecycleContent(req *pbApi.ContentPattern, stream pbApi.CrudCher
 	// - GetThreadsOverview and GetThreads in case of a section
 	// - GetCommentsOverview and GetComments in case of a thread
 	switch ctx := req.ContentContext.(type) {
-	case *pbContext.ContentPattern_SectionCtx:
+	case *pbApi.ContentPattern_SectionCtx:
 		// get threads in a section
-		metadata, getErr1 = s.dbHandler.GetThreadsOverview(ctx.SectionCtx, setSDF)
+		metadata, getErr1 = s.dbHandler.GetThreadsOverview(ctx.SectionCtx)
 		// return an error only if no content could be gotten
 		if (getErr1 != nil) && (len(metadata) == 0) {
 			return status.Error(codes.Internal, getErr1.Error())
@@ -64,9 +64,9 @@ func (s *Server) RecycleContent(req *pbApi.ContentPattern, stream pbApi.CrudCher
 		cleanedUp = patillator.DiscardContents(metadata, req.DiscardIds)
 		contentIds = patillator.FillPattern(cleanedUp, req.Pattern)
 		contentRules, getErr2 = s.dbHandler.GetThreads(ctx.SectionCtx, contentIds)
-	case *pbContext.ContentPattern_ThreadCtx:
+	case *pbApi.ContentPattern_ThreadCtx:
 		// get comments in a thread
-		metadata, getErr1 = s.dbHandler.GetCommentsOverview(ctx.ThreadCtx, setSDF)
+		metadata, getErr1 = s.dbHandler.GetCommentsOverview(ctx.ThreadCtx)
 		// return an error only if no content could be gotten
 		if (getErr1 != nil) && (len(metadata) == 0) {
 			return status.Error(codes.Internal,	getErr1.Error())
@@ -246,9 +246,9 @@ func (s *Server) RecycleActivity(req *pbApi.ActivityPattern, stream pbApi.CrudCh
 	// assign users to a new variable
 	var users []string
 	switch ctx := req.Context.(type) {
-	case *ActivityPattern_Users:
-		users = ctx.UserList
-	case *ActivityPattern_UserId:
+	case *pbApi.ActivityPattern_Users:
+		users = ctx.Users.Ids
+	case *pbApi.ActivityPattern_UserId:
 		users = append(users, ctx.UserId)
 	default:
 		return status.Error(codes.InvalidArgument, "A Context is required")

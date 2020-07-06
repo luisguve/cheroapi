@@ -1,19 +1,23 @@
 package patillator
 
 import(
+	"time"
+
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
+	pbContext "github.com/luisguve/cheroproto-go/context"
 )
 
 // ActivityMetadata holds the metadata of a content.
-type ActivityMetadata *pbMetadata.Content
+type ActivityMetadata pbMetadata.Content
 
 // IsRelevant returns true if the number of interactions is greater than 10 and
 // the average update time difference is less than 10 minutes. It does the
 // comparison on the Interactions and AvgUpdateTime fields, respectively.
 func (am ActivityMetadata) IsRelevant() bool {
 	// type cast for ease of use
-	metadata := *pbMetadata.Content(am)
-	return (metadata.Interactions > 10) && (metadata.AvgUpdateTime <= 10 * time.Minute)
+	metadata := pbMetadata.Content(am)
+	min := 10 * time.Minute
+	return (metadata.Interactions > 10) && (metadata.AvgUpdateTime <= min.Minutes())
 }
 
 // IsLessRelevantThan compares the field Interactions and the field AvgUpdateTime
@@ -25,12 +29,13 @@ func (am ActivityMetadata) IsRelevant() bool {
 // is not an ActivityMetadata.
 func (am ActivityMetadata) IsLessRelevantThan(other interface{}) bool {
 	// type assert to get the underlying ActivityMetadata
-	if otherAM, ok := other.(ActivityMetadata); !ok {
+	otherAM, ok := other.(ActivityMetadata)
+	if !ok {
 		return false
 	}
 	// type cast for ease of use
-	metadata := *pbMetadata.Content(am)
-	otherMetadata := *pbMetadata.Content(otherAM)
+	metadata := pbMetadata.Content(am)
+	otherMetadata := pbMetadata.Content(otherAM)
 	return (metadata.Interactions < otherMetadata.Interactions) &&
 		(metadata.AvgUpdateTime >= otherMetadata.AvgUpdateTime)
 }
@@ -41,8 +46,8 @@ type ThreadActivity struct {
 	ActivityMetadata
 }
 
-// DataKey returns a Context containing a thread context.
-func (ta ThreadActivity) DataKey() interface{} {
+// Key returns a Context containing a thread context.
+func (ta ThreadActivity) Key() interface{} {
 	return &pbContext.Context{
 		Ctx: &pbContext.Context_ThreadCtx{
 			ThreadCtx: ta.Thread,
@@ -88,8 +93,8 @@ type CommentActivity struct {
 	ActivityMetadata
 }
 
-// DataKey returns a Context containing a comment context.
-func (ca CommentActivity) DataKey() interface{} {
+// Key returns a Context containing a comment context.
+func (ca CommentActivity) Key() interface{} {
 	return &pbContext.Context{
 		Ctx: &pbContext.Context_CommentCtx{
 			CommentCtx: ca.Comment,
@@ -148,8 +153,8 @@ type SubcommentActivity struct {
 	ActivityMetadata
 }
 
-// DataKey returns a Context containing a subcomment context.
-func (sca SubcommentActivity) DataKey() interface{} {
+// Key returns a Context containing a subcomment context.
+func (sca SubcommentActivity) Key() interface{} {
 	return &pbContext.Context{
 		Ctx: &pbContext.Context_SubcommentCtx{
 			SubcommentCtx: sca.Subcomment,

@@ -1,8 +1,16 @@
 package bolt
 
 import(
+	"log"
+	"sync"
+
+	bolt "go.etcd.io/bbolt"
+	"github.com/golang/protobuf/proto"
+	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
-	"google.golang.org/protobuf/proto"
+	pbContext "github.com/luisguve/cheroproto-go/context"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 )
 
 // Get metadata of comments in a thread. It returns ErrSectionNotFound if the
@@ -17,12 +25,13 @@ func (h *handler) GetCommentsOverview(thread *pbContext.Thread) ([]patillator.Se
 		contents []patillator.SegregateDiscarderFinder
 	)
 	// check whether the section exists
-	if sectionDB, ok := h.sections[sectionId]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
 
 	setContent := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
-		return patillator.Content(c.Metadata)
+		return patillator.Content(*c.Metadata)
 	}
 
 	// query database
@@ -98,7 +107,8 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 	)
 
 	// check whether the section exists
-	if sectionDB, ok := h.sections[sectionId]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
 
@@ -114,7 +124,7 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 			done = make(chan error)
 			quit = make(chan error)
 		)
-		for idx, id = range ids {
+		for idx, id := range ids {
 			// Do the content querying, unmarshaling, formatting and appending
 			// in its own go-routine. Should it get an error and it will send
 			// it to the channel done, otherwise it will be sending nil to the
@@ -131,7 +141,7 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 						log.Printf("Could not unmarshal content: %v\n", err)
 						contentRules[idx] = &pbApi.ContentRule{}
 					} else {
-						contentRule := h.formatCommentContentRule(pbContent, section, id)
+						contentRule := h.formatCommentContentRule(pbContent, thread, id)
 						contentRules[idx] = contentRule
 					}
 					select {
@@ -179,7 +189,8 @@ func (h *handler) GetCommentContent(comment *pbContext.Comment) (*pbDataFormat.C
 	)
 
 	// check whether the section exists
-	if sectionDB, ok := h.sections[sectionId]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
 
@@ -218,7 +229,8 @@ func (h *handler) GetSubcommentContent(subcomment *pbContext.Subcomment) (*pbDat
 	)
 
 	// check whether the section exists
-	if sectionDB, ok := h.sections[sectionId]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
 
@@ -276,7 +288,7 @@ func (h *handler) GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.Co
 	// number of comments to get
 	const Q = 10
 	var (
-		commentId = comment.Id,
+		commentId = comment.Id
 		threadId = comment.ThreadCtx.Id
 		sectionId = comment.ThreadCtx.SectionCtx.Id
 		contentRules = make([]*pbApi.ContentRule, Q)
@@ -299,7 +311,6 @@ func (h *handler) GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.Co
 			done = make(chan error)
 			quit = make(chan error)
 			wg sync.WaitGroup
-			m sync.Mutex
 		)
 		for k, v := c.First(); (k != nil) && (count < (n + Q)); k, v = c.Next() {
 			count++

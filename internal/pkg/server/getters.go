@@ -1,6 +1,14 @@
 package server
 
 import(
+	"context"
+	"errors"
+	"log"
+
+	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/codes"
+	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 )
 
@@ -82,10 +90,10 @@ func (s *Server) GetSubcomments(req *pbApi.GetSubcommentsRequest, stream pbApi.C
 		err error
 		sendErr error
 		ctx = req.CommentCtx
-		offset = req.Offset
+		offset = int(req.Offset)
 		contentRules []*pbApi.ContentRule
 	)
-	contentRules, err = d.dbHandler.GetSubcomments(ctx, offset)
+	contentRules, err = s.dbHandler.GetSubcomments(ctx, offset)
 	if err != nil {
 		if errors.Is(err, dbmodel.ErrSectionNotFound) ||
 			errors.Is(err, dbmodel.ErrThreadNotFound) ||
@@ -109,13 +117,13 @@ func (s *Server) GetSubcomments(req *pbApi.GetSubcommentsRequest, stream pbApi.C
 // Get either following or followers users' basic data
 func (s *Server) ViewUsers(ctx context.Context, req *pbApi.ViewUsersRequest) (*pbApi.ViewUsersResponse, error) {
 	if s.dbHandler == nil {
-		return status.Error(codes.Internal, "No database connection")
+		return nil, status.Error(codes.Internal, "No database connection")
 	}
 	// number of users to get
 	const Q = 10
 	var (
 		userId = req.UserId
-		ctx = req.Context
+		followCtx = req.Context
 		offset = int(req.Offset)
 		pbUsersData = make([]*pbDataFormat.BasicUserData, Q)
 		count = 0
@@ -132,13 +140,14 @@ func (s *Server) ViewUsers(ctx context.Context, req *pbApi.ViewUsersRequest) (*p
 		quit = make(chan error)
 	)
 	// Get data of users concurrently.
-	switch ctx {
+	switch followCtx {
 	case "following":
 		if offset >= len(pbUser.FollowingIds) {
 			return nil, status.Error(codes.OutOfRange, "Offset out of range")
 		}
 		userIds := pbUser.FollowingIds[offset:]
-		for i := 0; (i < len(userIds)) && (count < Q); i++, count++ {
+		for i := 0; (i < len(userIds)) && (count < Q); i++ {
+			count++
 			userId := userIds[i]
 			go func(userId string, idx int) {
 				var (
@@ -160,7 +169,8 @@ func (s *Server) ViewUsers(ctx context.Context, req *pbApi.ViewUsersRequest) (*p
 			return nil, status.Error(codes.OutOfRange, "Offset out of range")
 		}
 		userIds := pbUser.FollowersIds[offset:]
-		for i := 0; (i < len(userIds)) && (count < Q); i++, count++ {
+		for i := 0; (i < len(userIds)) && (count < Q); i++ {
+			count++
 			userId := userIds[i]
 			go func(userId string, idx int) {
 				var (
@@ -195,7 +205,9 @@ func (s *Server) ViewUsers(ctx context.Context, req *pbApi.ViewUsersRequest) (*p
 		// of the last Q - count (empty) data of users.
 		pbUsersData = pbUsersData[:count]
 	}
-	return pbUsersData, nil
+	return &pbApi.ViewUsersResponse{
+		BasicUserData: pbUsersData,
+	}, nil
 }
 
 // Get username basic data, following, followers and threads created

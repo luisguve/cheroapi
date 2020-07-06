@@ -3,6 +3,7 @@ package bolt
 import (
 	"log"
 
+	"github.com/golang/protobuf/proto"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
@@ -19,7 +20,8 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 		usersWhoSaved []string
 	)
 	// check whether the section exists
-	if sectionDB, ok := h.sections[sectionId]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return dbmodel.ErrSectionNotFound
 	}
 
@@ -41,7 +43,7 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 			return err
 		}
 		if pbThread.AuthorId != userId {
-			return dbmodel.ErrUsetNotAllowed
+			return dbmodel.ErrUserNotAllowed
 		}
 		// Check whether the thread is active. If so, it inserts it into the
 		// bucket of deleted threads.
@@ -157,7 +159,8 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 		sectionId = comment.ThreadCtx.SectionCtx.Id
 	)
 	// check whether the section exists
-	if sectionDB, ok := h.sections[sectionId]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return dbmodel.ErrSectionNotFound
 	}
 
@@ -233,7 +236,7 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 		for i, c := range pbUser.RecentActivity.Comments {
 			if (c.ThreadCtx.SectionCtx.Id == sectionId) &&
 			(c.ThreadCtx.Id == threadId) &&
-			(c.Id == id) && {
+			(c.Id == id) {
 				found = true
 				last := len(pbUser.RecentActivity.Comments) - 1
 				pbUser.RecentActivity.Comments[i] = pbUser.RecentActivity.Comments[last]
@@ -248,7 +251,7 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 			for i, c := range pbUser.OldActivity.Comments {
 				if (c.ThreadCtx.SectionCtx.Id == sectionId) &&
 				(c.ThreadCtx.Id == threadId) &&
-				(c.Id == id) && {
+				(c.Id == id) {
 					found = true
 					last := len(pbUser.RecentActivity.Comments) - 1
 					pbUser.RecentActivity.Comments[i] = pbUser.RecentActivity.Comments[last]
@@ -277,7 +280,8 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 		sectionId = subcomment.CommentCtx.ThreadCtx.SectionCtx.Id
 	)
 	// check whether the section exists
-	if sectionDB, ok := h.sections[sectionId]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return dbmodel.ErrSectionNotFound
 	}
 
@@ -299,7 +303,7 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 			return err
 		}
 		if pbSubcomment.AuthorId != userId {
-			return dbmodel.ErrUsetNotAllowed
+			return dbmodel.ErrUserNotAllowed
 		}
 		if err = subcommentsBucket.Delete([]byte(id)); err != nil {
 			return err

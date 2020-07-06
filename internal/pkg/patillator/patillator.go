@@ -4,19 +4,20 @@
 package patillator
 
 import(
-	"time"
+	"math/rand"
 
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
 // ContentFinder is the set of methods that provide the required information
 // to find the underlying content among the different databases.
 type ContentFinder interface {
-	// DataKey returns the required information for finding the content among
-	// the databases. The caller must know the type of the returned value to
-	// perform a type assertion.
-	DataKey() interface{}
+	// Key returns the required information for finding the content among the
+	// databases. The caller must know the type of the returned value to perform
+	// a type assertion.
+	Key() interface{}
 }
 
 // Segregator is the set of methods to classify the underlying content and
@@ -73,6 +74,10 @@ type segregatedContents struct {
 	topContent  ContentFinder
 }
 
+// The SDF type is a Callback to convert a Content to a SegregateDiscarderFinder.
+// It is defined for shortness.
+type SetSDF func(*pbDataFormat.Content) SegregateDiscarderFinder
+
 // FillActivityPattern merges the fields ThreadsCreated, Comments and
 // Subcomments (type []SegregateFinder) from the given map[string]UserActivity
 // into a single []SegregateFinder, and then fetches out SegregateFinder
@@ -99,14 +104,13 @@ func FillActivityPattern(activity map[string]UserActivity, pattern []pbMetadata.
 	var empty bool
 	FOR:
 		for _, status := range pattern {
-			switch pbMetadata.ContentStatus_name[status] {
+			switch pbMetadata.ContentStatus_name[int32(status)] {
 			case "NEW":
 				content, segActivities.newContents, segActivities.relContents, empty = fetch(segActivities.newContents,
 					segActivities.relContents)
 				if !empty {
-					var ctx *pbContext.Context
 					// check type assertion to ensure there will not be a panic
-					if ctx, ok :=  content.DataKey().(*pbContext.Context); ok {
+					if ctx, ok :=  content.Key().(*pbContext.Context); ok {
 						result = append(result, ctx)
 					}
 					continue
@@ -116,9 +120,8 @@ func FillActivityPattern(activity map[string]UserActivity, pattern []pbMetadata.
 				content, segActivities.relContents, segActivities.newContents, empty = fetch(segActivities.relContents,
 					segActivities.newContents)
 				if !empty {
-					var ctx *pbContext.Context
 					// check type assertion to ensure there will not be a panic
-					if ctx, ok :=  content.DataKey().(*pbContext.Context); ok {
+					if ctx, ok :=  content.Key().(*pbContext.Context); ok {
 						result = append(result, ctx)
 					}
 					continue
@@ -126,9 +129,8 @@ func FillActivityPattern(activity map[string]UserActivity, pattern []pbMetadata.
 				fallthrough
 			case "TOP":
 				if segActivities.topContent != nil {
-					var ctx *pbContext.Context
 					// check type assertion to ensure there will not be a panic
-					if ctx, ok :=  segActivities.topContent.DataKey().(*pbContext.Context); ok {
+					if ctx, ok :=  segActivities.topContent.Key().(*pbContext.Context); ok {
 						result = append(result, ctx)
 					}
 					// set topContent to nil to avoid reaching this point again.
@@ -166,14 +168,13 @@ func FillGeneralPattern(generalContents map[string][]SegregateFinder, pattern []
 	var empty bool
 	FOR:
 		for _, status := range pattern {
-			switch pbMetadata.ContentStatus_name[status] {
+			switch pbMetadata.ContentStatus_name[int32(status)] {
 			case "NEW":
 				content, segContents.newContents, segContents.relContents, empty = fetch(segContents.newContents,
 					segContents.relContents)
 				if !empty {
-					var id GeneralId
 					// check type assertion to ensure there will not be a panic.
-					if id, ok := content.DataKey().(GeneralId); ok {
+					if id, ok := content.Key().(GeneralId); ok {
 						result = append(result, id)
 					}
 					continue
@@ -183,9 +184,8 @@ func FillGeneralPattern(generalContents map[string][]SegregateFinder, pattern []
 				content, segContents.relContents, segContents.newContents, empty = fetch(segContents.relContents,
 					segContents.newContents)
 				if !empty {
-					var id GeneralId
 					// check type assertion to ensure there will not be a panic.
-					if id, ok := content.DataKey().(GeneralId); ok {
+					if id, ok := content.Key().(GeneralId); ok {
 						result = append(result, id)
 					}
 					continue
@@ -193,9 +193,8 @@ func FillGeneralPattern(generalContents map[string][]SegregateFinder, pattern []
 				fallthrough
 			case "TOP":
 				if segContents.topContent != nil {
-					var id GeneralId
 					// check type assertion to ensure there will not be a panic.
-					if id, ok := segContents.topContent.DataKey().(GeneralId); ok {
+					if id, ok := segContents.topContent.Key().(GeneralId); ok {
 						result = append(result, id)
 					}
 					// set topContent to nil to avoid reaching this point again.
@@ -229,14 +228,13 @@ func FillPattern(contents []SegregateFinder, pattern []pbMetadata.ContentStatus)
 	var empty bool
 	FOR:
 		for _, status := range pattern {
-			switch pbMetadata.ContentStatus_name[status] {
+			switch pbMetadata.ContentStatus_name[int32(status)] {
 			case "NEW":
 				content, segContents.newContents, segContents.relContents, empty = fetch(segContents.newContents,
 					segContents.relContents)
 				if !empty {
-					var id string
 					// check type assertion to ensure there will not be a panic
-					if id, ok :=  content.DataKey().(string); ok {
+					if id, ok :=  content.Key().(string); ok {
 						result = append(result, id)
 					}
 					continue
@@ -246,9 +244,8 @@ func FillPattern(contents []SegregateFinder, pattern []pbMetadata.ContentStatus)
 				content, segContents.relContents, segContents.newContents, empty = fetch(segContents.relContents,
 					segContents.newContents)
 				if !empty {
-					var id string
 					// check type assertion to ensure there will not be a panic
-					if id, ok :=  content.DataKey().(string); ok {
+					if id, ok :=  content.Key().(string); ok {
 						result = append(result, id)
 					}
 					continue
@@ -256,9 +253,8 @@ func FillPattern(contents []SegregateFinder, pattern []pbMetadata.ContentStatus)
 				fallthrough
 			case "TOP":
 				if segContents.topContent != nil {
-					var id string
 					// check type assertion to ensure there will not be a panic
-					if id, ok :=  segContents.topContent.DataKey().(string); ok {
+					if id, ok :=  segContents.topContent.Key().(string); ok {
 						result = append(result, id)
 					}
 					// set topContent to nil to avoid reaching this point again.
@@ -277,6 +273,8 @@ func FillPattern(contents []SegregateFinder, pattern []pbMetadata.ContentStatus)
 func segregate(contents []SegregateFinder) *segregatedContents {
 	// segregated contents
 	segContents := new(segregatedContents)
+	// List of relevant contents, required to get the most relevant content.
+	var relContents []SegregateFinder
 
 	// segregate contents only if there are contents
 	if len(contents) > 0 {
@@ -288,21 +286,22 @@ func segregate(contents []SegregateFinder) *segregatedContents {
 			if content.IsRelevant() {
 				// add to list of relevant contents
 				segContents.relContents = append(segContents.relContents, ContentFinder(content))
+				relContents = append(relContents, content)
 			} else {
 				// add to list of new contents
 				segContents.newContents = append(segContents.newContents, ContentFinder(content))
 			}
 		}
-		// fetch top thread from the list of relevant contents only if there
+		// Fetch top thread from the list of relevant contents only if there
 		// were found relevant contents.
-		if len(segContents.relContents) > 0 {
+		if len(relContents) > 0 {
 			// Top Content Index
 			var TCI int
 			// search for the most top content
-			for idx, content := range segContents.relContents {
+			for idx, content := range relContents {
 				if topContent.IsLessRelevantThan(content) {
 					// new topContent found
-					topContent = SegregateFinder(content)
+					topContent = content
 					TCI = idx
 				}
 			}
@@ -372,7 +371,7 @@ func fetch(mainContents, optContents []ContentFinder) (ContentFinder,
 // random fashion and returns the content and the list of contents without the
 // element just fetched out.
 func fetchRandomContent(contents []ContentFinder) (ContentFinder, []ContentFinder) {
-	idx := rand.NextInt(0, len(contents))
+	idx := rand.Intn(len(contents))
 	// copy content at position idx
 	content := contents[idx]
 	// copy the last element from contents into the position at which the
@@ -392,10 +391,10 @@ func fetchRandomContent(contents []ContentFinder) (ContentFinder, []ContentFinde
 // probability of 20%.
 func fetchExpectedType() bool {
 	values := [10]bool{true,true,true,true,true,true,true,true,true,true}
-	i := rand.NextInt(0, 10)
+	i := rand.Intn(10)
 	values[i] = false
-	i = rand.NextInt(0, 10)
+	i = rand.Intn(10)
 	values[i] = false
-	i = rand.NextInt(0, 10)
+	i = rand.Intn(10)
 	return values[i]
 }

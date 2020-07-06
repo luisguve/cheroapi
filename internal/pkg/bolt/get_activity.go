@@ -4,6 +4,7 @@ import(
 	"log"
 	"sync"
 
+	bolt "go.etcd.io/bbolt"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
@@ -23,19 +24,19 @@ func (h *handler) GetActivity(users ...string) (map[string]patillator.UserActivi
 	setTA := func(pbContent *pbDataFormat.Content, ctx *pbContext.Thread) patillator.SegregateFinder {
 		return patillator.ThreadActivity{
 			Thread:           ctx,
-			ActivityMetadata: patillator.ActivityMetadata(pbContent.Metadata),
+			ActivityMetadata: patillator.ActivityMetadata(*pbContent.Metadata),
 		}
 	}
 	setCA := func(pbContent *pbDataFormat.Content, ctx *pbContext.Comment) patillator.SegregateFinder {
 		return patillator.CommentActivity{
 			Comment:          ctx,
-			ActivityMetadata: patillator.ActivityMetadata(pbContent.Metadata),
+			ActivityMetadata: patillator.ActivityMetadata(*pbContent.Metadata),
 		}
 	}
 	setSCA := func(pbContent *pbDataFormat.Content, ctx *pbContext.Subcomment) patillator.SegregateFinder {
 		return patillator.SubcommentActivity{
 			Subcomment:       ctx,
-			ActivityMetadata: patillator.ActivityMetadata(pbContent.Metadata),
+			ActivityMetadata: patillator.ActivityMetadata(*pbContent.Metadata),
 		}
 	}
 
@@ -74,7 +75,9 @@ func (h *handler) GetActivity(users ...string) (map[string]patillator.UserActivi
 							activity = make(map[string]patillator.UserActivity)
 						})
 						ta := setTA(pbContent, ctx)
-						activity[user].ThreadsCreated = append(activity[user].ThreadsCreated, ta)
+						userAct := activity[user]
+						userAct.ThreadsCreated = append(userAct.ThreadsCreated, ta)
+						activity[user] = userAct
 					}(ctx, user)
 				}
 				// set comments from the recent activity of this user
@@ -95,11 +98,13 @@ func (h *handler) GetActivity(users ...string) (map[string]patillator.UserActivi
 							activity = make(map[string]patillator.UserActivity)
 						})
 						ca := setCA(pbContent, ctx)
-						activity[user].Comments = append(activity[user].Comments, ca)
+						userAct := activity[user]
+						userAct.Comments = append(userAct.Comments, ca)
+						activity[user] = userAct
 					}(ctx, user)
 				}
 				// set subcomments from the recent activity of this user
-				for _, ctx := range recent.ThreadsCreated {
+				for _, ctx := range recent.Subcomments {
 					wg.Add(1)
 					go func(ctx *pbContext.Subcomment, user string) {
 						defer wg.Done()
@@ -116,7 +121,9 @@ func (h *handler) GetActivity(users ...string) (map[string]patillator.UserActivi
 							activity = make(map[string]patillator.UserActivity)
 						})
 						sca := setSCA(pbContent, ctx)
-						activity[user].Subcomments = append(activity[user].Subcomments, sca)
+						userAct := activity[user]
+						userAct.Subcomments = append(userAct.Subcomments, sca)
+						activity[user] = userAct
 					}(ctx, user)
 				}
 			}(user)
@@ -148,9 +155,9 @@ func (h *handler) GetContentsByContext(contexts []*pbContext.Context) ([]*pbApi.
 				contentRule *pbApi.ContentRule
 				err error
 			)
-			switch ctx := context.(type) {
-			case *pbContext.Thread:
-				contentRule, err = h.GetThread(ctx)
+			switch ctx := context.Ctx.(type) {
+			case *pbContext.Context_ThreadCtx:
+				contentRule, err = h.GetThread(ctx.ThreadCtx)
 				if err != nil {
 					contentRule = &pbApi.ContentRule{}
 					log.Printf("Could not get thread: %v\n", err)
@@ -158,8 +165,8 @@ func (h *handler) GetContentsByContext(contexts []*pbContext.Context) ([]*pbApi.
 					errs = append(errs, err)
 					m.Unlock()
 				}
-			case *pbContext.Comment:
-				contentRule, err = h.GetComment(ctx)
+			case *pbContext.Context_CommentCtx:
+				contentRule, err = h.GetComment(ctx.CommentCtx)
 				if err != nil {
 					contentRule = &pbApi.ContentRule{}
 					log.Printf("Could not get comment: %v\n", err)
@@ -167,8 +174,8 @@ func (h *handler) GetContentsByContext(contexts []*pbContext.Context) ([]*pbApi.
 					errs = append(errs, err)
 					m.Unlock()
 				}
-			case *pbContext.Subcomment:
-				contentRule, err = h.GetSubcomment(ctx)
+			case *pbContext.Context_SubcommentCtx:
+				contentRule, err = h.GetSubcomment(ctx.SubcommentCtx)
 				if err != nil {
 					contentRule = &pbApi.ContentRule{}
 					log.Printf("Could not get subcomment: %v\n", err)

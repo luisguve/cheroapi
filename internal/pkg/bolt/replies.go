@@ -2,13 +2,19 @@ package bolt
 
 import(
 	"log"
+	"errors"
+	"strconv"
+	"fmt"
+	"sync"
 	"encoding/binary"
 
-	"google.golang.org/protobuf/proto"
+	bolt "go.etcd.io/bbolt"
+	"github.com/golang/protobuf/proto"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 )
 
 // ReplyComment performs a few tasks:
@@ -36,7 +42,8 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		pbUser *pbDataFormat.User
 	)
 	// check whether the section exists
-	if sectionDB, ok := h.sections[sectionId]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
 	var (
@@ -80,7 +87,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		}
 	}
 	// Format, marshal and save comment and update user in the same transaction.
-	err = sectionDB.Contents.Update(func(tx *bolt.Tx) error {
+	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
 		subcommentsBucket, err := getActiveSubcommentsBucket(tx, threadId, comment.Id)
 		if err != nil {
 			if errors.Is(err, dbmodel.ErrSubcommentsBucketNotFound) {
@@ -96,7 +103,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		}
 		// Generate Id for the subcomment.
 		sequence, _ := subcommentsBucket.NextSequence()
-		subcommentId, _ := strconv.Itoa(int(sequence))
+		subcommentId := strconv.Itoa(int(sequence))
 		permalink := fmt.Sprintf("%s-sc_id=%s", pbComment.Permalink, subcommentId)
 
 		pbSubcomment := &pbDataFormat.Content{
@@ -106,7 +113,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 			PublishDate: reply.PublishDate,
 			AuthorId:    reply.Submitter,
 			Id:          pbThread.Id,
-			SectionName: sectionDB.Name,
+			SectionName: sectionDB.name,
 			SectionId:   sectionId,
 			Permalink:   permalink,
 			Metadata:    &pbMetadata.Content{
@@ -145,7 +152,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		defer wg.Done()
 		pbThread.Replies++
 		incInteractions(pbThread.Metadata)
-		err := h.SetThreadContent(comment.ThreadCtx, pbThread) {
+		err := h.SetThreadContent(comment.ThreadCtx, pbThread)
 		select {
 		case done<- err:
 		case <-quit:
@@ -158,7 +165,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		pbComment.Replies++
 		pbComment.ReplierIds = append(pbComment.ReplierIds, reply.Submitter)
 		incInteractions(pbComment.Metadata)
-		err := h.SetCommentContent(comment, pbComment) {
+		err := h.SetCommentContent(comment, pbComment)
 		select {
 		case done<- err:
 		case <-quit:
@@ -186,7 +193,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 			msg = "1 user has commented out your thread"
 		}
 		subj := fmt.Sprintf("On your thread %s", pbThread.Title)
-		notifType := pbDataFormat.Notif_SUBCOMMENT.
+		notifType := pbDataFormat.Notif_SUBCOMMENT
 		notifyUser := h.notifyInteraction(reply.Submitter, toNotify, msg, subj, notifType, pbComment)
 		
 		notifyUsers = append(notifyUsers, notifyUser)
@@ -242,7 +249,8 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		pbUser *pbDataFormat.User
 	)
 	// check whether the section exists
-	if sectionDB, ok := h.sections[sectionId]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
 	var (
@@ -278,7 +286,7 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		}
 	}
 	// Format, marshal and save comment and update user in the same transaction.
-	err = sectionDB.Contents.Update(func(tx *bolt.Tx) error {
+	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
 		commentsBucket, err := getActiveCommentsBucket(tx, thread.Id)
 		if err != nil {
 			if errors.Is(err, dbmodel.ErrCommentsBucketNotFound) {
@@ -294,7 +302,7 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		}
 		// generate Id for the comment
 		sequence, _ := commentsBucket.NextSequence()
-		commentId, _ := strconv.Itoa(int(sequence))
+		commentId := strconv.Itoa(int(sequence))
 		permalink := fmt.Sprintf("%s#c_id=%s", pbThread.Permalink, commentId)
 
 		pbComment = &pbDataFormat.Content{
@@ -304,7 +312,7 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 			PublishDate: reply.PublishDate,
 			AuthorId:    reply.Submitter,
 			Id:          pbThread.Id,
-			SectionName: sectionDB.Name,
+			SectionName: sectionDB.name,
 			SectionId:   sectionId,
 			Permalink:   permalink,
 			Metadata:    &pbMetadata.Content{

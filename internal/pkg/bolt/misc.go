@@ -3,11 +3,11 @@ package bolt
 import(
 	"log"
 
+	bolt "go.etcd.io/bbolt"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
-	pbApi "github.com/luisguve/cheroapi/internal/protogen/cheroapi"
-	pbDataFormat "github.com/luisguve/cheroapi/internal/protogen/dataformat"
-	pbMetadata "github.com/luisguve/cheroapi/internal/protogen/metadata"
-	pbContext "github.com/luisguve/cheroapi/internal/protogen/context"
+	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	pbContext "github.com/luisguve/cheroproto-go/context"
 )
 
 // formatThreadContentRule takes in a *pbDataFormat.Content and a section context
@@ -81,7 +81,7 @@ func (h *handler) formatContentData(c *pbDataFormat.Content) *pbApi.ContentData 
 		Id:            c.Id,
 		Section:       c.SectionName,
 		Permalink:     c.Permalink,
-		Topvotes:      c.Topvotes,
+		Upvotes:       c.Upvotes,
 		Replies:       c.Replies,
 		VoterIds:      c.VoterIds,
 		ReplierIds:    c.ReplierIds,
@@ -120,9 +120,9 @@ func (h *handler) getContentAuthor(id string) (*pbApi.ContentAuthor, error) {
 func setThreadBytes(tx *bolt.Tx, threadId string, threadBytes []byte) error {
 	contents, _, err := getThreadBucket(tx, threadId)
 	if err != nil {
-		return nil, dbmodel.ErrThreadNotFound
+		return dbmodel.ErrThreadNotFound
 	}
-	return contents.Put([]byte(threadId, threadBytes))
+	return contents.Put([]byte(threadId), threadBytes)
 }
 
 // getThreadBytes returns the thread with the given Id in protobuf-encoded bytes.
@@ -136,7 +136,7 @@ func getThreadBytes(tx *bolt.Tx, threadId string) ([]byte, error) {
 	}
 
 	threadBytes := contents.Get([]byte(threadId))
-	if treadBytes == nil {
+	if threadBytes == nil {
 		return nil, dbmodel.ErrThreadNotFound
 	}
 	return threadBytes, nil
@@ -150,7 +150,7 @@ func getThreadBytes(tx *bolt.Tx, threadId string) ([]byte, error) {
 func setCommentBytes(tx *bolt.Tx, threadId, commentId string, commentBytes []byte) error {
 	contents, _, err := getCommentsBucket(tx, threadId)
 	if err != nil {
-		return nil, dbmodel.ErrCommentNotFound
+		return dbmodel.ErrCommentNotFound
 	}
 	return contents.Put([]byte(commentId), commentBytes)
 }
@@ -182,7 +182,7 @@ func setSubcommentBytes(tx *bolt.Tx, threadId, commentId, subcommentId string,
 	subcommentBytes []byte) error {
 	contents, _, err := getSubcommentsBucket(tx, threadId, commentId)
 	if err != nil {
-		return nil, dbmodel.ErrSubcommentNotFound
+		return dbmodel.ErrSubcommentNotFound
 	}
 	return contents.Put([]byte(subcommentId), subcommentBytes)
 }
@@ -214,7 +214,7 @@ func getSubcommentBytes(tx *bolt.Tx, threadId, commentId, subcommentId string) (
 // database associated to tx.
 func getThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, string, error) {
 	// get bucket of active contents.
-	contents := tx.Bucket([]byte(activeContentsB)
+	contents := tx.Bucket([]byte(activeContentsB))
 	if contents == nil {
 		log.Printf("bucket %s not found\n", activeContentsB)
 		return nil, "", dbmodel.ErrBucketNotFound
@@ -251,7 +251,7 @@ func getThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, string, error)
 // bucket of active contents in the database associated to tx.
 func getActiveThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 	// get bucket of active contents.
-	contents := tx.Bucket([]byte(activeContentsB)
+	contents := tx.Bucket([]byte(activeContentsB))
 	if contents == nil {
 		log.Printf("bucket %s not found\n", activeContentsB)
 		return nil, dbmodel.ErrBucketNotFound

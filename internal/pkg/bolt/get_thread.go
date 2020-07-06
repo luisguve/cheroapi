@@ -1,32 +1,49 @@
 package bolt
 
 import(
+	"log"
+	"sync"
+
+	"github.com/golang/protobuf/proto"
+	bolt "go.etcd.io/bbolt"
+	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
+	pbContext "github.com/luisguve/cheroproto-go/context"
+	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 )
 
 // Get metadata of all the active threads in a section. It returns
 // ErrSectionNotFound if the section is invalid and ErrBucketNotFound if the
 // section doesn't have a bucket for active contents.
-func (h *handler) GetThreadsOverview(section *pbContext.Section) ([]patillator.SegregateDiscarderFinder, error) {
+func (h *handler) GetThreadsOverview(section *pbContext.Section, setSDF... patillator.SetSDF) ([]patillator.SegregateDiscarderFinder, error) {
 	var (
 		contents []patillator.SegregateDiscarderFinder
-		id = section.Id
+		sectionId = section.Id
 		err error
 	)
 	// check whether the section exists
-	if sectionDB, ok := h.sections[id]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
 
-	setContent := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
-		return patillator.Content(c.Metadata)
+	var setContent func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder
+
+	if len(setSDF) > 0 {
+		setContent = setSDF[0]
+	} else {
+		setContent = func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
+			return patillator.Content(*c.Metadata)
+		}
 	}
 
 	// query database
 	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
-		activeContents := tx.Bucket([]byte(activeContentsB)
+		activeContents := tx.Bucket([]byte(activeContentsB))
 		if activeContents == nil {
-			log.Printf("bucket %s of section %s not found\n", activeContentsB, id)
+			log.Printf("bucket %s of section %s not found\n", activeContentsB, sectionId)
 			return dbmodel.ErrBucketNotFound
 		}
 		var (
@@ -93,19 +110,20 @@ func (h *handler) GetThreadsOverview(section *pbContext.Section) ([]patillator.S
 func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi.ContentRule, error) {
 	var (
 		err error
-		id = section.Id
+		sectionId = section.Id
 		contentRules = make([]*pbApi.ContentRule, len(ids))
 	)
 
 	// check whether the section exists
-	if sectionDB, ok := h.sections[id]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
 
 	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
 		activeContents := tx.Bucket([]byte(activeContentsB))
 		if activeContents == nil {
-			log.Printf("bucket %s of section %s not found\n", activeContentsB, id)
+			log.Printf("bucket %s of section %s not found\n", activeContentsB, sectionId)
 			return dbmodel.ErrBucketNotFound
 		}
 
@@ -181,7 +199,7 @@ func (h *handler) GetGeneralThreadsOverview() (map[string][]patillator.Segregate
 			SectionId: c.SectionId,
 			Content:   c.Metadata,
 		}
-		return patillator.GeneralContent(gc)
+		return patillator.GeneralContent(*gc)
 	}
 
 	for section, _ := range h.sections {
@@ -271,7 +289,8 @@ func (h *handler) GetThreadContent(thread *pbContext.Thread) (*pbDataFormat.Cont
 	)
 
 	// check whether the section exists
-	if sectionDB, ok := h.sections[sectionId]; !ok {
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
 
@@ -318,7 +337,7 @@ func (h *handler) GetSavedThreadsOverview(userId string) (map[string][]patillato
 			SectionId: c.SectionId,
 			Content:   c.Metadata,
 		}
-		return patillator.GeneralContent(gc)
+		return patillator.GeneralContent(*gc)
 	}
 
 	pbUser, err := h.User(userId)
