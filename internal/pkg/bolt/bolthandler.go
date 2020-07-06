@@ -5,6 +5,7 @@ package bolt
 
 import(
 	"log"
+	"os"
 	"time"
 	"fmt"
 
@@ -82,8 +83,12 @@ func New(path string) (dbmodel.Handler, error) {
 
 	// open or create section databases
 	for sectionName, sectionId := range dbmodel.SectionIds {
-		dbPath := fmt.Sprintf("%s/%s/contents.db", path, sectionId)
-		db, err := bolt.Open(dbPath, 0600, nil)
+		dbPath := fmt.Sprintf("%s/%s", path, sectionId)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+		    os.MkdirAll(dbPath, os.ModeDir)
+		}
+		dbFile := fmt.Sprintf("%s/contents.db", dbPath)
+		db, err := bolt.Open(dbFile, 0600, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -124,14 +129,18 @@ func New(path string) (dbmodel.Handler, error) {
 		// create bucket for archived contents
 		sectionsDBs[sectionId] = section{
 			contents: db,
-			path: dbPath,
+			path: dbFile,
 			name: sectionName,
 		}
 	}
 
 	// open or create users database
-	usersPath := path + "/users/users.db"
-	usersDB, err := bolt.Open(usersPath, 0600, nil)
+	usersPath := fmt.Sprintf("%s/users", path)
+	if _, err := os.Stat(usersPath); os.IsNotExist(err) {
+	    os.MkdirAll(usersPath, os.ModeDir)
+	}
+	usersFile := fmt.Sprintf("%s/users.db", usersPath)
+	usersDB, err := bolt.Open(usersFile, 0600, nil)
 	if err != nil {
 		return nil, err
 	}
