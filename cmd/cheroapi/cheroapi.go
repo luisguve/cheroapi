@@ -5,7 +5,7 @@ import (
 
 	"github.com/luisguve/cheroapi/internal/pkg/server"
 	"github.com/luisguve/cheroapi/internal/pkg/bolt"
-	"github.com/luisguve/cheroapi/internal/app"
+	app "github.com/luisguve/cheroapi/internal/app/cheroapi"
 )
 
 func main() {
