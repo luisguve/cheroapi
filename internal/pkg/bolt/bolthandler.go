@@ -5,9 +5,9 @@ package bolt
 
 import(
 	"log"
+	"path/filepath"
 	"os"
 	"time"
-	"fmt"
 
 	bolt "go.etcd.io/bbolt"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
@@ -83,11 +83,11 @@ func New(path string) (dbmodel.Handler, error) {
 
 	// open or create section databases
 	for sectionName, sectionId := range dbmodel.SectionIds {
-		dbPath := fmt.Sprintf("%s/%s", path, sectionId)
-		if _, err := os.Stat(path); os.IsNotExist(err) {
+		dbPath := filepath.Join(path, sectionId)
+		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		    os.MkdirAll(dbPath, os.ModeDir)
 		}
-		dbFile := fmt.Sprintf("%s/contents.db", dbPath)
+		dbFile := filepath.Join(dbPath, "contents.db")
 		db, err := bolt.Open(dbFile, 0600, nil)
 		if err != nil {
 			return nil, err
@@ -135,11 +135,11 @@ func New(path string) (dbmodel.Handler, error) {
 	}
 
 	// open or create users database
-	usersPath := fmt.Sprintf("%s/users", path)
+	usersPath := filepath.Join(path, "users")
 	if _, err := os.Stat(usersPath); os.IsNotExist(err) {
 	    os.MkdirAll(usersPath, os.ModeDir)
 	}
-	usersFile := fmt.Sprintf("%s/users.db", usersPath)
+	usersFile := filepath.Join(usersPath, "users.db")
 	usersDB, err := bolt.Open(usersFile, 0600, nil)
 	if err != nil {
 		return nil, err
