@@ -17,6 +17,153 @@ import(
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 )
 
+// ReplyThread performs a few tasks:
+// + Creates a comment and associates it to the given thread.
+// + Appends the newly formatted comment context to the list of comments in the
+//   recent activity of the replier.
+// + Updates thread metadata by incrementing its replies and interactions.
+// + Append id of replier to list of repliers of thread.
+// + Formats the notification and saves it if the replier is not the author, and.
+//   returns it.
+// 
+// It may return an error if:
+// - invalid section: ErrSectionNotFound
+// - invalid thread context: ErrThreadNotFound
+// - invalid user id: ErrUserNotFound
+// - unprepared database or proto marshal/unmarshal error
+func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*pbApi.NotifyUser, error) {
+	var (
+		sectionId = thread.SectionCtx.Id
+		pbComment *pbDataFormat.Content
+		pbThread *pbDataFormat.Content
+		pbUser *pbDataFormat.User
+	)
+	// check whether the section exists
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
+		return nil, dbmodel.ErrSectionNotFound
+	}
+	var (
+		done = make(chan error)
+		quit = make(chan error)
+	)
+	go func() {
+		var err error
+		pbThread, err = h.GetThreadContent(thread)
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	go func() {
+		var err error
+		pbUser, err = h.User(reply.Submitter)
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	// Check for errors. It terminates every go-routine hung on the statement
+	// "case done<- err" by closing the channel quit and returns the first err
+	// read.
+	var err error
+	for i := 0; i < 2; i++ {
+		err = <-done
+		if err != nil {
+			log.Println(err)
+			close(quit)
+			return nil, err
+		}
+	}
+	// Format, marshal and save comment and update user in the same transaction.
+	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
+		commentsBucket, err := getActiveCommentsBucket(tx, thread.Id)
+		if err != nil {
+			if errors.Is(err, dbmodel.ErrCommentsBucketNotFound) {
+				// this is the first comment; create the comments bucket
+				// associated to the thread.
+				commentsBucket, err = createCommentsBucket(tx, thread.Id)
+				if err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		}
+		// generate Id for the comment
+		sequence, _ := commentsBucket.NextSequence()
+		commentId := strconv.Itoa(int(sequence))
+		permalink := fmt.Sprintf("%s#c_id=%s", pbThread.Permalink, commentId)
+
+		pbComment = &pbDataFormat.Content{
+			Title:       pbThread.Title,
+			Content:     reply.Content,
+			FtFile:      reply.FtFile,
+			PublishDate: reply.PublishDate,
+			AuthorId:    reply.Submitter,
+			Id:          pbThread.Id,
+			SectionName: sectionDB.name,
+			SectionId:   sectionId,
+			Permalink:   permalink,
+			Metadata:    &pbMetadata.Content{
+				LastUpdated: reply.PublishDate,
+				DataKey:     pbThread.Id,
+			},
+		}
+		pbCommentBytes, err := proto.Marshal(pbComment)
+		if err != nil {
+			log.Printf("Could not marshal comment: %v\n", err)
+			return err
+		}
+		if err = commentsBucket.Put([]byte(commentId), pbCommentBytes); err != nil {
+			return err
+		}
+		// Update user; append comment to list of activity of user.
+		if pbUser.RecentActivity == nil {
+			pbUser.RecentActivity = new(pbDataFormat.Activity)
+		}
+		commentCtx := &pbContext.Comment{
+			Id:        commentId,
+			ThreadCtx: thread,
+		}
+		pbUser.RecentActivity.Comments = append(pbUser.RecentActivity.Comments, commentCtx)
+		return h.UpdateUser(pbUser, reply.Submitter)
+	})
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+	// Update thread metadata.
+	pbThread.Replies++
+	replied, _ := inSlice(pbThread.ReplierIds, reply.Submitter)
+	if !replied {
+		pbThread.ReplierIds = append(pbThread.ReplierIds, reply.Submitter)
+	}
+	incInteractions(pbThread.Metadata)
+	err = h.SetThreadContent(thread, pbThread)
+	if err != nil {
+		log.Println(err)
+	}
+
+	// Set notification and notify user only if the submitter is not the author
+	toNotify := pbThread.AuthorId
+	if reply.Submitter != toNotify {
+		replies := pbThread.Replies
+		var msg string
+		if replies > 1 {
+			msg = fmt.Sprintf("%d users have commented out your thread", replies)
+		} else {
+			msg = "1 user has commented out your thread"
+		}
+		subj := fmt.Sprintf("On your thread %s", pbThread.Title)
+		notifType := pbDataFormat.Notif_COMMENT
+		notifyUser := h.notifyInteraction(reply.Submitter, toNotify, msg, subj, notifType, pbComment)
+
+		return notifyUser, err
+	}
+	return nil, err
+}
+
 // ReplyComment performs a few tasks:
 // + Creates a subcomment and associates it to the given comment.
 // + Appends the newly formatted subcomment context to the list of subcomments
@@ -225,153 +372,6 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		}
 	}
 	return notifyUsers, err
-}
-
-// ReplyThread performs a few tasks:
-// + Creates a comment and associates it to the given thread.
-// + Appends the newly formatted comment context to the list of comments in the
-//   recent activity of the replier.
-// + Updates thread metadata by incrementing its replies and interactions.
-// + Append id of replier to list of repliers of thread.
-// + Formats the notification and saves it if the replier is not the author, and.
-//   returns it.
-// 
-// It may return an error if:
-// - invalid section: ErrSectionNotFound
-// - invalid thread context: ErrThreadNotFound
-// - invalid user id: ErrUserNotFound
-// - unprepared database or proto marshal/unmarshal error
-func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*pbApi.NotifyUser, error) {
-	var (
-		sectionId = thread.SectionCtx.Id
-		pbComment *pbDataFormat.Content
-		pbThread *pbDataFormat.Content
-		pbUser *pbDataFormat.User
-	)
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return nil, dbmodel.ErrSectionNotFound
-	}
-	var (
-		done = make(chan error)
-		quit = make(chan error)
-	)
-	go func() {
-		var err error
-		pbThread, err = h.GetThreadContent(thread)
-		select {
-		case done<- err:
-		case <-quit:
-		}
-	}()
-	go func() {
-		var err error
-		pbUser, err = h.User(reply.Submitter)
-		select {
-		case done<- err:
-		case <-quit:
-		}
-	}()
-	// Check for errors. It terminates every go-routine hung on the statement
-	// "case done<- err" by closing the channel quit and returns the first err
-	// read.
-	var err error
-	for i := 0; i < 2; i++ {
-		err = <-done
-		if err != nil {
-			log.Println(err)
-			close(quit)
-			return nil, err
-		}
-	}
-	// Format, marshal and save comment and update user in the same transaction.
-	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		commentsBucket, err := getActiveCommentsBucket(tx, thread.Id)
-		if err != nil {
-			if errors.Is(err, dbmodel.ErrCommentsBucketNotFound) {
-				// this is the first comment; create the comments bucket
-				// associated to the thread.
-				commentsBucket, err = createCommentsBucket(tx, thread.Id)
-				if err != nil {
-					return err
-				}
-			} else {
-				return err
-			}
-		}
-		// generate Id for the comment
-		sequence, _ := commentsBucket.NextSequence()
-		commentId := strconv.Itoa(int(sequence))
-		permalink := fmt.Sprintf("%s#c_id=%s", pbThread.Permalink, commentId)
-
-		pbComment = &pbDataFormat.Content{
-			Title:       pbThread.Title,
-			Content:     reply.Content,
-			FtFile:      reply.FtFile,
-			PublishDate: reply.PublishDate,
-			AuthorId:    reply.Submitter,
-			Id:          pbThread.Id,
-			SectionName: sectionDB.name,
-			SectionId:   sectionId,
-			Permalink:   permalink,
-			Metadata:    &pbMetadata.Content{
-				LastUpdated: reply.PublishDate,
-				DataKey:     pbThread.Id,
-			},
-		}
-		pbCommentBytes, err := proto.Marshal(pbComment)
-		if err != nil {
-			log.Printf("Could not marshal comment: %v\n", err)
-			return err
-		}
-		if err = commentsBucket.Put([]byte(commentId), pbCommentBytes); err != nil {
-			return err
-		}
-		// Update user; append comment to list of activity of user.
-		if pbUser.RecentActivity == nil {
-			pbUser.RecentActivity = new(pbDataFormat.Activity)
-		}
-		commentCtx := &pbContext.Comment{
-			Id:        commentId,
-			ThreadCtx: thread,
-		}
-		pbUser.RecentActivity.Comments = append(pbUser.RecentActivity.Comments, commentCtx)
-		return h.UpdateUser(pbUser, reply.Submitter)
-	})
-	if err != nil {
-		log.Println(err)
-		return nil, err
-	}
-	// Update thread metadata.
-	pbThread.Replies++
-	replied, _ := inSlice(pbThread.ReplierIds, reply.Submitter)
-	if !replied {
-		pbThread.ReplierIds = append(pbThread.ReplierIds, reply.Submitter)
-	}
-	incInteractions(pbThread.Metadata)
-	err = h.SetThreadContent(thread, pbThread)
-	if err != nil {
-		log.Println(err)
-	}
-
-	// Set notification and notify user only if the submitter is not the author
-	toNotify := pbThread.AuthorId
-	if reply.Submitter != toNotify {
-		replies := pbThread.Replies
-		var msg string
-		if replies > 1 {
-			msg = fmt.Sprintf("%d users have commented out your thread", replies)
-		} else {
-			msg = "1 user has commented out your thread"
-		}
-		subj := fmt.Sprintf("On your thread %s", pbThread.Title)
-		notifType := pbDataFormat.Notif_COMMENT
-		notifyUser := h.notifyInteraction(reply.Submitter, toNotify, msg, subj, notifType, pbComment)
-
-		return notifyUser, err
-	}
-	return nil, err
 }
 
 // uitob returns an 8-byte big endian representation of v.
