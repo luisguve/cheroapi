@@ -47,6 +47,20 @@ type section struct {
 	name string
 }
 
+// Close every section database and the database of users, return the first
+// error, if any.
+func (h *handler) Close() error {
+	if err := h.users.Close(); err != nil {
+		return err
+	}
+	for _, section := range h.sections {
+		if err := section.contents.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // New returns a dbmodel.Handler with a few just open bolt databases under the
 // directory specified by path; one for all the users and one for each section.
 //

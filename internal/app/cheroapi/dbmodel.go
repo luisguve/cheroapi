@@ -85,6 +85,8 @@ type Handler interface {
 	LastQA() int64
 	// Clean up every section database.
 	QA()
+	// Release all database resources.
+	Close() error
 }
 
 // Reply holds the data of a reply
