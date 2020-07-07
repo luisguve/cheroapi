@@ -2,7 +2,9 @@ package bolt_test
 
 import (
 	"fmt"
+	"os"
 	"testing"
+	"io/ioutil"
 
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
@@ -16,10 +18,24 @@ type user struct {
 // Register users, get them, get their ids through they usernames and emails,
 // update their data, and update their usernames.
 func TestAuthUser(t *testing.T) {
-	db, err := bolt.New("../../../db")
+	dir, err := ioutil.TempDir("", "storage")
+	if err != nil {
+		t.Fatalf("Error in test: %v\n", err)
+	}
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Errorf("RemoveAll Error: %v\n", err)
+		}
+	}()
+	db, err := bolt.New(dir)
 	if err != nil {
 		t.Errorf("DB open error: %v\n", err)
 	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("DB Close error: %v\n", err)
+		}
+	}()
 	users := map[string]user{
 		"usr1": user{
 			email: "luisguveal@gmail.com",
