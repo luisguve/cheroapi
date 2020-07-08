@@ -41,6 +41,7 @@ type comment struct {
 	// expNotif *pbApi.NotifyUser
 }
 
+// Register users, then create threads, then leave replies on those threads.
 func TestCreateThread(t *testing.T) {
 	dir, err := ioutil.TempDir("db", "storage")
 	if err != nil {
@@ -812,7 +813,43 @@ var posts = []post{
 var comments = []comment{
 	comment{
 		content: dbmodel.Reply{
-			Content: "HEY yo! I'm leaving a comment on your amazing post.",
+			Content: "(1) HEY yo! I'm leaving a comment on your amazing post.",
+			FtFile: "animated_pic.gif",
+			PublishDate: &pbTime.Timestamp{
+				Seconds: time.Now().Unix(),
+			},
+		},
+	},
+	comment{
+		content: dbmodel.Reply{
+			Content: "(2) HEY yo! I'm leaving a comment on your amazing post.",
+			FtFile: "animated_pic.gif",
+			PublishDate: &pbTime.Timestamp{
+				Seconds: time.Now().Unix(),
+			},
+		},
+	},
+	comment{
+		content: dbmodel.Reply{
+			Content: "(3) HEY yo! I'm leaving a comment on your amazing post.",
+			FtFile: "animated_pic.gif",
+			PublishDate: &pbTime.Timestamp{
+				Seconds: time.Now().Unix(),
+			},
+		},
+	},
+	comment{
+		content: dbmodel.Reply{
+			Content: "(4) HEY yo! I'm leaving a comment on your amazing post.",
+			FtFile: "animated_pic.gif",
+			PublishDate: &pbTime.Timestamp{
+				Seconds: time.Now().Unix(),
+			},
+		},
+	},
+	comment{
+		content: dbmodel.Reply{
+			Content: "(5) HEY yo! I'm leaving a comment on your amazing post.",
 			FtFile: "animated_pic.gif",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
