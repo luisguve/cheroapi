@@ -2,53 +2,162 @@ package bolt_test
 
 import (
 	"time"
+	"os"
+	"sync"
 	"testing"
-	"strconv"
+	"fmt"
 	"math/rand"
+	"strings"
+	"io/ioutil"
 
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
 	pbContext "github.com/luisguve/cheroproto-go/context"
-	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	"github.com/luisguve/cheroapi/internal/pkg/bolt"
 )
+
+type user struct {
+	email, name, patillavatar, username, alias, about, password string
+}
 
 type post struct {
 	content *pbApi.Content
 	section *pbContext.Section
 	// Expected permalink to get back.
-	expId   string
+	expLink   string
+}
+
+// Map section ids to post permalink (includes section id).
+var sectionPosts = make(map[string][]string)
+// Map post id to user id.
+var postAuthor = make(map[string]string)
+// Map post id to post.
+var idPost = make(map[string]post)
+
+type comment struct {
+	// thread *pbContext.Thread
+	content  dbmodel.Reply
+	// expNotif *pbApi.NotifyUser
 }
 
 func TestCreateThread(t *testing.T) {
-	db, err := bolt.New("db")
+	dir, err := ioutil.TempDir("db", "storage")
+	if err != nil {
+		t.Fatalf("Error in test: %v\n", err)
+	}
+	defer func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Errorf("RemoveAll Error: %v\n", err)
+		}
+	}()
+	db, err := bolt.New(dir)
 	if err != nil {
 		t.Errorf("DB open error: %v\n", err)
 	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("DB Close error: %v\n", err)
+		}
+	}()
 	userKeys := make(map[string]user)
 	var ids []string
 	// Register users.
 	for _, u := range users {
 		userId, st := db.RegisterUser(u.email, u.name, u.patillavatar, u.username, u.alias, u.about, u.password)
 		if st != nil {
-			t.Errorf("Got status %v: %v\n", st.Code(). st.Message())
+			t.Errorf("Got status %v: %v\n", st.Code(), st.Message())
 		}
 		ids = append(ids, userId)
 		userKeys[userId] = u
 	}
-
-	for _, t := range threads {
-		i := rand.NextInt(0, len(ids))
-		user := ids[i]
-		permalink, err := db.CreateThread(t.content, t.section, user)
-		if err != nil {
-			t.Errorf("Got err: %v\n", err)
-		}
-		if !strings.Contains(permalink, t.expId) {
-			t.Errorf("Expected permalink: %v\nGot: %v\n", t.expId, permalink)
-		}
+	// Create 44 threads.
+	var wg sync.WaitGroup
+	var m sync.Mutex
+	for _, p := range posts {
+		wg.Add(1)
+		go func(p post) {
+			defer wg.Done()
+			i := rand.Intn(len(ids))
+			user := ids[i]
+			permalink, err := db.CreateThread(p.content, p.section, user)
+			if err != nil {
+				t.Errorf("Got err: %v\n", err)
+			}
+			if !strings.Contains(permalink, p.expLink) {
+				t.Errorf("Expected permalink: %v\nGot: %v\n", p.expLink, permalink)
+			}
+			// The permalink comes in the format "/{section-id}/{thread-id}",
+			// guaranteeing that there will not be collisions (or value overrides)
+			// in between threads from different sections that turned out to have
+			// the same id.
+			postIds := sectionPosts[p.section.Id]
+			postIds = append(postIds, permalink)
+			m.Lock()
+			defer m.Unlock()
+			sectionPosts[p.section.Id] = postIds
+			// Associate permalink to user id of author.
+			postAuthor[permalink] = user
+			// Associate permalink to post.
+			idPost[permalink] = p
+		}(p)
 	}
+	wg.Wait()
+	// Post a comment on each thread.
+	for _, c := range comments {
+		wg.Add(1)
+		go func(c comment) {
+			defer wg.Done()
+			for section, postPermalinks := range sectionPosts {
+				wg.Add(1)
+				go func(section string, postPermalinks []string) {
+					defer wg.Done()
+					for _, postPermalink := range postPermalinks {
+						wg.Add(1)
+						prefix := fmt.Sprintf("/%s/", section)
+						postId := strings.TrimPrefix(postPermalink, prefix)
+						go func(section, permalink, postId string, r dbmodel.Reply) {
+							defer wg.Done()
+							ctx := &pbContext.Thread{
+								Id:         postId,
+								SectionCtx: &pbContext.Section{
+									Id: section,
+								},
+							}
+							// The submitter may be replying it's own thread, in
+							// which case the returned notification should be nil.
+							i := rand.Intn(len(ids))
+							r.Submitter = ids[i]
+							notifyUser, err := db.ReplyThread(ctx, r)
+							if err != nil {
+								t.Fatalf("Got error while posting reply: %v\n", err)
+							}
+							if r.Submitter == postAuthor[permalink] {
+								// The submitter is the thread author; there must
+								// not be any notification.
+								if notifyUser != nil {
+									t.Errorf("Got notification, but the replier is the author.\n")
+								}
+								return
+							}
+							// The submitter is not the thread author; the notification
+							// must be for the thread author.
+							equals := postAuthor[permalink] == notifyUser.UserId
+							if !equals {
+								t.Errorf("Post author (%s) != notifyUser Id (%s)\n", postAuthor[permalink], notifyUser.UserId)
+							}
+							expSubject := fmt.Sprintf("On your thread %s", idPost[permalink].content.Title)
+							equals = expSubject == notifyUser.Notification.Subject
+							if !equals {
+								t.Errorf("received subject (%s) != expected subject (%s)\n", expSubject, notifyUser.Notification.Subject)
+							}
+						}(section, postPermalink, postId, c.content)
+					}
+				}(section, postPermalinks)
+			}
+		}(c)
+	}
+	wg.Wait()
 }
 
 var users = map[string]user{
@@ -81,10 +190,10 @@ var users = map[string]user{
 	},
 }
 
-var threads := []post{
+var posts = []post{
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 1",
+			Title:       "Awesome blog post 01",
 			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
 			FtFile:      "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
@@ -94,11 +203,11 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-1",
+		expLink: "/mylife/awesome-blog-post-01",
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 2",
+			Title:       "Awesome blog post 02",
 			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
 			FtFile:      "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
@@ -108,11 +217,11 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-2",
+		expLink: "/mylife/awesome-blog-post-02",
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 3",
+			Title:       "Awesome blog post 03",
 			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
 			FtFile:      "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
@@ -122,11 +231,11 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-3",
+		expLink: "/mylife/awesome-blog-post-03",
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 4",
+			Title:       "Awesome blog post 04",
 			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
 			FtFile:      "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
@@ -136,11 +245,11 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-4",
+		expLink: "/mylife/awesome-blog-post-04",
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 5",
+			Title:       "Awesome blog post 05",
 			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
 			FtFile:      "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
@@ -150,11 +259,11 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-5",
+		expLink: "/mylife/awesome-blog-post-05",
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 6",
+			Title:       "Awesome blog post 06",
 			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
 			FtFile:      "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
@@ -164,11 +273,11 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-6",
+		expLink: "/mylife/awesome-blog-post-06",
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 7",
+			Title:       "Awesome blog post 07",
 			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
 			FtFile:      "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
@@ -178,11 +287,11 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-7",
+		expLink: "/mylife/awesome-blog-post-07",
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 8",
+			Title:       "Awesome blog post 08",
 			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
 			FtFile:      "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
@@ -192,11 +301,11 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-8",
+		expLink: "/mylife/awesome-blog-post-08",
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 9",
+			Title:       "Awesome blog post 09",
 			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
 			FtFile:      "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
@@ -206,7 +315,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-9",
+		expLink: "/mylife/awesome-blog-post-09",
 	},
 	post{
 		content: &pbApi.Content{
@@ -220,7 +329,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-10",
+		expLink: "/mylife/awesome-blog-post-10",
 	},
 	post{
 		content: &pbApi.Content{
@@ -234,7 +343,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-11",
+		expLink: "/mylife/awesome-blog-post-11",
 	},
 	post{
 		content: &pbApi.Content{
@@ -248,7 +357,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-12",
+		expLink: "/mylife/awesome-blog-post-12",
 	},
 	post{
 		content: &pbApi.Content{
@@ -262,7 +371,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-13",
+		expLink: "/mylife/awesome-blog-post-13",
 	},
 	post{
 		content: &pbApi.Content{
@@ -276,7 +385,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-14",
+		expLink: "/mylife/awesome-blog-post-14",
 	},
 	post{
 		content: &pbApi.Content{
@@ -290,7 +399,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-15",
+		expLink: "/mylife/awesome-blog-post-15",
 	},
 	post{
 		content: &pbApi.Content{
@@ -304,7 +413,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-16",
+		expLink: "/mylife/awesome-blog-post-16",
 	},
 	post{
 		content: &pbApi.Content{
@@ -318,7 +427,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-17",
+		expLink: "/mylife/awesome-blog-post-17",
 	},
 	post{
 		content: &pbApi.Content{
@@ -332,7 +441,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-18",
+		expLink: "/mylife/awesome-blog-post-18",
 	},
 	post{
 		content: &pbApi.Content{
@@ -346,7 +455,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-19",
+		expLink: "/mylife/awesome-blog-post-19",
 	},
 	post{
 		content: &pbApi.Content{
@@ -360,7 +469,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-20",
+		expLink: "/mylife/awesome-blog-post-20",
 	},
 	post{
 		content: &pbApi.Content{
@@ -374,7 +483,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-21",
+		expLink: "/mylife/awesome-blog-post-21",
 	},
 	post{
 		content: &pbApi.Content{
@@ -388,7 +497,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-22",
+		expLink: "/mylife/awesome-blog-post-22",
 	},
 	post{
 		content: &pbApi.Content{
@@ -402,7 +511,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-23",
+		expLink: "/mylife/awesome-blog-post-23",
 	},
 	post{
 		content: &pbApi.Content{
@@ -416,7 +525,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-24",
+		expLink: "/mylife/awesome-blog-post-24",
 	},
 	post{
 		content: &pbApi.Content{
@@ -430,7 +539,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-25",
+		expLink: "/mylife/awesome-blog-post-25",
 	},
 	post{
 		content: &pbApi.Content{
@@ -444,7 +553,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-26",
+		expLink: "/mylife/awesome-blog-post-26",
 	},
 	post{
 		content: &pbApi.Content{
@@ -458,7 +567,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-27",
+		expLink: "/mylife/awesome-blog-post-27",
 	},
 	post{
 		content: &pbApi.Content{
@@ -472,7 +581,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-28",
+		expLink: "/mylife/awesome-blog-post-28",
 	},
 	post{
 		content: &pbApi.Content{
@@ -486,7 +595,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-29",
+		expLink: "/mylife/awesome-blog-post-29",
 	},
 	post{
 		content: &pbApi.Content{
@@ -500,7 +609,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-30",
+		expLink: "/mylife/awesome-blog-post-30",
 	},
 	post{
 		content: &pbApi.Content{
@@ -514,7 +623,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-31",
+		expLink: "/mylife/awesome-blog-post-31",
 	},
 	post{
 		content: &pbApi.Content{
@@ -528,7 +637,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-32",
+		expLink: "/mylife/awesome-blog-post-32",
 	},
 	post{
 		content: &pbApi.Content{
@@ -542,7 +651,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-33",
+		expLink: "/mylife/awesome-blog-post-33",
 	},
 	post{
 		content: &pbApi.Content{
@@ -556,7 +665,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-34",
+		expLink: "/mylife/awesome-blog-post-34",
 	},
 	post{
 		content: &pbApi.Content{
@@ -570,7 +679,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-35",
+		expLink: "/mylife/awesome-blog-post-35",
 	},
 	post{
 		content: &pbApi.Content{
@@ -584,7 +693,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-36",
+		expLink: "/mylife/awesome-blog-post-36",
 	},
 	post{
 		content: &pbApi.Content{
@@ -598,7 +707,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-37",
+		expLink: "/mylife/awesome-blog-post-37",
 	},
 	post{
 		content: &pbApi.Content{
@@ -612,7 +721,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-38",
+		expLink: "/mylife/awesome-blog-post-38",
 	},
 	post{
 		content: &pbApi.Content{
@@ -626,7 +735,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-39",
+		expLink: "/mylife/awesome-blog-post-39",
 	},
 	post{
 		content: &pbApi.Content{
@@ -640,7 +749,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-40",
+		expLink: "/mylife/awesome-blog-post-40",
 	},
 	post{
 		content: &pbApi.Content{
@@ -654,7 +763,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-41",
+		expLink: "/mylife/awesome-blog-post-41",
 	},
 	post{
 		content: &pbApi.Content{
@@ -668,7 +777,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-42",
+		expLink: "/mylife/awesome-blog-post-42",
 	},
 	post{
 		content: &pbApi.Content{
@@ -682,7 +791,7 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-43",
+		expLink: "/mylife/awesome-blog-post-43",
 	},
 	post{
 		content: &pbApi.Content{
@@ -696,6 +805,18 @@ var threads := []post{
 		section: &pbContext.Section{
 			Id: "mylife",
 		},
-		expId: "/mylife/awesome-blog-post-44",
+		expLink: "/mylife/awesome-blog-post-44",
+	},
+}
+
+var comments = []comment{
+	comment{
+		content: dbmodel.Reply{
+			Content: "HEY yo! I'm leaving a comment on your amazing post.",
+			FtFile: "animated_pic.gif",
+			PublishDate: &pbTime.Timestamp{
+				Seconds: time.Now().Unix(),
+			},
+		},
 	},
 }
