@@ -104,7 +104,7 @@ func TestCreateThread(t *testing.T) {
 		}(p)
 	}
 	wg.Wait()
-	// Post a comment on each thread.
+	// Post 5 comments on each thread.
 	for _, c := range comments {
 		wg.Add(1)
 		go func(c comment) {
@@ -159,6 +159,44 @@ func TestCreateThread(t *testing.T) {
 		}(c)
 	}
 	wg.Wait()
+	// Get all the threads in "mylife" section. There should be 44.
+	section := &pbContext.Section{
+		Id: "mylife",
+	}
+	threads, err := db.GetThreadsOverview(section)
+	if err != nil {
+		t.Fatalf("Got err: %v\n", err)
+	}
+	// Copy every id from the section into a new variable. Each time a thread
+	// id is received, it will be removed from the slice of ids. At the end,
+	// the slice of copies should be empty.
+	var idCopies = make([]string, len(sectionPosts["mylife"]))
+	copy(idCopies, sectionPosts["mylife"])
+	for _, thread := range threads {
+		threadId, ok := thread.Key().(string)
+		if !ok {
+			t.Errorf("Expected key to be string, but got: %v\n", thread.Key())
+			continue
+		}
+		var found bool
+		for idx, idCopy := range idCopies {
+			// idCopy holds a permalink, which includes the section.
+			idCopy = strings.TrimPrefix(idCopy, "/mylife/")
+			if idCopy == threadId {
+				found = true
+				last := len(idCopies) - 1
+				idCopies[idx] = idCopies[last]
+				idCopies = idCopies[:last]
+				break
+			}
+		}
+		if !found {
+			t.Errorf("id %v not found in copies!\n", threadId)
+		}
+	}
+	if len(idCopies) != 0 {
+		t.Errorf("idCopies should be empty. These were left: %v\n", idCopies)
+	}
 }
 
 var users = map[string]user{
