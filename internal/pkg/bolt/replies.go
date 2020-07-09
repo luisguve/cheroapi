@@ -36,47 +36,48 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		sectionId = thread.SectionCtx.Id
 		pbComment *pbDataFormat.Content
 		pbThread *pbDataFormat.Content
-		pbUser *pbDataFormat.User
 	)
 	// check whether the section exists
 	sectionDB, ok := h.sections[sectionId]
 	if !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
-	var (
-		done = make(chan error)
-		quit = make(chan error)
-	)
-	go func() {
+	// Format, marshal and save comment and update user and thread content in
+	// the same transaction.
+	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
+		var (
+			done = make(chan error)
+			quit = make(chan error)
+			pbUser *pbDataFormat.User
+		)
+		go func() {
+			var err error
+			pbThread, err = h.GetThreadContent(thread)
+			select {
+			case done<- err:
+			case <-quit:
+			}
+		}()
+		go func() {
+			var err error
+			pbUser, err = h.User(reply.Submitter)
+			select {
+			case done<- err:
+			case <-quit:
+			}
+		}()
+		// Check for errors. It terminates every go-routine hung on the statement
+		// "case done<- err" by closing the channel quit and returns the first err
+		// read.
 		var err error
-		pbThread, err = h.GetThreadContent(thread)
-		select {
-		case done<- err:
-		case <-quit:
+		for i := 0; i < 2; i++ {
+			err = <-done
+			if err != nil {
+				log.Println(err)
+				close(quit)
+				return err
+			}
 		}
-	}()
-	go func() {
-		var err error
-		pbUser, err = h.User(reply.Submitter)
-		select {
-		case done<- err:
-		case <-quit:
-		}
-	}()
-	// Check for errors. It terminates every go-routine hung on the statement
-	// "case done<- err" by closing the channel quit and returns the first err
-	// read.
-	var err error
-	for i := 0; i < 2; i++ {
-		err = <-done
-		if err != nil {
-			log.Println(err)
-			close(quit)
-			return nil, err
-		}
-	}
-	// Format, marshal and save comment and update user in the same transaction.
-	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
 		commentsBucket, err := getActiveCommentsBucket(tx, thread.Id)
 		if err != nil {
 			if errors.Is(err, dbmodel.ErrCommentsBucketNotFound) {
@@ -127,22 +128,26 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 			ThreadCtx: thread,
 		}
 		pbUser.RecentActivity.Comments = append(pbUser.RecentActivity.Comments, commentCtx)
-		return h.UpdateUser(pbUser, reply.Submitter)
+		if err = h.UpdateUser(pbUser, reply.Submitter); err != nil {
+			return err
+		}
+		// Update thread metadata.
+		pbThread.Replies++
+		replied, _ := inSlice(pbThread.ReplierIds, reply.Submitter)
+		if !replied {
+			pbThread.ReplierIds = append(pbThread.ReplierIds, reply.Submitter)
+		}
+		incInteractions(pbThread.Metadata)
+		contentBytes, err := proto.Marshal(pbThread)
+		if err != nil {
+			log.Printf("Could not marshal content: %v\n", err)
+			return err
+		}
+		return setThreadBytes(tx, thread.Id, contentBytes)
 	})
 	if err != nil {
 		log.Println(err)
 		return nil, err
-	}
-	// Update thread metadata.
-	pbThread.Replies++
-	replied, _ := inSlice(pbThread.ReplierIds, reply.Submitter)
-	if !replied {
-		pbThread.ReplierIds = append(pbThread.ReplierIds, reply.Submitter)
-	}
-	incInteractions(pbThread.Metadata)
-	err = h.SetThreadContent(thread, pbThread)
-	if err != nil {
-		log.Println(err)
 	}
 
 	// Set notification and notify user only if the submitter is not the author
