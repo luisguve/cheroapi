@@ -64,6 +64,7 @@ func TestCreateThread(t *testing.T) {
 	userKeys := make(map[string]user)
 	var ids []string
 	// Register users.
+	t.Log("Register users")
 	for _, u := range users {
 		userId, st := db.RegisterUser(u.email, u.name, u.patillavatar, u.username, u.alias, u.about, u.password)
 		if st != nil {
@@ -72,9 +73,11 @@ func TestCreateThread(t *testing.T) {
 		ids = append(ids, userId)
 		userKeys[userId] = u
 	}
+	t.Log("Finished register users")
 	// Create 44 threads.
 	var wg sync.WaitGroup
 	var m sync.Mutex
+	t.Log("Create threads")
 	for _, p := range posts {
 		wg.Add(1)
 		go func(p post) {
@@ -104,7 +107,9 @@ func TestCreateThread(t *testing.T) {
 		}(p)
 	}
 	wg.Wait()
+	t.Log("Finished creating threads.")
 	// Post 5 comments on each thread.
+	t.Log("Reply threads.")
 	for _, c := range comments {
 		wg.Add(1)
 		go func(c comment) {
@@ -133,6 +138,7 @@ func TestCreateThread(t *testing.T) {
 							if err != nil {
 								t.Fatalf("Got error while posting reply: %v\n", err)
 							}
+							t.Log("Just replied a thread.")
 							if r.Submitter == postAuthor[permalink] {
 								// The submitter is the thread author; there must
 								// not be any notification.
@@ -159,24 +165,77 @@ func TestCreateThread(t *testing.T) {
 		}(c)
 	}
 	wg.Wait()
+	t.Log("Finished replying threads.")
 	// Get all the threads in "mylife" section. There should be 44.
 	section := &pbContext.Section{
 		Id: "mylife",
 	}
+	t.Log("GetThreadsOverview")
 	threads, err := db.GetThreadsOverview(section)
 	if err != nil {
 		t.Fatalf("Got err: %v\n", err)
 	}
+	t.Log("Finished GetThreadsOverview")
 	// Copy every id from the section into a new variable. Each time a thread
 	// id is received, it will be removed from the slice of ids. At the end,
 	// the slice of copies should be empty.
 	var idCopies = make([]string, len(sectionPosts["mylife"]))
 	copy(idCopies, sectionPosts["mylife"])
+	var threadIds []string
 	for _, thread := range threads {
 		threadId, ok := thread.Key().(string)
 		if !ok {
 			t.Errorf("Expected key to be string, but got: %v\n", thread.Key())
 			continue
+		}
+		var found bool
+		for idx, idCopy := range idCopies {
+			// idCopy holds a permalink, which includes the section.
+			idCopy = strings.TrimPrefix(idCopy, "/mylife/")
+			if idCopy == threadId {
+				found = true
+				last := len(idCopies) - 1
+				idCopies[idx] = idCopies[last]
+				idCopies = idCopies[:last]
+				threadIds = append(threadIds, threadId)
+				break
+			}
+		}
+		if !found {
+			t.Errorf("id %v not found in copies!\n", threadId)
+		}
+	}
+	if len(idCopies) != 0 {
+		t.Errorf("idCopies should be empty. These were left: %v\n", idCopies)
+	}
+	// Get threads' content in a []*pbApi.ContentRule.
+	ctx := &pbContext.Section{
+		Id: "mylife",
+	}
+	t.Log("GetThreads")
+	contentRules, err := db.GetThreads(ctx, threadIds)
+	if err != nil {
+		t.Fatalf("Got err: %v\n", err)
+	}
+	t.Log("Finished GetThreads")
+	if len(contentRules) != len(threadIds) {
+		t.Errorf("Content rules' length: %v. Thread ids length: %v\n", len(contentRules), len(threadIds))
+	}
+	// At the end, the slice of copies should be empty.
+	idCopies = idCopies[:cap(idCopies)]
+	copy(idCopies, sectionPosts["mylife"])
+	for _, contentRule := range contentRules {
+		threadId := contentRule.Data.Metadata.Id
+		permalink := "/mylife/" + threadId
+		post, ok := idPost[permalink]
+		if !ok {
+			t.Errorf("%v is not in idPost.\n", permalink)
+		}
+		if post.content.Title != contentRule.Data.Content.Title || 
+		post.content.Content != contentRule.Data.Content.Content ||
+		post.content.FtFile != contentRule.Data.Content.FtFile ||
+		post.content.PublishDate.Seconds != contentRule.Data.Content.PublishDate.Seconds {
+			t.Errorf("Expected: %v, got: %v\n", post.content, contentRule.Data.Content)
 		}
 		var found bool
 		for idx, idCopy := range idCopies {
@@ -857,7 +916,7 @@ var comments = []comment{
 				Seconds: time.Now().Unix(),
 			},
 		},
-	},
+	},/*
 	comment{
 		content: dbmodel.Reply{
 			Content: "(2) HEY yo! I'm leaving a comment on your amazing post.",
@@ -893,5 +952,5 @@ var comments = []comment{
 				Seconds: time.Now().Unix(),
 			},
 		},
-	},
+	},*/
 }
