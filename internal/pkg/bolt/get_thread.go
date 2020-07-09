@@ -119,14 +119,12 @@ func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi
 	if !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
-
 	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
 		activeContents := tx.Bucket([]byte(activeContentsB))
 		if activeContents == nil {
 			log.Printf("bucket %s of section %s not found\n", activeContentsB, sectionId)
 			return dbmodel.ErrBucketNotFound
 		}
-
 		var (
 			done = make(chan error)
 			quit = make(chan error)
@@ -138,27 +136,26 @@ func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi
 			// in its own go-routine. Should it get an error and it will send
 			// it to the channel done, otherwise it will be sending nil to the
 			// same channel, meaning it could complete its work successfully.
+			elems++
 			wg.Add(1)
 			go func(idx int, id string) {
+				contentRules[idx] = &pbApi.ContentRule{}
 				defer wg.Done()
 				v := activeContents.Get([]byte(id))
 				// Check whether the content was found (is currently active)
+				var err error
 				if v != nil {
-					elems++
 					pbContent := new(pbDataFormat.Content)
-					if err := proto.Unmarshal(v, pbContent); err != nil {
+					if err = proto.Unmarshal(v, pbContent); err != nil {
 						log.Printf("Could not unmarshal content: %v\n", err)
-						contentRules[idx] = &pbApi.ContentRule{}
 					} else {
 						contentRule := h.formatThreadContentRule(pbContent, section, id)
 						contentRules[idx] = contentRule
 					}
-					select {
-					case done<- err:
-					case <-quit: // exit in case of getting stuck on above statement.
-					}
-				} else {
-					contentRules[idx] = &pbApi.ContentRule{}
+				}
+				select {
+				case done<- err:
+				case <-quit: // exit in case of getting stuck on above statement.
 				}
 			}(idx, id)
 		}
