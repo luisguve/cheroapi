@@ -129,27 +129,26 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 			// in its own go-routine. Should it get an error and it will send
 			// it to the channel done, otherwise it will be sending nil to the
 			// same channel, meaning it could complete its work successfully.
+			elems++
 			wg.Add(1)
 			go func(idx int, id string) {
 				defer wg.Done()
+				contentRules[idx] = &pbApi.ContentRule{}
 				v := comments.Get([]byte(id))
 				// Check whether the comment exists
+				var err error
 				if v != nil {
-					elems++
 					pbContent := new(pbDataFormat.Content)
-					if err := proto.Unmarshal(v, pbContent); err != nil {
+					if err = proto.Unmarshal(v, pbContent); err != nil {
 						log.Printf("Could not unmarshal content: %v\n", err)
-						contentRules[idx] = &pbApi.ContentRule{}
 					} else {
 						contentRule := h.formatCommentContentRule(pbContent, thread, id)
 						contentRules[idx] = contentRule
 					}
-					select {
-					case done<- err:
-					case <-quit: // exit in case of getting stuck on above statement.
-					}
-				} else {
-					contentRules[idx] = &pbApi.ContentRule{}
+				}
+				select {
+				case done<- err:
+				case <-quit: // exit in case of getting stuck on above statement.
 				}
 			}(idx, id)
 		}
