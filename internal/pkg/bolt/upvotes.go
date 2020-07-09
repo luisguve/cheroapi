@@ -5,6 +5,8 @@ import (
 	"time"
 	"fmt"
 
+	"github.com/golang/protobuf/proto"
+	bolt "go.etcd.io/bbolt"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
@@ -57,20 +59,38 @@ func inSlice(users []string, user string) (bool, int) {
 // submitter is the content author, or a nil *pbApi.NotifyUser and an
 // ErrThreadNotFound or proto marshal/unmarshal error on failure.
 func (h *handler) UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.NotifyUser, error) {
-	pbContent, err := h.GetThreadContent(thread)
+	var (
+		id = thread.Id
+		sectionId = thread.SectionCtx.Id
+		pbContent *pbDataFormat.Content
+	)
+	// check whether the section exists
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
+		return nil, dbmodel.ErrSectionNotFound
+	}
+	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
+		var err error
+		pbContent, err = h.GetThreadContent(thread)
+		if err != nil {
+			return err
+		}
+		pbContent.Upvotes++
+		pbContent.VoterIds = append(pbContent.VoterIds, userId)
+		// Increment interactions and calculata new average update time only if
+		// this user has not undone an interaction on this content before.
+		undoner, _ := inSlice(pbContent.UndonerIds, userId)
+		if !undoner {
+			incInteractions(pbContent.Metadata)
+		}
+		contentBytes, err := proto.Marshal(pbContent)
+		if err != nil {
+			log.Printf("Could not marshal content: %v\n", err)
+			return err
+		}
+		return setThreadBytes(tx, id, contentBytes)
+	})
 	if err != nil {
-		return nil, err
-	}
-	pbContent.Upvotes++
-	pbContent.VoterIds = append(pbContent.VoterIds, userId)
-	// Increment interactions and calculata new average update time only if
-	// this user has not undone an interaction on this content before.
-	undoner, _ := inSlice(pbContent.UndonerIds, userId)
-	if !undoner {
-		incInteractions(pbContent.Metadata)
-	}
-
-	if err = h.SetThreadContent(thread, pbContent); err != nil {
 		log.Println(err)
 		return nil, err
 	}
