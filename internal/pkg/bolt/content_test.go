@@ -42,7 +42,7 @@ type comment struct {
 }
 
 // Register users, then create threads, then leave replies on those threads.
-func TestCreateThread(t *testing.T) {
+func TestThread(t *testing.T) {
 	dir, err := ioutil.TempDir("db", "storage")
 	if err != nil {
 		t.Fatalf("Error in test: %v\n", err)
@@ -138,7 +138,7 @@ func TestCreateThread(t *testing.T) {
 							if err != nil {
 								t.Fatalf("Got error while posting reply: %v\n", err)
 							}
-							t.Log("Just replied a thread.")
+							// t.Log("Just replied a thread.")
 							if r.Submitter == postAuthor[permalink] {
 								// The submitter is the thread author; there must
 								// not be any notification.
@@ -256,6 +256,69 @@ func TestCreateThread(t *testing.T) {
 	if len(idCopies) != 0 {
 		t.Errorf("idCopies should be empty. These were left: %v\n", idCopies)
 	}
+	// Upvoting threads. Every thread is going to receive between 1 and len(users)
+	// upvotes. Then, it will be gotten and compare the number of upvotes, which
+	// should match.
+	t.Log("Upvoting threads.")
+	for _, threadId := range threadIds {
+		wg.Add(1)
+		go func(threadId string) {
+			defer wg.Done()
+			threadCtx := &pbContext.Thread{
+				Id:         threadId,
+				SectionCtx: &pbContext.Section{
+					Id: "mylife",
+				},
+			}
+			var upvotesWG sync.WaitGroup
+			permalink := "/mylife/" + threadId
+			n := 1 + rand.Intn(len(users))
+			for i := 0; i < n; i++ {
+				upvotesWG.Add(1)
+				go func(userId string) {
+					defer upvotesWG.Done()
+					notifyUser, err := db.UpvoteThread(userId, threadCtx)
+					if err != nil {
+						t.Errorf("Got err: %v\n", err)
+						return
+					}
+					if userId == postAuthor[permalink] {
+						// The upvoter is the thread author; there must not be
+						// any notification.
+						if notifyUser != nil {
+							t.Errorf("Got notification, but the upvoter is the author.\n")
+						}
+						return
+					}
+					// The submitter is not the thread author; the notification
+					// must be for the thread author.
+					equals := postAuthor[permalink] == notifyUser.UserId
+					if !equals {
+						t.Errorf("Post author (%s) != notifyUser Id (%s)\n", postAuthor[permalink], notifyUser.UserId)
+					}
+					expSubject := fmt.Sprintf("On your thread %s", idPost[permalink].content.Title)
+					equals = expSubject == notifyUser.Notification.Subject
+					if !equals {
+						t.Errorf("received subject (%s) != expected subject (%s)\n", expSubject, notifyUser.Notification.Subject)
+					}
+				}(ids[i])
+			}
+			upvotesWG.Wait()
+			contentRule, err := db.GetThread(threadCtx)
+			if err != nil {
+				t.Errorf("Got err: %v\n", err)
+				return
+			}
+			// awesome-blog-post-xx-hashseq
+			logTitle := strings.TrimPrefix(threadId, "awesome-blog-")[:7]
+			upvotes := int(contentRule.Data.Metadata.Upvotes)
+			if n != upvotes {
+				t.Errorf("%s should have %d upvotes, but have %d\n", logTitle, n, upvotes)
+			}
+		}(threadId)
+	}
+	wg.Wait()
+	t.Log("Finished upvoting threads")
 }
 
 var users = map[string]user{
