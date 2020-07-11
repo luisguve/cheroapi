@@ -172,15 +172,17 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 		go func() {
 			var err error
 			pbComment, err = h.GetCommentContent(comment)
-			pbComment.Upvotes++
-			pbComment.VoterIds = append(pbComment.VoterIds, userId)
-			// Increment interactions and calculata new average update time only
-			// if this user has not undone an interaction on this content before.
-			undoner, _ := inSlice(pbComment.UndonerIds, userId)
-			if !undoner {
-				incInteractions(pbComment.Metadata)
+			if err == nil {
+				pbComment.Upvotes++
+				pbComment.VoterIds = append(pbComment.VoterIds, userId)
+				// Increment interactions and calculata new average update time only
+				// if this user has not undone an interaction on this content before.
+				undoner, _ := inSlice(pbComment.UndonerIds, userId)
+				if !undoner {
+					incInteractions(pbComment.Metadata)
+				}
+				commentBytes, err = proto.Marshal(pbComment)
 			}
-			commentBytes, err = proto.Marshal(pbComment)
 			select {
 			case done<- err:
 			case <-quit:
@@ -189,13 +191,15 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 		go func() {
 			var err error
 			pbThread, err = h.GetThreadContent(comment.ThreadCtx)
-			// increment interactions and calculata new average update time only
-			// if this user has not undone an interaction on this content before.
-			undoner, _ := inSlice(pbThread.UndonerIds, userId)
-			if !undoner {
-				incInteractions(pbThread.Metadata)
+			if err == nil {
+				// increment interactions and calculata new average update time only
+				// if this user has not undone an interaction on this content before.
+				undoner, _ := inSlice(pbThread.UndonerIds, userId)
+				if !undoner {
+					incInteractions(pbThread.Metadata)
+				}
+				threadBytes, err = proto.Marshal(pbThread)
 			}
-			threadBytes, err = proto.Marshal(pbThread)
 			select {
 			case done<- err:
 			case <-quit:
