@@ -15,11 +15,6 @@ import (
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
-type errNotif struct {
-	err error
-	notifyUser *pbApi.NotifyUser
-}
-
 // incInteractions increases by one the number of interactions of the given
 // *pbMetadata.Content, sets LastUpdated to time.Now().Unix() and calculates the
 // average update time difference by dividing the accumulated difference between
@@ -297,117 +292,128 @@ func (h *handler) UndoUpvoteComment(userId string, comment *pbContext.Comment) e
 func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomment) ([]*pbApi.NotifyUser, error) {
 	var (
 		notifs []*pbApi.NotifyUser
-		done = make(chan errNotif)
-		quit = make(chan error)
-		// Buffered channel to send the subcomment from the go-routine that
-		// updates it to the go-routine that updates the thread it belongs to.
-		subcom = make(chan *pbDataFormat.Content, 1)
+		pbSubcomment, pbComment, pbThread *pbDataFormat.Content
+		comment = subcomment.CommentCtx
+		thread = subcomment.CommentCtx.ThreadCtx
+		section = subcomment.CommentCtx.ThreadCtx.SectionCtx
 	)
-	// get and update subcomment data and set notification
-	go func(subcom chan<- *pbDataFormat.Content) {
-		var errNotifyUser errNotif
-		pbSubcomment, err := h.GetSubcommentContent(subcomment)
-		if err == nil {
-			pbSubcomment.Upvotes++
-			pbSubcomment.VoterIds = append(pbSubcomment.VoterIds, userId)
-			// increment interactions and calculata new average update time only
-			// if this user has not undone an interaction on this content before.
-			undoner, _ := inSlice(pbSubcomment.UndonerIds, userId)
-			if !undoner {
-				incInteractions(pbSubcomment.Metadata)
-			}
-			err = h.SetSubcommentContent(subcomment, pbSubcomment)
+	// check whether the section exists
+	sectionDB, ok := h.sections[section.Id]
+	if !ok {
+		return nil, dbmodel.ErrSectionNotFound
+	}
+	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
+		var (
+			subcommentBytes, commentBytes, threadBytes []byte
+			done = make(chan error)
+			quit = make(chan error)
+		)
+		// Get and update subcomment data.
+		go func() {
+			var err error
+			pbSubcomment, err = h.GetSubcommentContent(subcomment)
 			if err == nil {
-				subcom<- pbSubcomment
-				toNotify := pbSubcomment.AuthorId
-				if userId != toNotify {
-					// set notification
-					var msg string
-					if pbSubcomment.Upvotes > 1 {
-						msg = fmt.Sprintf("%d users have upvoted your comment", pbSubcomment.Upvotes)
-					} else {
-						msg = "1 user has upvoted your comment"
-					}
-					subj := fmt.Sprintf("On your comment on %s", pbSubcomment.Title)
-					notifType := pbDataFormat.Notif_UPVOTE_SUBCOMMENT
-					errNotifyUser.notifyUser = h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbSubcomment)
+				pbSubcomment.Upvotes++
+				pbSubcomment.VoterIds = append(pbSubcomment.VoterIds, userId)
+				// increment interactions and calculata new average update time only
+				// if this user has not undone an interaction on this content before.
+				undoner, _ := inSlice(pbSubcomment.UndonerIds, userId)
+				if !undoner {
+					incInteractions(pbSubcomment.Metadata)
 				}
+				subcommentBytes, err = proto.Marshal(pbSubcomment)
 			}
-		}
-		errNotifyUser.err = err
-		close(subcom)
-		select {
-		case done<- errNotifyUser:
-		case <-quit:
-		}
-	}(subcom)
-	// get and update comment data
-	go func(comment *pbContext.Comment) {
-		var errNotifyUser errNotif
-		pbComment, err := h.GetCommentContent(comment)
-		if err == nil {
-			// increment interactions and calculata new average update time only
-			// if this user has not undone an interaction on this content before.
-			undoner, _ := inSlice(pbComment.UndonerIds, userId)
-			if !undoner {
-				incInteractions(pbComment.Metadata)
+			select {
+			case done<- err:
+			case <-quit:
 			}
-
-			err = h.SetCommentContent(comment, pbComment)
-		}
-		errNotifyUser.err = err
-		select {
-		case done<- errNotifyUser:
-		case <-quit:
-		}
-	}(subcomment.CommentCtx)
-	// get and update thread data and set notification
-	go func(thread *pbContext.Thread, subcom <-chan *pbDataFormat.Content) {
-		var errNotifyUser errNotif
-		pbThread, err := h.GetThreadContent(thread)
-		if err == nil {
-			// increment interactions and calculata new average update time only
-			// if this user has not undone an interaction on this content before.
-			undoner, _ := inSlice(pbThread.UndonerIds, userId)
-			if !undoner {
-				incInteractions(pbThread.Metadata)
-			}
-			err = h.SetThreadContent(thread, pbThread)
-			toNotify := pbThread.AuthorId
-			if (err == nil) && (userId != toNotify) {
-				if pbSubcomment, ok := <-subcom; ok {
-					upvotes := int(pbSubcomment.Upvotes)
-					// set notification
-					var msg string
-					if upvotes > 1 {
-						msg = fmt.Sprintf("%d users have upvoted a comment in your thread", upvotes)
-					} else {
-						msg = "1 user has upvoted a comment in your thread"
-					}
-					subj := fmt.Sprintf("On your thread %s", pbThread.Title)
-					notifType := pbDataFormat.Notif_UPVOTE_SUBCOMMENT
-					errNotifyUser.notifyUser = h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbSubcomment)
+		}()
+		// Get and update comment metadata.
+		go func() {
+			var err error
+			pbComment, err = h.GetCommentContent(comment)
+			if err == nil {
+				// Increment interactions and calculata new average update time only
+				// if this user has not undone an interaction on this content before.
+				undoner, _ := inSlice(pbComment.UndonerIds, userId)
+				if !undoner {
+					incInteractions(pbComment.Metadata)
 				}
+				commentBytes, err = proto.Marshal(pbComment)
+			}
+			select {
+			case done<- err:
+			case <-quit:
+			}
+		}()
+		// Get and update thread metadata.
+		go func() {
+			var err error
+			pbThread, err = h.GetThreadContent(thread)
+			if err == nil {
+				// Increment interactions and calculata new average update time only
+				// if this user has not undone an interaction on this content before.
+				undoner, _ := inSlice(pbThread.UndonerIds, userId)
+				if !undoner {
+					incInteractions(pbThread.Metadata)
+				}
+				threadBytes, err = proto.Marshal(pbThread)
+			}
+			select {
+			case done<- err:
+			case <-quit:
+			}
+		}()
+		// Check for errors.
+		var err error
+		for i := 0; i < 3; i++ {
+			err = <-done
+			if err != nil {
+				close(quit)
+				return err
 			}
 		}
-		errNotifyUser.err = err
-		select {
-		case done<- errNotifyUser:
-		case <-quit:
+		err = setSubcommentBytes(tx, thread.Id, comment.Id, subcomment.Id, subcommentBytes)
+		if err != nil {
+			return err
 		}
-	}(subcomment.CommentCtx.ThreadCtx, subcom)
-
-	// check for errors
-	for i := 0; i < 2; i++ {
-		errNotifyUser := <-done
-		if errNotifyUser.err != nil {
-			log.Println(errNotifyUser.err)
-			close(quit)
-			return nil, errNotifyUser.err
+		err = setCommentBytes(tx, thread.Id, comment.Id, commentBytes)
+		if err != nil {
+			return err
 		}
-		if errNotifyUser.notifyUser != nil {
-			notifs = append(notifs, errNotifyUser.notifyUser)
+		return setThreadBytes(tx, thread.Id, threadBytes)
+	})
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+	// Set notification only if the submitter is not the subcomment author.
+	toNotify := pbSubcomment.AuthorId
+	if userId != toNotify {
+		var msg string
+		if pbSubcomment.Upvotes > 1 {
+			msg = fmt.Sprintf("%d users have upvoted your comment", pbSubcomment.Upvotes)
+		} else {
+			msg = "1 user has upvoted your comment"
 		}
+		subj := fmt.Sprintf("On your comment on %s", pbSubcomment.Title)
+		notifType := pbDataFormat.Notif_UPVOTE_SUBCOMMENT
+		notifyUser := h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbSubcomment)
+		notifs = append(notifs, notifyUser)
+	}
+	// Set notification only if the submitter is not the thread author.
+	toNotify = pbThread.AuthorId
+	if userId != toNotify {
+		var msg string
+		if pbSubcomment.Upvotes > 1 {
+			msg = fmt.Sprintf("%d users have upvoted a comment in your thread", pbSubcomment.Upvotes)
+		} else {
+			msg = "1 user has upvoted a comment in your thread"
+		}
+		subj := fmt.Sprintf("On your thread %s", pbThread.Title)
+		notifType := pbDataFormat.Notif_UPVOTE_SUBCOMMENT
+		notifyUser := h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbSubcomment)
+		notifs = append(notifs, notifyUser)
 	}
 	return notifs, nil
 }
