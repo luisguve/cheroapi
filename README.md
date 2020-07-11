@@ -23,6 +23,32 @@ The feature that differentiates it from the rest is the way it makes **paginatio
 
 Now how it works in **Cheropatilla**
 
+24 contents per page: 15 of them are new, 8 are relevants and 1 of them is the main content, which turns out to be the most popular at the time. In the frontend, a grid where each content occupies a different number of cells, is rendered as shown in the following picture:
+
+![Grid of contents](grid.png)
+
+The most **new** contents are placed in the **smaller squares**, the **outstanding** ones are placed in the **mid-size squares** and the **main** content is in the **greatest square**.
+
+The order in which the contents are arranged by their quality is called ***the pattern***.
+
+The way in which the contents are returned is completely random; the user enters the page of a section and the server fills the pattern in random fashion with ***active*** contents from the section. To be exact, this is the algorithm summarized in three steps:
+
+1. Load all the *active* contents from the database into an array.
+1. Classify the contents in three categories: *new*, *outstanding* and *main*.
+1. Follow the pattern; on each iteration *i*, take out a content from the category indicated by the pattern (new, outstanding or main) in a random fashion and insert it into the resulting array.
+
+On the other hand, as the selection of contents is random on each *feed*, it must be a way to record the contents the user has already seen and discard them from the set of active contents, in order to have a real pagination in the following feed requests.
+
+The most easy solution is to use cookies. Each time the server sends a *feed* to the client, the session gets updated adding the IDs of the contents that were sent. Each time the client requests a new feed, the server gets the IDs of the contents that were already seen by the user.
+
+Now another step is placed in between the **step 1** and **step 2** from the previous algorithm: the discarding of contents already seen by the user.
+
+The way feeds are requested is through the button ***Recycle***. The contents (and the order) that are obtained by recicling the page is actually unpredictable, but three things can be guaranteed:
+
+1. The main content will **always** be the most outstanding of all the **active** contents. At the first recycle, the spot of the main content will be taken by the second most outstanding; at the second recycle, by the third most oustanding and so on in each recycle.
+1. The contents received by the client between recycles will **never** be repeated.
+1. The server will follow the pattern as much as possible, but in the case in which there are less outstanding contents than the required by the pattern, their places will be taken by contents classified as new and viceversa.
+
 ___
 
 Sus caracteristicas son similares a las de un foro de discusión; usuarios crean posts en una sección y otros usuarios los ven en la página de la seccion, pueden entrar en la página del post, dejar un comentario, o responder un comentario del post. Es decir, hay hasta tres niveles aqui: post->comentario->subcomentario. 
@@ -44,9 +70,9 @@ Ahora como funciona en Cheropatilla:
 
 La forma en la que se obtiene el feed (los 24 contenidos) es completamente aleatoria. El usuario entra en la página de una sección y el servidor rellena el patrón aleatoriamente con contenidos "activos" de la sección. Para ser exactos, este es el algoritmo (resumido en tres pasos):
 
-1. Carga todos los contenidos activos de la base de datos a un arreglo.
+1. Carga todos los contenidos *activos* de la base de datos a un arreglo.
 2. Clasifica los contenidos en tres categorías: nuevo, relevante y principal.
-3. Recorre el patrón; en cada iteración i, saca un contenido aleatoriamente de la categoría del tipo que indica el patrón (nuevo, relevante o principal) y se inserta en el arreglo resultante.
+3. Recorre el patrón; en cada iteración *i*, saca un contenido aleatoriamente de la categoría del tipo que indica el patrón (nuevo, relevante o principal) y se inserta en el arreglo resultante.
 
 Por otro lado, como la seleccion de los contenidos es aleatoria en cada feed, debe haber una manera de registrar los contenidos que el usuario ya ha visto, y descartarlos del set de contenidos activos (para cada usuario) para que exista una verdadera paginación en las proximas peticiones de feed.
 
