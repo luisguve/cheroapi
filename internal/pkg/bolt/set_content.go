@@ -1,19 +1,19 @@
 package bolt
 
 import (
-	"strings"
-	"log"
-	"fmt"
 	"crypto/sha1"
 	"encoding/binary"
+	"fmt"
+	"log"
+	"strings"
 
 	"github.com/golang/protobuf/proto"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
-	bolt "go.etcd.io/bbolt"
-	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
-	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
+	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
+	bolt "go.etcd.io/bbolt"
 )
 
 // itob returns an 8-byte big endian representation of v.
@@ -25,11 +25,11 @@ func itob(v uint64) []byte {
 
 // CreateThread inserts the given content in the given section, after formatting
 // it into a pbDataFormat.Content and marshaling it in protobuf-encoded bytes.
-// 
+//
 // It assigns the title as the thread Id after replacing spaces with dashes and
 // converting it to lowercase, and builds the permalink with the format
 // /{section-id}/{thread-id}.
-// 
+//
 // Then, it appends the just created thread to the list of threads created in
 // the recent activity of the author.
 func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Section, userId string) (string, error) {
@@ -82,7 +82,7 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 			SectionName: sectionDB.name,
 			SectionId:   sectionId,
 			Permalink:   permalink,
-			Metadata:    &pbMetadata.Content{
+			Metadata: &pbMetadata.Content{
 				LastUpdated: content.PublishDate,
 				DataKey:     newId,
 			},
@@ -118,13 +118,13 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 
 // SetThreadContent encodes the given content in protobuf bytes, then updates
 // the value of the given thread with the resulting []byte.
-// 
+//
 // It may return an ErrSectionNotFound error in case of being called with an
 // invalid section context, ErrThreadNotFound if the thread does not exist, or
 // a proto marshalling error.
 func (h *handler) SetThreadContent(thread *pbContext.Thread, content *pbDataFormat.Content) error {
 	var (
-		id = thread.Id
+		id        = thread.Id
 		sectionId = thread.SectionCtx.Id
 	)
 
@@ -148,14 +148,14 @@ func (h *handler) SetThreadContent(thread *pbContext.Thread, content *pbDataForm
 
 // SetCommentContent encodes the given content in protobuf bytes, then updates
 // the value of the given comment with the resulting []byte.
-// 
+//
 // It may return an ErrSectionNotFound error in case of being called with an
-// invalid section context, ErrCommentNotFound if either the comment or the 
+// invalid section context, ErrCommentNotFound if either the comment or the
 // thread it belongs to does not exist, or a proto marshalling error.
 func (h *handler) SetCommentContent(comment *pbContext.Comment, content *pbDataFormat.Content) error {
 	var (
-		id = comment.Id
-		threadId = comment.ThreadCtx.Id
+		id        = comment.Id
+		threadId  = comment.ThreadCtx.Id
 		sectionId = comment.ThreadCtx.SectionCtx.Id
 	)
 
@@ -179,16 +179,16 @@ func (h *handler) SetCommentContent(comment *pbContext.Comment, content *pbDataF
 
 // SetSubcommentContent encodes the given content in protobuf bytes, then
 // updates the value of the given subcomment with the resulting []byte.
-// 
+//
 // It may return an ErrSectionNotFound error in case of being called with an
 // invalid section context, ErrSubcommentNotFound if either the subcomment, the
 // comment it belongs to or the thread it belongs to does not exist, or a proto
 // marshalling error.
 func (h *handler) SetSubcommentContent(subcomment *pbContext.Subcomment, content *pbDataFormat.Content) error {
 	var (
-		id = subcomment.Id
+		id        = subcomment.Id
 		commentId = subcomment.CommentCtx.Id
-		threadId = subcomment.CommentCtx.ThreadCtx.Id
+		threadId  = subcomment.CommentCtx.ThreadCtx.Id
 		sectionId = subcomment.CommentCtx.ThreadCtx.SectionCtx.Id
 	)
 
@@ -197,7 +197,7 @@ func (h *handler) SetSubcommentContent(subcomment *pbContext.Subcomment, content
 	if !ok {
 		return dbmodel.ErrSectionNotFound
 	}
-	
+
 	contentBytes, err := proto.Marshal(content)
 	if err != nil {
 		log.Printf("Could not marshal content: %v\n", err)

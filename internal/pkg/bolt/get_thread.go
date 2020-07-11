@@ -1,27 +1,27 @@
 package bolt
 
-import(
+import (
 	"log"
 	"sync"
 
 	"github.com/golang/protobuf/proto"
-	bolt "go.etcd.io/bbolt"
-	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
-	pbContext "github.com/luisguve/cheroproto-go/context"
+	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
+	bolt "go.etcd.io/bbolt"
 )
 
 // Get metadata of all the active threads in a section. It returns
 // ErrSectionNotFound if the section is invalid and ErrBucketNotFound if the
 // section doesn't have a bucket for active contents.
-func (h *handler) GetThreadsOverview(section *pbContext.Section, setSDF... patillator.SetSDF) ([]patillator.SegregateDiscarderFinder, error) {
+func (h *handler) GetThreadsOverview(section *pbContext.Section, setSDF ...patillator.SetSDF) ([]patillator.SegregateDiscarderFinder, error) {
 	var (
-		contents []patillator.SegregateDiscarderFinder
+		contents  []patillator.SegregateDiscarderFinder
 		sectionId = section.Id
-		err error
+		err       error
 	)
 	// check whether the section exists
 	sectionDB, ok := h.sections[sectionId]
@@ -47,11 +47,11 @@ func (h *handler) GetThreadsOverview(section *pbContext.Section, setSDF... patil
 			return dbmodel.ErrBucketNotFound
 		}
 		var (
-			done = make(chan error)
-			quit = make(chan error)
-			wg sync.WaitGroup
-			m sync.Mutex
-			c = activeContents.Cursor()
+			done  = make(chan error)
+			quit  = make(chan error)
+			wg    sync.WaitGroup
+			m     sync.Mutex
+			c     = activeContents.Cursor()
 			elems = 0
 		)
 		for k, v := c.First(); k != nil; k, v = c.Next() {
@@ -78,7 +78,7 @@ func (h *handler) GetThreadsOverview(section *pbContext.Section, setSDF... patil
 					m.Unlock()
 				}
 				select {
-				case done<- err:
+				case done <- err:
 				case <-quit: // exit in case of getting stuck on above statement.
 				}
 			}(v)
@@ -109,8 +109,8 @@ func (h *handler) GetThreadsOverview(section *pbContext.Section, setSDF... patil
 // section.
 func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi.ContentRule, error) {
 	var (
-		err error
-		sectionId = section.Id
+		err          error
+		sectionId    = section.Id
 		contentRules = make([]*pbApi.ContentRule, len(ids))
 	)
 
@@ -126,9 +126,9 @@ func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi
 			return dbmodel.ErrBucketNotFound
 		}
 		var (
-			done = make(chan error)
-			quit = make(chan error)
-			wg sync.WaitGroup
+			done  = make(chan error)
+			quit  = make(chan error)
+			wg    sync.WaitGroup
 			elems = 0
 		)
 		for idx, id := range ids {
@@ -154,7 +154,7 @@ func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi
 					}
 				}
 				select {
-				case done<- err:
+				case done <- err:
 				case <-quit: // exit in case of getting stuck on above statement.
 				}
 			}(idx, id)
@@ -178,17 +178,17 @@ func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi
 	return contentRules, err
 }
 
-// Get metadata of all the active threads in every section. It calls 
+// Get metadata of all the active threads in every section. It calls
 // h.GetThreadsOverview for each section in a concurrent fashion and returns
 // a map of section ids to []patillator.SegregateDiscarderFinder and a []error
 // that returns each call to GetThreadsOverview.
 func (h *handler) GetGeneralThreadsOverview() (map[string][]patillator.SegregateDiscarderFinder, []error) {
 	var (
 		contents map[string][]patillator.SegregateDiscarderFinder
-		errs []error
-		m sync.Mutex
-		wg sync.WaitGroup
-		once sync.Once
+		errs     []error
+		m        sync.Mutex
+		wg       sync.WaitGroup
+		once     sync.Once
 	)
 
 	setContent := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
@@ -237,9 +237,9 @@ func (h *handler) GetGeneralThreadsOverview() (map[string][]patillator.Segregate
 func (h *handler) GetGeneralThreads(threadsInfo []patillator.GeneralId) ([]*pbApi.ContentRule, []error) {
 	var (
 		contentRules = make([]*pbApi.ContentRule, len(threadsInfo))
-		errs []error
-		m sync.Mutex
-		wg sync.WaitGroup
+		errs         []error
+		m            sync.Mutex
+		wg           sync.WaitGroup
 	)
 
 	// query each thread concurrently; use a Mutex to synchronise write access
@@ -250,7 +250,7 @@ func (h *handler) GetGeneralThreads(threadsInfo []patillator.GeneralId) ([]*pbAp
 			defer wg.Done()
 
 			ctx := &pbContext.Thread{
-				Id:         threadInfo.Id,
+				Id: threadInfo.Id,
 				SectionCtx: &pbContext.Section{
 					Id: threadInfo.SectionId,
 				},
@@ -272,15 +272,15 @@ func (h *handler) GetGeneralThreads(threadsInfo []patillator.GeneralId) ([]*pbAp
 
 // GetThreadContent queries the section database of the given thread looking for
 // the thread with the given id in both the active and archived contents bucket.
-// 
+//
 // If the section does not exist, it returns an ErrSectionNotFound error.
 // If it found the thread, it marshals it into a *pbDataFormat.Content and
 // returns it. Otherwise, it returns a nil Content and a ErrThreadNotFound error
 // or a proto unmarshal error.
 func (h *handler) GetThreadContent(thread *pbContext.Thread) (*pbDataFormat.Content, error) {
 	var (
-		err error
-		id = thread.Id
+		err       error
+		id        = thread.Id
 		sectionId = thread.SectionCtx.Id
 		pbContent = new(pbDataFormat.Content)
 	)
@@ -309,7 +309,7 @@ func (h *handler) GetThreadContent(thread *pbContext.Thread) (*pbDataFormat.Cont
 
 // GetThread queries the section database of the given thread looking for the
 // thread with the given id in both the active and archived contents bucket.
-// 
+//
 // If the section does not exist, it returns an ErrSectionNotFound error.
 // If it found the thread, it converts it into a ContentRule and returns it.
 // Otherwise, it returns a nil ContentRule and an error.
@@ -326,7 +326,7 @@ func (h *handler) GetThread(thread *pbContext.Thread) (*pbApi.ContentRule, error
 func (h *handler) GetSavedThreadsOverview(userId string) (map[string][]patillator.SegregateDiscarderFinder, []error) {
 	var (
 		contents map[string][]patillator.SegregateDiscarderFinder
-		errs []error
+		errs     []error
 	)
 
 	setContent := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
@@ -349,9 +349,9 @@ func (h *handler) GetSavedThreadsOverview(userId string) (map[string][]patillato
 		return nil, errs
 	}
 	var (
-		m sync.Mutex
+		m    sync.Mutex
 		once sync.Once
-		wg sync.WaitGroup
+		wg   sync.WaitGroup
 	)
 	// Get and set threads metadata.
 	for _, ctx := range pbUser.SavedThreads {

@@ -1,24 +1,24 @@
 package bolt
 
-import(
+import (
 	"log"
 	"sync"
 
-	bolt "go.etcd.io/bbolt"
-	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
-	pbContext "github.com/luisguve/cheroproto-go/context"
-	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
+	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	pbContext "github.com/luisguve/cheroproto-go/context"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	bolt "go.etcd.io/bbolt"
 )
 
 // Get activity of users
 func (h *handler) GetActivity(users ...string) (map[string]patillator.UserActivity, []error) {
 	var (
 		activity map[string]patillator.UserActivity
-		m sync.Mutex
-		once sync.Once
-		wg sync.WaitGroup
-		errs []error
+		m        sync.Mutex
+		once     sync.Once
+		wg       sync.WaitGroup
+		errs     []error
 	)
 
 	setTA := func(pbContent *pbDataFormat.Content, ctx *pbContext.Thread) patillator.SegregateFinder {
@@ -45,7 +45,7 @@ func (h *handler) GetActivity(users ...string) (map[string]patillator.UserActivi
 			wg.Add(1)
 			go func(user string) {
 				defer wg.Done()
-				
+
 				pbUser, err := h.User(user)
 				if err != nil {
 					log.Println(err)
@@ -142,9 +142,9 @@ func (h *handler) GetActivity(users ...string) (map[string]patillator.UserActivi
 func (h *handler) GetContentsByContext(contexts []*pbContext.Context) ([]*pbApi.ContentRule, []error) {
 	var (
 		contentRules = make([]*pbApi.ContentRule, len(contexts))
-		errs []error
-		m sync.Mutex
-		wg sync.WaitGroup
+		errs         []error
+		m            sync.Mutex
+		wg           sync.WaitGroup
 	)
 
 	for idx, context := range contexts {
@@ -153,7 +153,7 @@ func (h *handler) GetContentsByContext(contexts []*pbContext.Context) ([]*pbApi.
 			defer wg.Done()
 			var (
 				contentRule *pbApi.ContentRule
-				err error
+				err         error
 			)
 			switch ctx := context.Ctx.(type) {
 			case *pbContext.Context_ThreadCtx:

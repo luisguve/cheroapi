@@ -1,14 +1,14 @@
 package cheroapi
 
-import(
+import (
 	"errors"
 
-	"google.golang.org/grpc/status"
-	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
+	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	"google.golang.org/grpc/status"
 )
 
 // Handler defines the set of available CRUD operations to perform on the
@@ -91,23 +91,23 @@ type Handler interface {
 
 // Reply holds the data of a reply
 type Reply struct {
-	Content string
-	FtFile string
-	Submitter string
+	Content     string
+	FtFile      string
+	Submitter   string
 	PublishDate *pbTime.Timestamp
 }
 
 // These errors are returned when contents are not found.
 var (
-	ErrUserNotFound = errors.New("User not found")
-	ErrUsernameNotFound = errors.New("Username not found")
-	ErrEmailNotFound = errors.New("Email not found")
-	ErrSectionNotFound = errors.New("Section not found")
-	ErrThreadNotFound = errors.New("Thread not found")
-	ErrCommentNotFound = errors.New("Comment not found")
-	ErrSubcommentNotFound = errors.New("Subcomment not found")
-	ErrBucketNotFound = errors.New("Bucket not found")
-	ErrCommentsBucketNotFound = errors.New("Comments bucket not found")
+	ErrUserNotFound              = errors.New("User not found")
+	ErrUsernameNotFound          = errors.New("Username not found")
+	ErrEmailNotFound             = errors.New("Email not found")
+	ErrSectionNotFound           = errors.New("Section not found")
+	ErrThreadNotFound            = errors.New("Thread not found")
+	ErrCommentNotFound           = errors.New("Comment not found")
+	ErrSubcommentNotFound        = errors.New("Subcomment not found")
+	ErrBucketNotFound            = errors.New("Bucket not found")
+	ErrCommentsBucketNotFound    = errors.New("Comments bucket not found")
 	ErrSubcommentsBucketNotFound = errors.New("Subcomments bucket not found")
 )
 
@@ -132,12 +132,12 @@ var (
 )
 
 var SectionIds = map[string]string{
-	"My Life": "mylife",/*
-	"Food": "food",
-	"Technology": "tech",
-	"Art": "art",
-	"Music": "music",
-	"Do it yourself": "diy",
-	"Questions": "questions",
-	"Literature": "literature",*/
+	"My Life": "mylife", /*
+		"Food": "food",
+		"Technology": "tech",
+		"Art": "art",
+		"Music": "music",
+		"Do it yourself": "diy",
+		"Questions": "questions",
+		"Literature": "literature",*/
 }

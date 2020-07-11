@@ -3,29 +3,29 @@
 
 package bolt
 
-import(
+import (
 	"log"
-	"path/filepath"
 	"os"
+	"path/filepath"
 	"time"
 
-	bolt "go.etcd.io/bbolt"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
+	bolt "go.etcd.io/bbolt"
 )
 
 // names of buckets
 const (
-	activeContentsB = "ActiveContents"
+	activeContentsB   = "ActiveContents"
 	archivedContentsB = "ArchivedContents"
-	usersB = "Everyone"
-	usernameIdsB = "UsernameIdMappings"
-	idUsernamesB = "IdUsernameMappings"
-	emailIdsB = "EmailIdMappings"
-	idEmailsB = "IdEmailMappings"
-	commentsB = "Comments"
-	subcommentsB = "Subcomments"
-	deletedThreadsB = "DeletedThreads"
-	deletedCommentsB = "DeletedComments"
+	usersB            = "Everyone"
+	usernameIdsB      = "UsernameIdMappings"
+	idUsernamesB      = "IdUsernameMappings"
+	emailIdsB         = "EmailIdMappings"
+	idEmailsB         = "IdEmailMappings"
+	commentsB         = "Comments"
+	subcommentsB      = "Subcomments"
+	deletedThreadsB   = "DeletedThreads"
+	deletedCommentsB  = "DeletedComments"
 )
 
 type handler struct {
@@ -67,28 +67,28 @@ func (h *handler) Close() error {
 // The section databases hold a couple of buckets: one for active contents with
 // read-write access and other for archived content with read-only access. If
 // they already exists, they aren't created again.
-// 
+//
 // The top-level bucket of active contents holds key/value pairs representing
 // thread ids and thread contents, respectively, a comments bucket and a bucket
 // for deleted threads, which hold the thread-id/thread-content pairs of deleted
 // threads.
-// 
+//
 // The bucket of comments has a bucket for each thread, where the keys are the
 // same as the key of the thread the comments belong to. Each of these buckets
 // have key/value pairs representing comment ids and comment contents,
 // respectively, a bucket for subcomments and a bucket for deleted comments,
 // which hold the comment-id/comment-content pairs of deleted comments.
-// 
+//
 // Finally, the subcomments bucket has a bucket for each comment, where the keys
 // are the same as the key of the comment the subcomments belong to. Each of
 // these buckets have key/value pairs representing subcomment ids and subcomment
 // contents, respectively.
-// 
+//
 // Both comments and subcomments have numeric, sequential ids.
-// 
+//
 // The bucket of archived contents has almost the same structure. The only
 // difference is that it doesn't have buckets for deleted contents.
-// 
+//
 // New only creates the bucket of active contents and the bucket of archived
 // contents, along with their top-level bucket for comments. In the bucket of
 // active contents, it also creates a bucket for deleted threads.
@@ -99,7 +99,7 @@ func New(path string) (dbmodel.Handler, error) {
 	for sectionName, sectionId := range dbmodel.SectionIds {
 		dbPath := filepath.Join(path, sectionId)
 		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		    os.MkdirAll(dbPath, os.ModeDir)
+			os.MkdirAll(dbPath, os.ModeDir)
 		}
 		dbFile := filepath.Join(dbPath, "contents.db")
 		db, err := bolt.Open(dbFile, 0600, nil)
@@ -143,15 +143,15 @@ func New(path string) (dbmodel.Handler, error) {
 		// create bucket for archived contents
 		sectionsDBs[sectionId] = section{
 			contents: db,
-			path: dbFile,
-			name: sectionName,
+			path:     dbFile,
+			name:     sectionName,
 		}
 	}
 
 	// open or create users database
 	usersPath := filepath.Join(path, "users")
 	if _, err := os.Stat(usersPath); os.IsNotExist(err) {
-	    os.MkdirAll(usersPath, os.ModeDir)
+		os.MkdirAll(usersPath, os.ModeDir)
 	}
 	usersFile := filepath.Join(usersPath, "users.db")
 	usersDB, err := bolt.Open(usersFile, 0600, nil)
@@ -222,8 +222,8 @@ func New(path string) (dbmodel.Handler, error) {
 	now := time.Now()
 
 	return &handler{
-		users: usersDB,
+		users:    usersDB,
 		sections: sectionsDBs,
-		lastQA: now.Unix(),
+		lastQA:   now.Unix(),
 	}, nil
 }

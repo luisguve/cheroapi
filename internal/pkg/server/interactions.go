@@ -1,14 +1,14 @@
 package server
 
-import(
-	"log"
-	"errors"
+import (
 	"context"
+	"errors"
+	"log"
 
-	"google.golang.org/grpc/status"
-	"google.golang.org/grpc/codes"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Post upvote on thread, comment or subcomment
@@ -17,10 +17,10 @@ func (s *Server) Upvote(req *pbApi.UpvoteRequest, stream pbApi.CrudCheropatilla_
 		return status.Error(codes.Internal, "No database connection")
 	}
 	var (
-		submitter = req.UserId
+		submitter   = req.UserId
 		notifyUsers []*pbApi.NotifyUser
-		err error
-		sendErr error
+		err         error
+		sendErr     error
 	)
 	// call a different upvote method, depending upon the context where the
 	// upvote is being submitted.
@@ -36,10 +36,10 @@ func (s *Server) Upvote(req *pbApi.UpvoteRequest, stream pbApi.CrudCheropatilla_
 		notifyUsers, err = s.dbHandler.UpvoteSubcomment(submitter, ctx.SubcommentCtx)
 	}
 	if err != nil {
-		if (errors.Is(err, dbmodel.ErrSectionNotFound)) || 
-		(errors.Is(err, dbmodel.ErrThreadNotFound)) || 
-		(errors.Is(err, dbmodel.ErrCommentNotFound)) || 
-		(errors.Is(err, dbmodel.ErrSubcommentNotFound)) {
+		if (errors.Is(err, dbmodel.ErrSectionNotFound)) ||
+			(errors.Is(err, dbmodel.ErrThreadNotFound)) ||
+			(errors.Is(err, dbmodel.ErrCommentNotFound)) ||
+			(errors.Is(err, dbmodel.ErrSubcommentNotFound)) {
 			return status.Error(codes.NotFound, err.Error())
 		}
 		return status.Error(codes.Internal, err.Error())
@@ -47,7 +47,7 @@ func (s *Server) Upvote(req *pbApi.UpvoteRequest, stream pbApi.CrudCheropatilla_
 	for _, notifyUser := range notifyUsers {
 		if sendErr = stream.Send(notifyUser); sendErr != nil {
 			log.Printf("Could not send NotifyUser: %v\n", sendErr)
-			return status.Error(codes.Internal,	sendErr.Error())
+			return status.Error(codes.Internal, sendErr.Error())
 		}
 	}
 	return nil
@@ -60,7 +60,7 @@ func (s *Server) UndoUpvote(ctx context.Context, req *pbApi.UndoUpvoteRequest) (
 	}
 	var (
 		submitter = req.UserId
-		err error
+		err       error
 	)
 	// call a different undo upvote method, depending upon the context where the
 	// upvote undoing is being submitted.
@@ -76,10 +76,10 @@ func (s *Server) UndoUpvote(ctx context.Context, req *pbApi.UndoUpvoteRequest) (
 		if errors.Is(err, dbmodel.ErrNotUpvoted) {
 			return nil, status.Error(codes.FailedPrecondition, err.Error())
 		}
-		if (errors.Is(err, dbmodel.ErrSectionNotFound)) || 
-		(errors.Is(err, dbmodel.ErrThreadNotFound)) || 
-		(errors.Is(err, dbmodel.ErrCommentNotFound)) || 
-		(errors.Is(err, dbmodel.ErrSubcommentNotFound)) {
+		if (errors.Is(err, dbmodel.ErrSectionNotFound)) ||
+			(errors.Is(err, dbmodel.ErrThreadNotFound)) ||
+			(errors.Is(err, dbmodel.ErrCommentNotFound)) ||
+			(errors.Is(err, dbmodel.ErrSubcommentNotFound)) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -94,13 +94,13 @@ func (s *Server) Comment(req *pbApi.CommentRequest, stream pbApi.CrudCheropatill
 	}
 	var (
 		notifyUsers []*pbApi.NotifyUser
-		err error
-		sendErr error
+		err         error
+		sendErr     error
 	)
 	reply := dbmodel.Reply{
-		Content: req.Content,
-		FtFile: req.FtFile,
-		Submitter: req.UserId,
+		Content:     req.Content,
+		FtFile:      req.FtFile,
+		Submitter:   req.UserId,
 		PublishDate: req.PublishDate,
 	}
 	// call a different comment method, depending upon the context where the
@@ -115,10 +115,10 @@ func (s *Server) Comment(req *pbApi.CommentRequest, stream pbApi.CrudCheropatill
 		notifyUsers, err = s.dbHandler.ReplyComment(ctx.CommentCtx, reply)
 	}
 	if err != nil {
-		if (errors.Is(err, dbmodel.ErrSectionNotFound)) || 
-		(errors.Is(err, dbmodel.ErrThreadNotFound)) || 
-		(errors.Is(err, dbmodel.ErrCommentNotFound)) || 
-		(errors.Is(err, dbmodel.ErrSubcommentNotFound)) {
+		if (errors.Is(err, dbmodel.ErrSectionNotFound)) ||
+			(errors.Is(err, dbmodel.ErrThreadNotFound)) ||
+			(errors.Is(err, dbmodel.ErrCommentNotFound)) ||
+			(errors.Is(err, dbmodel.ErrSubcommentNotFound)) {
 			return status.Error(codes.NotFound, err.Error())
 		}
 		return status.Error(codes.Internal, err.Error())
@@ -126,7 +126,7 @@ func (s *Server) Comment(req *pbApi.CommentRequest, stream pbApi.CrudCheropatill
 	for _, notifyUser := range notifyUsers {
 		if sendErr = stream.Send(notifyUser); sendErr != nil {
 			log.Printf("Could not send NotifyUser: %v\n", sendErr)
-			return status.Error(codes.Internal,	sendErr.Error())
+			return status.Error(codes.Internal, sendErr.Error())
 		}
 	}
 	return nil

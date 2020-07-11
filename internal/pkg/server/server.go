@@ -1,9 +1,9 @@
-// Package server provides the data type Server, which implements the 
+// Package server provides the data type Server, which implements the
 // interface CrudCheropatillaServer.
 
 package server
 
-import(
+import (
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 )
 

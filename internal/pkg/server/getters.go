@@ -1,15 +1,15 @@
 package server
 
-import(
+import (
 	"context"
 	"errors"
 	"log"
 
-	"google.golang.org/grpc/status"
-	"google.golang.org/grpc/codes"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
-	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Get a user's basic data to be displayed in the header navigation section
@@ -73,7 +73,7 @@ func (s *Server) GetThread(ctx context.Context, req *pbApi.GetThreadRequest) (*p
 	contentRule, err := s.dbHandler.GetThread(req.Thread)
 	if err != nil {
 		if errors.Is(err, dbmodel.ErrSectionNotFound) ||
-		errors.Is(err, dbmodel.ErrThreadNotFound) {
+			errors.Is(err, dbmodel.ErrThreadNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
@@ -87,10 +87,10 @@ func (s *Server) GetSubcomments(req *pbApi.GetSubcommentsRequest, stream pbApi.C
 		return status.Error(codes.Internal, "No database connection")
 	}
 	var (
-		err error
-		sendErr error
-		ctx = req.CommentCtx
-		offset = int(req.Offset)
+		err          error
+		sendErr      error
+		ctx          = req.CommentCtx
+		offset       = int(req.Offset)
 		contentRules []*pbApi.ContentRule
 	)
 	contentRules, err = s.dbHandler.GetSubcomments(ctx, offset)
@@ -108,7 +108,7 @@ func (s *Server) GetSubcomments(req *pbApi.GetSubcommentsRequest, stream pbApi.C
 	for _, contentRule := range contentRules {
 		if sendErr = stream.Send(contentRule); err != nil {
 			log.Printf("Could not send Content Rule: %v\n", sendErr)
-			return status.Error(codes.Internal,	sendErr.Error())
+			return status.Error(codes.Internal, sendErr.Error())
 		}
 	}
 	return nil
@@ -122,11 +122,11 @@ func (s *Server) ViewUsers(ctx context.Context, req *pbApi.ViewUsersRequest) (*p
 	// number of users to get
 	const Q = 10
 	var (
-		userId = req.UserId
-		followCtx = req.Context
-		offset = int(req.Offset)
+		userId      = req.UserId
+		followCtx   = req.Context
+		offset      = int(req.Offset)
 		pbUsersData = make([]*pbDataFormat.BasicUserData, Q)
-		count = 0
+		count       = 0
 	)
 	pbUser, err := s.dbHandler.User(userId)
 	if err != nil {
@@ -152,14 +152,14 @@ func (s *Server) ViewUsers(ctx context.Context, req *pbApi.ViewUsersRequest) (*p
 			go func(userId string, idx int) {
 				var (
 					pbUser *pbDataFormat.User
-					err error
+					err    error
 				)
 				pbUser, err = s.dbHandler.User(userId)
 				if err == nil {
 					pbUsersData[idx] = pbUser.BasicUserData
 				}
 				select {
-				case done<- err:
+				case done <- err:
 				case <-quit:
 				}
 			}(userId, i)
@@ -175,14 +175,14 @@ func (s *Server) ViewUsers(ctx context.Context, req *pbApi.ViewUsersRequest) (*p
 			go func(userId string, idx int) {
 				var (
 					pbUser *pbDataFormat.User
-					err error
+					err    error
 				)
 				pbUser, err = s.dbHandler.User(userId)
 				if err == nil {
 					pbUsersData[idx] = pbUser.BasicUserData
 				}
 				select {
-				case done<- err:
+				case done <- err:
 				case <-quit:
 				}
 			}(userId, i)

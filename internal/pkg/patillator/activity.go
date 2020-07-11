@@ -1,10 +1,10 @@
 package patillator
 
-import(
+import (
 	"time"
 
-	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 	pbContext "github.com/luisguve/cheroproto-go/context"
+	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 )
 
 // ActivityMetadata holds the metadata of a content.
@@ -22,7 +22,7 @@ func (am ActivityMetadata) IsRelevant() bool {
 
 // IsLessRelevantThan compares the field Interactions and the field AvgUpdateTime
 // of am and the underlying ActivityMetadata of the argument.
-// 
+//
 // It returns true if gc -the local- has less interactions AND an equal or
 // greater average update time difference than other -the argument-, or false
 // if either some of the conditions are false or the underlying type of other
@@ -117,7 +117,7 @@ func (ca CommentActivity) toDiscard(ids []*pbContext.Comment) (bool, []*pbContex
 	// Iterate over ids. Compare sections then threads then ids.
 	for i, c := range ids {
 		sectionCtx2 := c.ThreadCtx.SectionCtx
-		
+
 		// compare sections
 		section1 := sectionCtx1.Id
 		section2 := sectionCtx2.Id
@@ -139,7 +139,7 @@ func (ca CommentActivity) toDiscard(ids []*pbContext.Comment) (bool, []*pbContex
 					last := len(ids) - 1
 					ids[i] = ids[last]
 					ids = ids[:last]
-					break					
+					break
 				}
 			}
 		}
@@ -175,7 +175,7 @@ func (sca SubcommentActivity) toDiscard(ids []*pbContext.Subcomment) (bool, []*p
 	sectionCtx1 := sc.CommentCtx.ThreadCtx.SectionCtx
 
 	toDiscard := false
-	
+
 	// Iterate over ids. Compare sections then threads then comments then ids.
 	for i, sc := range ids {
 		sectionCtx2 := sc.CommentCtx.ThreadCtx.SectionCtx
@@ -219,6 +219,6 @@ func (sca SubcommentActivity) toDiscard(ids []*pbContext.Subcomment) (bool, []*p
 
 type UserActivity struct {
 	ThreadsCreated []SegregateFinder
-	Comments []SegregateFinder
-	Subcomments []SegregateFinder
+	Comments       []SegregateFinder
+	Subcomments    []SegregateFinder
 }

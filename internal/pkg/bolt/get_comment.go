@@ -1,16 +1,16 @@
 package bolt
 
-import(
+import (
 	"log"
 	"sync"
 
-	bolt "go.etcd.io/bbolt"
 	"github.com/golang/protobuf/proto"
-	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
+	"github.com/luisguve/cheroapi/internal/pkg/patillator"
+	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
-	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	bolt "go.etcd.io/bbolt"
 )
 
 // Get metadata of comments in a thread. It returns ErrSectionNotFound if the
@@ -19,10 +19,10 @@ import(
 // current status of the thread which the comments belongs to.
 func (h *handler) GetCommentsOverview(thread *pbContext.Thread) ([]patillator.SegregateDiscarderFinder, error) {
 	var (
-		err error
-		id = thread.Id
+		err       error
+		id        = thread.Id
 		sectionId = thread.SectionCtx.Id
-		contents []patillator.SegregateDiscarderFinder
+		contents  []patillator.SegregateDiscarderFinder
 	)
 	// check whether the section exists
 	sectionDB, ok := h.sections[sectionId]
@@ -43,11 +43,11 @@ func (h *handler) GetCommentsOverview(thread *pbContext.Thread) ([]patillator.Se
 		}
 
 		var (
-			c = comments.Cursor()
-			m sync.Mutex
-			wg sync.WaitGroup
-			quit = make(chan error)
-			done = make(chan error)
+			c     = comments.Cursor()
+			m     sync.Mutex
+			wg    sync.WaitGroup
+			quit  = make(chan error)
+			done  = make(chan error)
 			elems = 0
 		)
 		for k, v := c.First(); k != nil; k, v = c.Next() {
@@ -74,7 +74,7 @@ func (h *handler) GetCommentsOverview(thread *pbContext.Thread) ([]patillator.Se
 					m.Unlock()
 				}
 				select {
-				case done<- err:
+				case done <- err:
 				case <-quit: // exit in case of getting stuck on above statement.
 				}
 			}(v)
@@ -100,9 +100,9 @@ func (h *handler) GetCommentsOverview(thread *pbContext.Thread) ([]patillator.Se
 // Get content of the given comment ids in a thread
 func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.ContentRule, error) {
 	var (
-		err error
-		id = thread.Id
-		sectionId = thread.SectionCtx.Id
+		err          error
+		id           = thread.Id
+		sectionId    = thread.SectionCtx.Id
 		contentRules = make([]*pbApi.ContentRule, len(ids))
 	)
 
@@ -119,10 +119,10 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 			return dbmodel.ErrNoComments
 		}
 		var (
-			wg sync.WaitGroup
+			wg    sync.WaitGroup
 			elems = 0
-			done = make(chan error)
-			quit = make(chan error)
+			done  = make(chan error)
+			quit  = make(chan error)
 		)
 		for idx, id := range ids {
 			// Do the content querying, unmarshaling, formatting and appending
@@ -147,7 +147,7 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 					}
 				}
 				select {
-				case done<- err:
+				case done <- err:
 				case <-quit: // exit in case of getting stuck on above statement.
 				}
 			}(idx, id)
@@ -173,16 +173,16 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 // GetCommentContent queries the section database of the given comment looking
 // for the comment with the given id in both the active and archived contents
 // bucket.
-// 
+//
 // If the section does not exist, it returns an ErrSectionNotFound error.
 // If it found the comment, it marshals it into a *pbDataFormat.Content and
 // returns it. Otherwise, it returns a nil Content and an ErrCommentNotFound or
 // a proto unmarshal error.
 func (h *handler) GetCommentContent(comment *pbContext.Comment) (*pbDataFormat.Content, error) {
 	var (
-		err error
-		id = comment.Id
-		threadId = comment.ThreadCtx.Id
+		err       error
+		id        = comment.Id
+		threadId  = comment.ThreadCtx.Id
 		sectionId = comment.ThreadCtx.SectionCtx.Id
 		pbContent = new(pbDataFormat.Content)
 	)
@@ -197,7 +197,7 @@ func (h *handler) GetCommentContent(comment *pbContext.Comment) (*pbDataFormat.C
 		commentBytes, err := getCommentBytes(tx, threadId, id)
 		if err != nil {
 			log.Printf("Could not find comment (id: %s) [root]->[%s]->[%s]: %v",
-			id, sectionId, threadId, err)
+				id, sectionId, threadId, err)
 			return err
 		}
 
@@ -213,16 +213,16 @@ func (h *handler) GetCommentContent(comment *pbContext.Comment) (*pbDataFormat.C
 // GetSubcommentContent queries the section database of the given subcomment
 // looking for the subcomment with the given id in both the active and archived
 // contents bucket.
-// 
+//
 // If the section does not exist, it returns an ErrSectionNotFound error.
 // If it found the subcomment, it marshals it into a *pbDataFormat.Content and
 // returns it. Otherwise, it returns a nil Content and an error.
 func (h *handler) GetSubcommentContent(subcomment *pbContext.Subcomment) (*pbDataFormat.Content, error) {
 	var (
-		err error
-		id = subcomment.Id
+		err       error
+		id        = subcomment.Id
 		commentId = subcomment.CommentCtx.Id
-		threadId = subcomment.CommentCtx.ThreadCtx.Id
+		threadId  = subcomment.CommentCtx.ThreadCtx.Id
 		sectionId = subcomment.CommentCtx.ThreadCtx.SectionCtx.Id
 		pbContent = new(pbDataFormat.Content)
 	)
@@ -237,7 +237,7 @@ func (h *handler) GetSubcommentContent(subcomment *pbContext.Subcomment) (*pbDat
 		threadBytes, err := getSubcommentBytes(tx, threadId, commentId, id)
 		if err != nil {
 			log.Printf("Could not find subcomment (id: %s) [root]->[%s]->[%s]->[%s]: %v",
-			id, sectionId, threadId, commentId, err)
+				id, sectionId, threadId, commentId, err)
 			return err
 		}
 
@@ -252,7 +252,7 @@ func (h *handler) GetSubcommentContent(subcomment *pbContext.Subcomment) (*pbDat
 
 // GetComment queries the section database of the given comment looking for the
 // comment with the given id in both the active and archived contents bucket.
-// 
+//
 // If the section does not exist, it returns an ErrSectionNotFound error.
 // If it found the comment, it converts it into a ContentRule and returns it.
 // Otherwise, it returns a nil ContentRule and an error.
@@ -268,7 +268,7 @@ func (h *handler) GetComment(comment *pbContext.Comment) (*pbApi.ContentRule, er
 
 // GetSubcomment queries the section database of the given subcomment looking for
 // the subcomment with the given id in both the active and archived contents bucket.
-// 
+//
 // If the section does not exist, it returns an ErrSectionNotFound error.
 // If it found the subcomment, it converts it into a ContentRule and returns it.
 // Otherwise, it returns a nil ContentRule and an error.
@@ -287,12 +287,12 @@ func (h *handler) GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.Co
 	// number of comments to get
 	const Q = 10
 	var (
-		commentId = comment.Id
-		threadId = comment.ThreadCtx.Id
-		sectionId = comment.ThreadCtx.SectionCtx.Id
+		commentId    = comment.Id
+		threadId     = comment.ThreadCtx.Id
+		sectionId    = comment.ThreadCtx.SectionCtx.Id
 		contentRules = make([]*pbApi.ContentRule, Q)
-		err error
-		count = 0
+		err          error
+		count        = 0
 	)
 	// check whether section exists
 	sectionDB, ok := h.sections[sectionId]
@@ -306,10 +306,10 @@ func (h *handler) GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.Co
 			return err
 		}
 		var (
-			c = subcommentsBucket.Cursor()
+			c    = subcommentsBucket.Cursor()
 			done = make(chan error)
 			quit = make(chan error)
-			wg sync.WaitGroup
+			wg   sync.WaitGroup
 		)
 		for k, v := c.First(); (k != nil) && (count < (n + Q)); k, v = c.Next() {
 			count++
@@ -332,10 +332,10 @@ func (h *handler) GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.Co
 				}
 				contentRules[i] = contentRule
 				select {
-				case done<- err:
+				case done <- err:
 				case <-quit:
 				}
-			}(k, v, count - n)
+			}(k, v, count-n)
 		}
 		// Check for errors. It terminates every go-routine hung on the statement
 		// "case done<- err" by closing the channel quit and returns the first err

@@ -1,18 +1,18 @@
 package bolt
 
-import(
-	"log"
+import (
 	"errors"
-	"strconv"
 	"fmt"
+	"log"
+	"strconv"
 
-	bolt "go.etcd.io/bbolt"
 	"github.com/golang/protobuf/proto"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
+	bolt "go.etcd.io/bbolt"
 )
 
 // ReplyThread performs a few tasks:
@@ -23,7 +23,7 @@ import(
 // + Append id of replier to list of repliers of thread.
 // + Formats the notification and saves it if the replier is not the author, and.
 //   returns it.
-// 
+//
 // It may return an error if:
 // - invalid section: ErrSectionNotFound
 // - invalid thread context: ErrThreadNotFound
@@ -33,7 +33,7 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 	var (
 		sectionId = thread.SectionCtx.Id
 		pbComment *pbDataFormat.Content
-		pbThread *pbDataFormat.Content
+		pbThread  *pbDataFormat.Content
 	)
 	// check whether the section exists
 	sectionDB, ok := h.sections[sectionId]
@@ -44,15 +44,15 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 	// the same transaction.
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
 		var (
-			done = make(chan error)
-			quit = make(chan error)
+			done   = make(chan error)
+			quit   = make(chan error)
 			pbUser *pbDataFormat.User
 		)
 		go func() {
 			var err error
 			pbThread, err = h.GetThreadContent(thread)
 			select {
-			case done<- err:
+			case done <- err:
 			case <-quit:
 			}
 		}()
@@ -60,7 +60,7 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 			var err error
 			pbUser, err = h.User(reply.Submitter)
 			select {
-			case done<- err:
+			case done <- err:
 			case <-quit:
 			}
 		}()
@@ -104,7 +104,7 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 			SectionName: sectionDB.name,
 			SectionId:   sectionId,
 			Permalink:   permalink,
-			Metadata:    &pbMetadata.Content{
+			Metadata: &pbMetadata.Content{
 				LastUpdated: reply.PublishDate,
 				DataKey:     pbThread.Id,
 			},
@@ -172,7 +172,7 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 // + Updates comment metadata by incrementing its replies and interactions.
 // + Append id of replier to list of repliers of the comment.
 // + Formats the notifications, saves and returns them.
-// 
+//
 // It may return an error if:
 // - invalid section: ErrSectionNotFound
 // - invalid thread context: ErrThreadNotFound
@@ -182,11 +182,11 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) ([]*pbApi.NotifyUser, error) {
 	var (
 		notifyUsers []*pbApi.NotifyUser
-		commentId = comment.Id
-		threadId = comment.ThreadCtx.Id
-		sectionId = comment.ThreadCtx.SectionCtx.Id
-		pbThread *pbDataFormat.Content
-		pbComment *pbDataFormat.Content
+		commentId   = comment.Id
+		threadId    = comment.ThreadCtx.Id
+		sectionId   = comment.ThreadCtx.SectionCtx.Id
+		pbThread    *pbDataFormat.Content
+		pbComment   *pbDataFormat.Content
 	)
 	// check whether the section exists
 	sectionDB, ok := h.sections[sectionId]
@@ -198,14 +198,14 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
 		var (
 			pbUser *pbDataFormat.User
-			done = make(chan error)
-			quit = make(chan error)
+			done   = make(chan error)
+			quit   = make(chan error)
 		)
 		go func() {
 			var err error
 			pbThread, err = h.GetThreadContent(comment.ThreadCtx)
 			select {
-			case done<- err:
+			case done <- err:
 			case <-quit:
 			}
 		}()
@@ -213,7 +213,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 			var err error
 			pbComment, err = h.GetCommentContent(comment)
 			select {
-			case done<- err:
+			case done <- err:
 			case <-quit:
 			}
 		}()
@@ -221,7 +221,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 			var err error
 			pbUser, err = h.User(reply.Submitter)
 			select {
-			case done<- err:
+			case done <- err:
 			case <-quit:
 			}
 		}()
@@ -264,7 +264,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 			SectionName: sectionDB.name,
 			SectionId:   sectionId,
 			Permalink:   permalink,
-			Metadata:    &pbMetadata.Content{
+			Metadata: &pbMetadata.Content{
 				LastUpdated: reply.PublishDate,
 				DataKey:     pbThread.Id,
 			},
@@ -329,7 +329,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		subj := fmt.Sprintf("On your thread %s", pbThread.Title)
 		notifType := pbDataFormat.Notif_SUBCOMMENT
 		notifyUser := h.notifyInteraction(reply.Submitter, toNotify, msg, subj, notifType, pbComment)
-		
+
 		notifyUsers = append(notifyUsers, notifyUser)
 	}
 	// notify comment author

@@ -1,24 +1,24 @@
 package server
 
-import(
-	"log"
+import (
 	"fmt"
+	"log"
 	"sync"
 
-	"google.golang.org/grpc/status"
-	"google.golang.org/grpc/codes"
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Get new feed of either threads in a section or comments in a thread.
-// 
+//
 // In case of being called in the context of a section, it returns only
 // threads that are currently active, as opposed to comments in a thread,
 // in which case the type of content is considered always active, despite
 // the current status of the thread they belong to.
-// 
+//
 // It iterates over the section specified in req.Context looking for the active
 // top-level contents (threads). Once it has all the active contents of the
 // section, it discards those already seen by the client, if any, specified in the
@@ -26,12 +26,12 @@ import(
 // the specified Pattern of status (or expected content quality) 80% of the
 // times, queries the content of these threads and finally sends them to the
 // client in the stream, one by one.
-// 
+//
 // It may return a smaller number of contents than the specified by the client,
 // depending upon the availability of contents, and it will try as much as
 // possible to fulfill the Pattern of quality specified by the client, which
 // also depends upon the availability of contents.
-// 
+//
 // It may return a codes.InvalidArgument error in case of being passed a
 // request with a nil ContentContext or a codes.Internal error in case of
 // a database querying or network issue.
@@ -40,13 +40,13 @@ func (s *Server) RecycleContent(req *pbApi.ContentPattern, stream pbApi.CrudCher
 		return status.Error(codes.Internal, "No database connection")
 	}
 	var (
-		metadata []patillator.SegregateDiscarderFinder
-		cleanedUp []patillator.SegregateFinder // metadata after discarding ids
-		contentIds []string
+		metadata     []patillator.SegregateDiscarderFinder
+		cleanedUp    []patillator.SegregateFinder // metadata after discarding ids
+		contentIds   []string
 		contentRules []*pbApi.ContentRule
-		getErr1 error // get contents metadata
-		getErr2 error // get contents data
-		sendErr error // stream send
+		getErr1      error // get contents metadata
+		getErr2      error // get contents data
+		sendErr      error // stream send
 	)
 
 	// call a different getter depending upon the content context:
@@ -69,7 +69,7 @@ func (s *Server) RecycleContent(req *pbApi.ContentPattern, stream pbApi.CrudCher
 		metadata, getErr1 = s.dbHandler.GetCommentsOverview(ctx.ThreadCtx)
 		// return an error only if no content could be gotten
 		if (getErr1 != nil) && (len(metadata) == 0) {
-			return status.Error(codes.Internal,	getErr1.Error())
+			return status.Error(codes.Internal, getErr1.Error())
 		}
 		// get rid of contents already seen by the user
 		cleanedUp = patillator.DiscardContents(metadata, req.DiscardIds)
@@ -83,13 +83,13 @@ func (s *Server) RecycleContent(req *pbApi.ContentPattern, stream pbApi.CrudCher
 	}
 	// return an error only if no content rules could be gotten
 	if (getErr2 != nil) && (len(contentRules) == 0) {
-		return status.Error(codes.Internal,	getErr2.Error())
+		return status.Error(codes.Internal, getErr2.Error())
 	}
 
 	for _, contentRule := range contentRules {
 		if sendErr = stream.Send(contentRule); sendErr != nil {
 			log.Printf("Could not send Content Rule: %v\n", sendErr)
-			return status.Error(codes.Internal,	sendErr.Error())
+			return status.Error(codes.Internal, sendErr.Error())
 		}
 	}
 	// While getting the content, if an error was encountered, the content
@@ -100,15 +100,15 @@ func (s *Server) RecycleContent(req *pbApi.ContentPattern, stream pbApi.CrudCher
 	// but the content returned was not empty.
 	switch {
 	case getErr1 != nil:
-		return status.Error(codes.Internal,	getErr1.Error())
+		return status.Error(codes.Internal, getErr1.Error())
 	case getErr2 != nil:
-		return status.Error(codes.Internal,	getErr2.Error())
+		return status.Error(codes.Internal, getErr2.Error())
 	}
 	return nil
 }
 
 // Get new feed of threads in general (from multiple sections).
-// 
+//
 // It iterates over all the sections looking for the active top-level contents
 // (threads). Once it has all the active contents of every section, it discards
 // those already seen by the client, if any, specified in the field DiscardIds
@@ -116,12 +116,12 @@ func (s *Server) RecycleContent(req *pbApi.ContentPattern, stream pbApi.CrudCher
 // Pattern of status (or expected content quality) in req 80% of the times,
 // queries the content of these threads and finally sends them to the client in
 // the stream, one by one.
-// 
+//
 // It may return a smaller number of contents than the specified by the client,
 // depending upon the availability of contents, and it will try as much as
 // possible to fulfill the Pattern of quality specified by the client, which
 // also depends upon the availability of contents.
-// 
+//
 // It may return a codes.Internal error in case of a database querying or
 // network issue.
 func (s *Server) RecycleGeneral(req *pbApi.GeneralPattern, stream pbApi.CrudCheropatilla_RecycleGeneralServer) error {
@@ -130,11 +130,11 @@ func (s *Server) RecycleGeneral(req *pbApi.GeneralPattern, stream pbApi.CrudCher
 	}
 	var (
 		generalMetadata map[string][]patillator.SegregateDiscarderFinder
-		cleanedUp = make(map[string][]patillator.SegregateFinder)
-		contentRules []*pbApi.ContentRule
-		getErrs1 []error // get general metadata
-		getErrs2 []error // get contents data
-		sendErr error // stream send
+		cleanedUp       = make(map[string][]patillator.SegregateFinder)
+		contentRules    []*pbApi.ContentRule
+		getErrs1        []error // get general metadata
+		getErrs2        []error // get contents data
+		sendErr         error   // stream send
 	)
 
 	// Get threads in every section.
@@ -150,7 +150,7 @@ func (s *Server) RecycleGeneral(req *pbApi.GeneralPattern, stream pbApi.CrudCher
 		return status.Error(codes.Internal, errs)
 	}
 
-	// Get rid of contents already seen by the user and get back a 
+	// Get rid of contents already seen by the user and get back a
 	// []patillator.SegregateFinder for every call to DiscardContents only if
 	// there are ids to be discarded.
 	if req.DiscardIds != nil {
@@ -184,7 +184,7 @@ func (s *Server) RecycleGeneral(req *pbApi.GeneralPattern, stream pbApi.CrudCher
 	for _, contentRule := range contentRules {
 		if sendErr = stream.Send(contentRule); sendErr != nil {
 			log.Printf("Could not send Content Rule: %v\n", sendErr)
-			return status.Error(codes.Internal,	sendErr.Error())
+			return status.Error(codes.Internal, sendErr.Error())
 		}
 	}
 	// While getting the content, if an error was encountered, the content
@@ -215,7 +215,7 @@ func (s *Server) RecycleGeneral(req *pbApi.GeneralPattern, stream pbApi.CrudCher
 }
 
 // Get new activity from either multiple users or a single user.
-// 
+//
 // It iterates over the recent activity (every kind of content) of the given
 // user/users. Once it has all the activities, it discards those already seen
 // by the client, if any, specified in the field DiscardIds of req. Then it
@@ -223,12 +223,12 @@ func (s *Server) RecycleGeneral(req *pbApi.GeneralPattern, stream pbApi.CrudCher
 // status (or expected content quality) in req 80% of the times, queries the
 // resulting content of these activities and finally sends them to the client
 // in the stream, one by one.
-// 
+//
 // It may return a smaller number of contents than the specified by the client,
 // depending upon the availability of contents, and it will try as much as
 // possible to fulfill the Pattern of quality specified by the client, which
 // also depends upon the availability of contents.
-// 
+//
 // It may return a codes.Internal error in case of a database querying or
 // network issue.
 func (s *Server) RecycleActivity(req *pbApi.ActivityPattern, stream pbApi.CrudCheropatilla_RecycleActivityServer) error {
@@ -237,10 +237,10 @@ func (s *Server) RecycleActivity(req *pbApi.ActivityPattern, stream pbApi.CrudCh
 	}
 	var (
 		activityOverview map[string]patillator.UserActivity
-		contentRules []*pbApi.ContentRule
-		getErrs1 []error // get contents overview
-		getErrs2 []error // get contents data
-		sendErr error // stream send
+		contentRules     []*pbApi.ContentRule
+		getErrs1         []error // get contents overview
+		getErrs2         []error // get contents data
+		sendErr          error   // stream send
 	)
 
 	// assign users to a new variable
@@ -301,7 +301,7 @@ func (s *Server) RecycleActivity(req *pbApi.ActivityPattern, stream pbApi.CrudCh
 	for _, contentRule := range contentRules {
 		if sendErr = stream.Send(contentRule); sendErr != nil {
 			log.Printf("Could not send Content Rule: %v\n", sendErr)
-			return status.Error(codes.Internal,	sendErr.Error())
+			return status.Error(codes.Internal, sendErr.Error())
 		}
 	}
 	// While getting the content, if an error was encountered, the content
@@ -332,19 +332,19 @@ func (s *Server) RecycleActivity(req *pbApi.ActivityPattern, stream pbApi.CrudCh
 }
 
 // Get new feed of saved threads of a user.
-// 
+//
 // This handler is pretty similar to the above handler for recycling threads from
 // every section (RecycleGeneral). The only difference is the call to get the
 // threads overview: in this case it calls GetSavedThreadsOverview, which takes
 // in a user id to fetch saved threads metadata from, and a callback to convert a
 // *pbDataFormat.Content into a patillator.SegregateDiscarderFinder.
 // Everything else keeps exactly the same.
-// 
+//
 // It may return a smaller number of contents than the specified by the client,
 // depending upon the availability of contents, and it will try as much as
 // possible to fulfill the Pattern of quality specified by the client, which
 // also depends upon the availability of contents.
-// 
+//
 // It may return a codes.Internal error in case of a database querying or
 // network issue.
 func (s *Server) RecycleSaved(req *pbApi.SavedPattern, stream pbApi.CrudCheropatilla_RecycleSavedServer) error {
@@ -353,11 +353,11 @@ func (s *Server) RecycleSaved(req *pbApi.SavedPattern, stream pbApi.CrudCheropat
 	}
 	var (
 		generalMetadata map[string][]patillator.SegregateDiscarderFinder
-		cleanedUp = make(map[string][]patillator.SegregateFinder)
-		contentRules []*pbApi.ContentRule
-		getErrs1 []error // get general metadata
-		getErrs2 []error // get contents data
-		sendErr error // stream send
+		cleanedUp       = make(map[string][]patillator.SegregateFinder)
+		contentRules    []*pbApi.ContentRule
+		getErrs1        []error // get general metadata
+		getErrs2        []error // get contents data
+		sendErr         error   // stream send
 	)
 
 	// Get threads in every section.
@@ -373,7 +373,7 @@ func (s *Server) RecycleSaved(req *pbApi.SavedPattern, stream pbApi.CrudCheropat
 		return status.Error(codes.Internal, errs)
 	}
 
-	// Get rid of contents already seen by the user and get back a 
+	// Get rid of contents already seen by the user and get back a
 	// []patillator.SegregateFinder for every call to DiscardContents only if
 	// there are ids to be discarded.
 	if req.DiscardIds != nil {
@@ -407,7 +407,7 @@ func (s *Server) RecycleSaved(req *pbApi.SavedPattern, stream pbApi.CrudCheropat
 	for _, contentRule := range contentRules {
 		if sendErr = stream.Send(contentRule); sendErr != nil {
 			log.Printf("Could not send Content Rule: %v\n", sendErr)
-			return status.Error(codes.Internal,	sendErr.Error())
+			return status.Error(codes.Internal, sendErr.Error())
 		}
 	}
 	// While getting the content, if an error was encountered, the content

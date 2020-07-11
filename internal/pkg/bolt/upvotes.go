@@ -1,18 +1,18 @@
 package bolt
 
 import (
+	"fmt"
 	"log"
 	"time"
-	"fmt"
 
 	"github.com/golang/protobuf/proto"
-	bolt "go.etcd.io/bbolt"
-	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
-	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
+	bolt "go.etcd.io/bbolt"
 )
 
 // incInteractions increases by one the number of interactions of the given
@@ -20,7 +20,7 @@ import (
 // average update time difference by dividing the accumulated difference between
 // interactions by the number of Interactions.
 func incInteractions(m *pbMetadata.Content) {
-	now := &pbTime.Timestamp{ Seconds: time.Now().Unix() }
+	now := &pbTime.Timestamp{Seconds: time.Now().Unix()}
 	m.Interactions++
 
 	lastUpdated := m.LastUpdated
@@ -48,14 +48,14 @@ func inSlice(users []string, user string) (bool, int) {
 // UpvoteThread increases by one the number of upvotes that the given thread has
 // received, updates the metadata related to its interactions and saves the
 // notification in the list of unread notifications of the thread author.
-// 
+//
 // It returns the notification for the owner of the thread and its user id and
 // a nil error on success, or a nil *pbApi.NotifyUser and a nil error if the
 // submitter is the content author, or a nil *pbApi.NotifyUser and an
 // ErrThreadNotFound or proto marshal/unmarshal error on failure.
 func (h *handler) UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.NotifyUser, error) {
 	var (
-		id = thread.Id
+		id        = thread.Id
 		sectionId = thread.SectionCtx.Id
 		pbContent *pbDataFormat.Content
 	)
@@ -135,22 +135,22 @@ func (h *handler) UndoUpvoteThread(userId string, thread *pbContext.Thread) erro
 // has received, and updates the interactions and Average Update Time of both
 // the comment and the thread it belongs to and saves the notification in the
 // list of unread notifications of the comment author and the thread author.
-// 
+//
 // It returns the user id and the notification for both the thread author and
 // the comment author and a nil error on success, or a nil []*pbApi.NotifyUser
 // and an ErrThreadNotFound, ErrCommentNotFound or proto marshal/unmarshal error
 // on failure.
-// 
+//
 // It may return just one *pbApi.NotifyUser if the submitter is the author of
 // either the thread or the comment.
 func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*pbApi.NotifyUser, error) {
 	var (
 		commentId = comment.Id
-		threadId = comment.ThreadCtx.Id
+		threadId  = comment.ThreadCtx.Id
 		sectionId = comment.ThreadCtx.SectionCtx.Id
 		pbComment *pbDataFormat.Content
-		pbThread *pbDataFormat.Content
-		notifs []*pbApi.NotifyUser
+		pbThread  *pbDataFormat.Content
+		notifs    []*pbApi.NotifyUser
 	)
 	// check whether the section exists
 	sectionDB, ok := h.sections[sectionId]
@@ -160,8 +160,8 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
 		var (
 			commentBytes, threadBytes []byte
-			done = make(chan error)
-			quit = make(chan error)
+			done                      = make(chan error)
+			quit                      = make(chan error)
 		)
 		// Get and update comment data.
 		go func() {
@@ -179,7 +179,7 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 				commentBytes, err = proto.Marshal(pbComment)
 			}
 			select {
-			case done<- err:
+			case done <- err:
 			case <-quit:
 			}
 		}()
@@ -196,7 +196,7 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 				threadBytes, err = proto.Marshal(pbThread)
 			}
 			select {
-			case done<- err:
+			case done <- err:
 			case <-quit:
 			}
 		}()
@@ -281,21 +281,21 @@ func (h *handler) UndoUpvoteComment(userId string, comment *pbContext.Comment) e
 // subcomment has received, updates the metadata related to the interactions of
 // the subcomment, the comment and the thread and saves the notifications in the
 // list of unread notifications of the subcomment author, and the thread author.
-// 
+//
 // It returns the user id and the notification for the thread author, and for
 // the subcomment author and a nil error on success, or a nil []*pbApi.NotifyUser
 // and an ErrThreadNotFound, ErrCommentNotFound, ErrSubcommentNotFound or proto
 // marshal/unmarshal error on failure.
-// 
-// It may return just one *pbApi.NotifyUser if the submitter is the author of 
+//
+// It may return just one *pbApi.NotifyUser if the submitter is the author of
 // either the thread, or the subcomment.
 func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomment) ([]*pbApi.NotifyUser, error) {
 	var (
-		notifs []*pbApi.NotifyUser
+		notifs                            []*pbApi.NotifyUser
 		pbSubcomment, pbComment, pbThread *pbDataFormat.Content
-		comment = subcomment.CommentCtx
-		thread = subcomment.CommentCtx.ThreadCtx
-		section = subcomment.CommentCtx.ThreadCtx.SectionCtx
+		comment                           = subcomment.CommentCtx
+		thread                            = subcomment.CommentCtx.ThreadCtx
+		section                           = subcomment.CommentCtx.ThreadCtx.SectionCtx
 	)
 	// check whether the section exists
 	sectionDB, ok := h.sections[section.Id]
@@ -305,8 +305,8 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
 		var (
 			subcommentBytes, commentBytes, threadBytes []byte
-			done = make(chan error)
-			quit = make(chan error)
+			done                                       = make(chan error)
+			quit                                       = make(chan error)
 		)
 		// Get and update subcomment data.
 		go func() {
@@ -324,7 +324,7 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 				subcommentBytes, err = proto.Marshal(pbSubcomment)
 			}
 			select {
-			case done<- err:
+			case done <- err:
 			case <-quit:
 			}
 		}()
@@ -342,7 +342,7 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 				commentBytes, err = proto.Marshal(pbComment)
 			}
 			select {
-			case done<- err:
+			case done <- err:
 			case <-quit:
 			}
 		}()
@@ -360,7 +360,7 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 				threadBytes, err = proto.Marshal(pbThread)
 			}
 			select {
-			case done<- err:
+			case done <- err:
 			case <-quit:
 			}
 		}()
@@ -435,7 +435,7 @@ func (h *handler) UndoUpvoteSubcomment(userId string, subcomment *pbContext.Subc
 	last := len(pbSubcomment.VoterIds) - 1
 	pbSubcomment.VoterIds[idx] = pbSubcomment.VoterIds[last]
 	pbSubcomment.VoterIds = pbSubcomment.VoterIds[:last]
-	
+
 	undoner, _ := inSlice(pbSubcomment.UndonerIds, userId)
 	if !undoner {
 		pbSubcomment.UndonerIds = append(pbSubcomment.UndonerIds, userId)

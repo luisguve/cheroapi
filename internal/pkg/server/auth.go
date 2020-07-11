@@ -1,14 +1,15 @@
 package server
 
-import(
+import (
 	"context"
 	"errors"
+
 	"golang.org/x/crypto/bcrypt"
 
-	"google.golang.org/grpc/status"
-	"google.golang.org/grpc/codes"
-	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
+	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Validate user credentials to login

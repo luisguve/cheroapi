@@ -1,13 +1,13 @@
 package bolt
 
-import(
+import (
 	"log"
 
-	bolt "go.etcd.io/bbolt"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
-	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbContext "github.com/luisguve/cheroproto-go/context"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	bolt "go.etcd.io/bbolt"
 )
 
 // formatThreadContentRule takes in a *pbDataFormat.Content and a section context
@@ -64,7 +64,7 @@ func (h *handler) formatSubcommentContentRule(c *pbDataFormat.Content,
 	}
 }
 
-// formatContentData takes in a *pbDataFormat.Content and converts it into a 
+// formatContentData takes in a *pbDataFormat.Content and converts it into a
 // *pbApi.ContentData. It calls h.getContentAuthor, which queries the database
 // searching the author data.
 func (h *handler) formatContentData(c *pbDataFormat.Content) *pbApi.ContentData {
@@ -114,7 +114,7 @@ func (h *handler) getContentAuthor(id string) (*pbApi.ContentAuthor, error) {
 
 // setThreadBytes puts the given thread bytes as the value of the threadId as
 // the key.
-// 
+//
 // It returns a nil error on success or an ErrThreadNotFound or bolt put error
 // in case of failure.
 func setThreadBytes(tx *bolt.Tx, threadId string, threadBytes []byte) error {
@@ -126,7 +126,7 @@ func setThreadBytes(tx *bolt.Tx, threadId string, threadBytes []byte) error {
 }
 
 // getThreadBytes returns the thread with the given Id in protobuf-encoded bytes.
-// 
+//
 // It returns an ErrThreadNotFound if the thread does not exist in the database
 // associated to tx.
 func getThreadBytes(tx *bolt.Tx, threadId string) ([]byte, error) {
@@ -144,7 +144,7 @@ func getThreadBytes(tx *bolt.Tx, threadId string) ([]byte, error) {
 
 // setCommentBytes puts the given comment bytes as the value of the commentId as
 // the key.
-// 
+//
 // It returns a nil error on success or an ErrCommentNotFound or bolt put error
 // in case of failure.
 func setCommentBytes(tx *bolt.Tx, threadId, commentId string, commentBytes []byte) error {
@@ -157,7 +157,7 @@ func setCommentBytes(tx *bolt.Tx, threadId, commentId string, commentBytes []byt
 
 // getCommentBytes returns the comment with the given Id associated to the given
 // thread Id in protobuf-encoded bytes.
-// 
+//
 // It returns an ErrCommentNotFound if either the thread or the comment does not
 // exist in the database associated to tx.
 func getCommentBytes(tx *bolt.Tx, threadId, commentId string) ([]byte, error) {
@@ -175,7 +175,7 @@ func getCommentBytes(tx *bolt.Tx, threadId, commentId string) ([]byte, error) {
 
 // setSubCommentBytes puts the given subcomment bytes as the value of the
 // subcommentId as the key.
-// 
+//
 // It returns a nil error on success or an ErrSubcommentNotFound or bolt put error
 // in case of failure.
 func setSubcommentBytes(tx *bolt.Tx, threadId, commentId, subcommentId string,
@@ -190,7 +190,7 @@ func setSubcommentBytes(tx *bolt.Tx, threadId, commentId, subcommentId string,
 // getSubcommentBytes returns the subcomment with the given Id associated to the
 // given comment Id, which is associated to the given thread Id in
 // protobuf-encoded bytes.
-// 
+//
 // It returns an ErrSubcommentNotFound if either the thread or the comment or the
 // subcomment does not exist in the database associated to tx.
 func getSubcommentBytes(tx *bolt.Tx, threadId, commentId, subcommentId string) ([]byte, error) {
@@ -209,8 +209,8 @@ func getSubcommentBytes(tx *bolt.Tx, threadId, commentId, subcommentId string) (
 // getThreadBucket returns the bucket which the given thread currently belongs to;
 // either the bucket of active contents or the bucket of archived contents and its
 // name, from the database associated to tx.
-// 
-// It returns an ErrBucketNotFound error if the thread does not exist in the 
+//
+// It returns an ErrBucketNotFound error if the thread does not exist in the
 // database associated to tx.
 func getThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, string, error) {
 	// get bucket of active contents.
@@ -246,8 +246,8 @@ func getThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, string, error)
 
 // getActiveThreadBucket returns the bucket of active contents if the given
 // thread is currently active.
-// 
-// It returns an ErrBucketNotFound error if the thread does not exist in the 
+//
+// It returns an ErrBucketNotFound error if the thread does not exist in the
 // bucket of active contents in the database associated to tx.
 func getActiveThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 	// get bucket of active contents.
@@ -269,7 +269,7 @@ func getActiveThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 // getCommentsBucket looks for a comments bucket associated to the given thread
 // id and returns it along with the name of the top-level bucket; either
 // activeContentsB or archivedContentsB.
-// 
+//
 // It returns an ErrBucketNotFound if either the thread or the comments bucket
 // does not exist in the database associated to tx.
 func getCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, string, error) {
@@ -293,7 +293,7 @@ func getCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, string, erro
 
 // getActiveCommentsBucket looks for a comments bucket associated to the given
 // thread id IN the bucket of active contents.
-// 
+//
 // It returns an ErrBucketNotFound if either the thread or the comments bucket
 // does not exist in the bucket of active contents in the database associated
 // to tx.
@@ -315,9 +315,10 @@ func getActiveCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error)
 	}
 	return comments, nil
 }
+
 // createCommentsBucket creates a bucket for comments, associated to the given
 // thread.
-// 
+//
 // It returns an ErrBucketNotFound if the thread does not exist in the bucket of
 // active contents in the database associated to tx.
 func createCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
@@ -338,7 +339,7 @@ func createCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 // comment id, which is associated to the given thread id and returns it along
 // with the name of the top-level bucket; either activeContentsB or
 // archivedContentsB.
-// 
+//
 // It returns an ErrBucketNotFound it either the thread or the comments bucket
 // or the subcomments bucket does not exist in the database associated to tx.
 func getSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.Bucket, string, error) {
@@ -363,11 +364,11 @@ func getSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.Bucket
 // getActiveSubcommentsBucket looks for a subcomments bucket associated to the
 // given comment id, which is associated to the given thread id IN the bucket of
 // active contents.
-// 
+//
 // It returns an ErrBucketNotFound it either the thread or the comments bucket
 // does not exist in the bucket of active contents in the database associated
 // to tx.
-// 
+//
 // If the subcomments bucket associated to the given comment does not exist, it
 // will return an ErrSubcommentsBucketNotFound error instead.
 func getActiveSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.Bucket, error) {
@@ -390,7 +391,7 @@ func getActiveSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.
 
 // createSubcommentsBucket creates a bucket for subcomments, associated to the
 // given comment, which is associated to the given thread.
-// 
+//
 // It returns an ErrBucketNotFound it either the thread or the comments bucket
 // does not exist in the bucket of active contents in the database associated
 // to tx.

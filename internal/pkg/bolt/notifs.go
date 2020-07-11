@@ -1,13 +1,13 @@
 package bolt
 
 import (
+	"fmt"
 	"log"
 	"time"
-	"fmt"
-	
-	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
-	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
+	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
 // notifyInteraction formats the notification, calls SaveNotif to save it to

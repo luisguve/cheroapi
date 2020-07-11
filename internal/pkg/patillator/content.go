@@ -1,6 +1,6 @@
 package patillator
 
-import(
+import (
 	"time"
 
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
@@ -31,7 +31,7 @@ func (c Content) ToDiscard(ids []string) (bool, []string) {
 			// then reslicing the ids, leaving the last element out.
 			last := len(ids) - 1
 			ids[i] = ids[last]
-			ids = ids[: last]
+			ids = ids[:last]
 			break
 		}
 	}
@@ -50,7 +50,7 @@ func (c Content) IsRelevant() bool {
 
 // IsLessRelevantThan compares the field Interactions and the field AvgUpdateTime
 // of c and the underlying Content of the argument.
-// 
+//
 // It returns true if c -the local- has less interactions AND an equal or
 // greater average update time difference than other -the argument-, or false if
 // either some of the conditions are false or the underlying type of other is not
@@ -100,7 +100,7 @@ func (gc GeneralContent) ToDiscard(ids []string) (bool, []string) {
 			// then reslicing the ids, leaving the last element out.
 			last := len(ids) - 1
 			ids[i] = ids[last]
-			ids = ids[: last]
+			ids = ids[:last]
 			break
 		}
 	}
@@ -114,13 +114,13 @@ func (gc GeneralContent) IsRelevant() bool {
 	// type cast for ease of use
 	metadata := pbMetadata.GeneralContent(gc)
 	min := 10 * time.Minute
-	return (metadata.Content.Interactions > 10) && 
+	return (metadata.Content.Interactions > 10) &&
 		(metadata.Content.AvgUpdateTime <= min.Minutes())
 }
 
 // IsLessRelevantThan compares the field Interactions and the field AvgUpdateTime
 // of gc and the underlying GeneralContent of the argument.
-// 
+//
 // It returns true if gc -the local- has less interactions AND an equal or
 // greater average update time difference than other -the argument-, or false if
 // either some of the conditions are false or the underlying type of other is not
@@ -152,6 +152,6 @@ func (gc GeneralContent) Key() interface{} {
 // GeneralId holds information to get a thread from the database: its id and
 // the section it belongs to.
 type GeneralId struct {
-	Id string
+	Id        string
 	SectionId string
 }

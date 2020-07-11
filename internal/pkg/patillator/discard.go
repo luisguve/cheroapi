@@ -1,9 +1,9 @@
 package patillator
 
-import(
+import (
 	"log"
 	"sync"
-	
+
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
@@ -47,9 +47,9 @@ func DiscardActivities(a UserActivity, ids *pbDataFormat.Activity) UserActivity 
 					if discard {
 						removed++
 						// copy last valid element in position idx
-						a.ThreadsCreated[idx] = a.ThreadsCreated[total - removed]
+						a.ThreadsCreated[idx] = a.ThreadsCreated[total-removed]
 						// re-slice a.ThreadsCreated, leaving out the last element
-						a.ThreadsCreated = a.ThreadsCreated[:total - removed]
+						a.ThreadsCreated = a.ThreadsCreated[:total-removed]
 						// If there are still elements in a.ThreadsCreated,
 						// keep checking the element at position idx, which was
 						// replaced by the last thread in a.ThreadsCreated.
@@ -66,7 +66,7 @@ func DiscardActivities(a UserActivity, ids *pbDataFormat.Activity) UserActivity 
 			}
 			// free memory used by removed elements by allocating a new slice
 			// and copying the resulting elements.
-			discardedActivity.ThreadsCreated = make([]SegregateFinder, total - removed)
+			discardedActivity.ThreadsCreated = make([]SegregateFinder, total-removed)
 			copy(discardedActivity.ThreadsCreated, a.ThreadsCreated)
 		}()
 	}
@@ -91,9 +91,9 @@ func DiscardActivities(a UserActivity, ids *pbDataFormat.Activity) UserActivity 
 					if discard {
 						removed++
 						// copy last element in position idx
-						a.Comments[idx] = a.Comments[total - removed]
+						a.Comments[idx] = a.Comments[total-removed]
 						// re-slice a.Comments, leaving out the last element
-						a.Comments = a.Comments[:total - removed]
+						a.Comments = a.Comments[:total-removed]
 						// If there are still elements in a.Comments, keep
 						// checking the element at position idx, which was
 						// replaced by the last comment in a.Comments.
@@ -110,7 +110,7 @@ func DiscardActivities(a UserActivity, ids *pbDataFormat.Activity) UserActivity 
 			}
 			// free memory used by removed elements by allocating a new slice
 			// and copying the resulting elements
-			discardedActivity.Comments = make([]SegregateFinder, total - removed)
+			discardedActivity.Comments = make([]SegregateFinder, total-removed)
 			copy(discardedActivity.Comments, a.Comments)
 		}()
 	}
@@ -135,9 +135,9 @@ func DiscardActivities(a UserActivity, ids *pbDataFormat.Activity) UserActivity 
 					if discard {
 						removed++
 						// copy last element in position idx
-						a.Subcomments[idx] = a.Subcomments[total - removed]
+						a.Subcomments[idx] = a.Subcomments[total-removed]
 						// re-slice a.Subcomments, leaving out the last element
-						a.Subcomments = a.Subcomments[:total - removed]
+						a.Subcomments = a.Subcomments[:total-removed]
 						// If there are still elements in a.Subcomments, keep
 						// checking the element at position idx, which was
 						// replaced by the last comment in a.Subcomments.
@@ -154,7 +154,7 @@ func DiscardActivities(a UserActivity, ids *pbDataFormat.Activity) UserActivity 
 			}
 			// free memory used by removed elements by allocating a new slice
 			// and copying the resulting elements
-			discardedActivity.Subcomments = make([]SegregateFinder, total - removed)
+			discardedActivity.Subcomments = make([]SegregateFinder, total-removed)
 			copy(discardedActivity.Subcomments, a.Subcomments)
 		}()
 	}
@@ -181,9 +181,9 @@ func DiscardContents(contents []SegregateDiscarderFinder, ids []string) []Segreg
 				if discard {
 					removed++
 					// copy last valid element in position idx
-					contents[idx] = contents[total - removed]
+					contents[idx] = contents[total-removed]
 					// re-slice contents, leaving out the last element
-					contents = contents[:total - removed]
+					contents = contents[:total-removed]
 					// If there are still elements in contents, keep checking
 					// the element at position idx, which was replaced by the
 					// last content.

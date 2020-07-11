@@ -1,15 +1,15 @@
 package bolt
 
 import (
-	"time"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
-	bolt "go.etcd.io/bbolt"
+	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
-	pbContext"github.com/luisguve/cheroproto-go/context"
+	bolt "go.etcd.io/bbolt"
 )
 
 // Return the last time a clean up was done.
@@ -18,15 +18,15 @@ func (h *handler) LastQA() int64 {
 }
 
 // Clean up every section database.
-// 
+//
 // It moves unpopular contents from the bucket of active contents to the bucket
 // of archived contents. It will only test the relevance of threads with 1 day
 // or longer and move them accordingly, along with its comments and subcomments.
-// 
+//
 // It will also move comments and subcomments of deleted threads to the bucket
 // of archived contents, even if the thread has been around for less than one
 // day.
-// 
+//
 // In addition to moving the contents to the bucket of archived contents, it also
 // updates the activity of the users involved, moving contexts from the list of
 // recent activity of the users to their list of old activity.
@@ -42,7 +42,7 @@ func (h *handler) QA() {
 				}
 				// Iterate over every key/value pair of active contents.
 				var (
-					c = activeContents.Cursor()
+					c  = activeContents.Cursor()
 					wg sync.WaitGroup
 				)
 				for k, v := c.First(); k != nil; k, v = c.Next() {
@@ -111,11 +111,11 @@ func (h *handler) QA() {
 
 // Update the given section by moving the thread, its comments and subcomments
 // from the bucket of active contents to the bucket of archived contents.
-// 
+//
 // It will copy the contents in almost exactly the same format as in the bucket
 // of active contents; the only difference is that the resulting structure will
 // not have any bucket that registers deleted content.
-// 
+//
 // Note that it will also move all of the subcomments of the deleted comments,
 // if any, to the bucket of archived contents under the same Id of the deleted
 // comment.
@@ -133,8 +133,8 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.
 			return dbmodel.ErrBucketNotFound
 		}
 		var (
-			done = make(chan error)
-			quit = make(chan error)
+			done  = make(chan error)
+			quit  = make(chan error)
 			count = 0
 		)
 		defer close(quit)
@@ -143,9 +143,9 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.
 		go func() {
 			pbContent := new(pbDataFormat.Content)
 			err := proto.Unmarshal(threadBytes, pbContent)
-			if  err == nil {
+			if err == nil {
 				ctx := &pbContext.Thread{
-					Id:         string(threadId),
+					Id: string(threadId),
 					SectionCtx: &pbContext.Section{
 						Id: pbContent.SectionId,
 					},
@@ -155,7 +155,7 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.
 				err = archivedContents.Put(threadId, threadBytes)
 			}
 			select {
-			case done<- err:
+			case done <- err:
 			case <-quit:
 			}
 		}()
@@ -182,7 +182,7 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.
 			go func() {
 				err := h.moveComments(string(threadId), actComments, archComments)
 				select {
-				case done<- err:
+				case done <- err:
 				case <-quit:
 				}
 			}()
@@ -199,7 +199,7 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.
 				go func() {
 					err := h.moveSubcomments(actSubcomKeys, archSubcomKeys)
 					select {
-					case done<- err:
+					case done <- err:
 					case <-quit:
 					}
 				}()
@@ -208,7 +208,7 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.
 			// contents, with exactly the same structure as it were in the bucket
 			// of active contents: under the commentsB bucket in a bucket with
 			// the same key as the thread id they belong to.
-			// 
+			//
 			// Get bucket of comments from active contents again, since
 			// commentsBucket was set to the comments bucket from archived
 			// contents.
@@ -285,14 +285,14 @@ func (h *handler) deleteThread(s section, threadId []byte, wg sync.WaitGroup) er
 			}
 			var (
 				count = 1 // At least 1 go-routine will be launched.
-				done = make(chan error)
-				quit = make(chan error)
+				done  = make(chan error)
+				quit  = make(chan error)
 			)
 			defer close(quit)
 			go func() {
 				err := h.moveComments(string(threadId), actComments, archComments)
 				select {
-				case done<- err:
+				case done <- err:
 				case <-quit:
 				}
 			}()
@@ -309,7 +309,7 @@ func (h *handler) deleteThread(s section, threadId []byte, wg sync.WaitGroup) er
 				go func() {
 					err := h.moveSubcomments(actSubcomKeys, archSubcomKeys)
 					select {
-					case done<- err:
+					case done <- err:
 					case <-quit:
 					}
 				}()
@@ -327,7 +327,7 @@ func (h *handler) deleteThread(s section, threadId []byte, wg sync.WaitGroup) er
 			// contents, with exactly the same structure as it were in the bucket
 			// of active contents: under the commentsB bucket in a bucket with
 			// the same key as the thread id they belong to.
-			// 
+			//
 			// Get bucket of comments from active contents again, since
 			// commentsBucket was set to the comments bucket from archived
 			// contents.
@@ -359,9 +359,9 @@ func (h *handler) moveComments(threadId string, actComments, archComments *bolt.
 	// Put comments from active comments into archived comments.
 	var (
 		count = 0
-		c = actComments.Cursor()
-		done = make(chan error)
-		quit = make(chan error)
+		c     = actComments.Cursor()
+		done  = make(chan error)
+		quit  = make(chan error)
 	)
 	for k, v := c.First(); k != nil; k, v = c.Next() {
 		// Check whether the value is a nested bucket. If so, just continue.
@@ -375,9 +375,9 @@ func (h *handler) moveComments(threadId string, actComments, archComments *bolt.
 			err := proto.Unmarshal(v, pbContent)
 			if err == nil {
 				ctx := &pbContext.Comment{
-					Id:        string(k),
+					Id: string(k),
 					ThreadCtx: &pbContext.Thread{
-						Id:         pbContent.Id,
+						Id: pbContent.Id,
 						SectionCtx: &pbContext.Section{
 							Id: pbContent.SectionId,
 						},
@@ -388,7 +388,7 @@ func (h *handler) moveComments(threadId string, actComments, archComments *bolt.
 				err = archComments.Put(k, v)
 			}
 			select {
-			case done<- err:
+			case done <- err:
 			case <-quit:
 			}
 		}(k, v)
@@ -411,9 +411,9 @@ func (h *handler) moveComments(threadId string, actComments, archComments *bolt.
 func (h *handler) moveSubcomments(actSubcomKeys, archSubcomKeys *bolt.Bucket) error {
 	var (
 		count = 0
-		c = actSubcomKeys.Cursor()
-		done = make(chan error)
-		quit = make(chan error)
+		c     = actSubcomKeys.Cursor()
+		done  = make(chan error)
+		quit  = make(chan error)
 	)
 	// actSubcomKeys bucket only holds nested buckets, hence the values are
 	// discarded and the keys are used to find the buckets, which store the
@@ -440,9 +440,9 @@ func (h *handler) moveSubcomments(actSubcomKeys, archSubcomKeys *bolt.Bucket) er
 					ctx := &pbContext.Subcomment{
 						Id: string(k),
 						CommentCtx: &pbContext.Comment{
-							Id:        string(comKey),
+							Id: string(comKey),
 							ThreadCtx: &pbContext.Thread{
-								Id:         pbContent.Id,
+								Id: pbContent.Id,
 								SectionCtx: &pbContext.Section{
 									Id: pbContent.SectionId,
 								},
@@ -454,7 +454,7 @@ func (h *handler) moveSubcomments(actSubcomKeys, archSubcomKeys *bolt.Bucket) er
 					err = archivedSubcom.Put(k, v)
 				}
 				select {
-				case done<- err:
+				case done <- err:
 				case <-quit:
 				}
 			}(k, v)
@@ -475,9 +475,9 @@ func (h *handler) moveSubcomments(actSubcomKeys, archSubcomKeys *bolt.Bucket) er
 
 func (h *handler) markThreadAsOld(userId string, ctx *pbContext.Thread, done, quit chan error) {
 	var (
-		id = ctx.Id
+		id        = ctx.Id
 		sectionId = ctx.SectionCtx.Id
-		found bool
+		found     bool
 	)
 	pbUser, err := h.User(userId)
 	if err == nil {
@@ -508,17 +508,17 @@ func (h *handler) markThreadAsOld(userId string, ctx *pbContext.Thread, done, qu
 		}
 	}
 	select {
-	case done<- err:
+	case done <- err:
 	case <-quit:
 	}
 }
 
 func (h *handler) markCommentAsOld(userId string, ctx *pbContext.Comment, done, quit chan error) {
 	var (
-		id = ctx.Id
-		threadId = ctx.ThreadCtx.Id
+		id        = ctx.Id
+		threadId  = ctx.ThreadCtx.Id
 		sectionId = ctx.ThreadCtx.SectionCtx.Id
-		found bool
+		found     bool
 	)
 	pbUser, err := h.User(userId)
 	if err == nil {
@@ -527,8 +527,8 @@ func (h *handler) markCommentAsOld(userId string, ctx *pbContext.Comment, done, 
 			// the user, then remove it from recent activity.
 			for i, c := range pbUser.RecentActivity.Comments {
 				if (c.ThreadCtx.SectionCtx.Id == sectionId) &&
-				(c.ThreadCtx.Id == threadId) &&
-				(c.Id == id) {
+					(c.ThreadCtx.Id == threadId) &&
+					(c.Id == id) {
 					found = true
 					if pbUser.OldActivity == nil {
 						pbUser.OldActivity = new(pbDataFormat.Activity)
@@ -551,18 +551,18 @@ func (h *handler) markCommentAsOld(userId string, ctx *pbContext.Comment, done, 
 		}
 	}
 	select {
-	case done<- err:
+	case done <- err:
 	case <-quit:
 	}
 }
 
 func (h *handler) markSubcommentAsOld(userId string, ctx *pbContext.Subcomment, done, quit chan error) {
 	var (
-		id = ctx.Id
+		id        = ctx.Id
 		commentId = ctx.CommentCtx.Id
-		threadId = ctx.CommentCtx.ThreadCtx.Id
+		threadId  = ctx.CommentCtx.ThreadCtx.Id
 		sectionId = ctx.CommentCtx.ThreadCtx.SectionCtx.Id
-		found bool
+		found     bool
 	)
 	pbUser, err := h.User(userId)
 	if err == nil {
@@ -571,9 +571,9 @@ func (h *handler) markSubcommentAsOld(userId string, ctx *pbContext.Subcomment, 
 			// the user, then remove it from recent activity.
 			for i, s := range pbUser.RecentActivity.Subcomments {
 				if (s.CommentCtx.ThreadCtx.SectionCtx.Id == sectionId) &&
-				(s.CommentCtx.ThreadCtx.Id == threadId) &&
-				(s.CommentCtx.Id == commentId) && 
-				(s.Id == id) {
+					(s.CommentCtx.ThreadCtx.Id == threadId) &&
+					(s.CommentCtx.Id == commentId) &&
+					(s.Id == id) {
 					found = true
 					if pbUser.OldActivity == nil {
 						pbUser.OldActivity = new(pbDataFormat.Activity)
@@ -596,7 +596,7 @@ func (h *handler) markSubcommentAsOld(userId string, ctx *pbContext.Subcomment, 
 		}
 	}
 	select {
-	case done<- err:
+	case done <- err:
 	case <-quit:
 	}
 }

@@ -2,13 +2,13 @@ package bolt_test
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"testing"
-	"io/ioutil"
 
-	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	"github.com/luisguve/cheroapi/internal/pkg/bolt"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
 type user struct {
@@ -38,31 +38,31 @@ func TestAuthUser(t *testing.T) {
 	}()
 	users := map[string]user{
 		"usr1": user{
-			email: "luisguveal@gmail.com",
-			name: "Luis Villegas",
+			email:        "luisguveal@gmail.com",
+			name:         "Luis Villegas",
 			patillavatar: "pic.jpg",
-			username: "luisguve",
-			alias: "Luis",
-			about: "Some description about myself",
-			password: "1747018Lv/",
+			username:     "luisguve",
+			alias:        "Luis",
+			about:        "Some description about myself",
+			password:     "1747018Lv/",
 		},
 		"usr2": user{
-			email: "otheruser@other.com",
-			name: "Other User",
+			email:        "otheruser@other.com",
+			name:         "Other User",
 			patillavatar: "otherpic.jpg",
-			username: "other",
-			alias: "Other",
-			about: "Some other description",
-			password: "digital-dissent",
+			username:     "other",
+			alias:        "Other",
+			about:        "Some other description",
+			password:     "digital-dissent",
 		},
 		"usr3": user{
-			email: "cheesetris21@gmail.com",
-			name: "Artur Car",
+			email:        "cheesetris21@gmail.com",
+			name:         "Artur Car",
 			patillavatar: "ctpic.png",
-			username: "cheesetris21",
-			alias: "Cheez",
-			about: "Cheese description",
-			password: "436173918//",
+			username:     "cheesetris21",
+			alias:        "Cheez",
+			about:        "Cheese description",
+			password:     "436173918//",
 		},
 	}
 	userKeys := make(map[string]user)
@@ -85,11 +85,11 @@ func TestAuthUser(t *testing.T) {
 		}
 		user := userKeys[id]
 		equals := (user.email == pbUser.PrivateData.Email) &&
-		(user.name == pbUser.BasicUserData.Name) &&
-		(user.patillavatar == pbUser.BasicUserData.PicUrl) &&
-		(user.username == pbUser.BasicUserData.Username) &&
-		(user.alias == pbUser.BasicUserData.Alias) &&
-		(user.about == pbUser.BasicUserData.About)
+			(user.name == pbUser.BasicUserData.Name) &&
+			(user.patillavatar == pbUser.BasicUserData.PicUrl) &&
+			(user.username == pbUser.BasicUserData.Username) &&
+			(user.alias == pbUser.BasicUserData.Alias) &&
+			(user.about == pbUser.BasicUserData.About)
 		if !equals {
 			t.Errorf("Expected: %v\nGot: %v\n", printUser(user), printPbBasicUserData(pbUser))
 		}
@@ -185,11 +185,11 @@ func TestAuthUser(t *testing.T) {
 func printPbBasicUserData(pbUser *pbDataFormat.User) string {
 	private := pbUser.PrivateData
 	basic := pbUser.BasicUserData
-	return fmt.Sprintf("email: %v, name: %v, picurl: %v, username: %v, alias: %v, about: %v\n", 
+	return fmt.Sprintf("email: %v, name: %v, picurl: %v, username: %v, alias: %v, about: %v\n",
 		private.Email, basic.Name, basic.PicUrl, basic.Username, basic.Alias, basic.About)
 }
 
 func printUser(u user) string {
-	return fmt.Sprintf("email: %v, name: %v, picurl: %v, username: %v, alias: %v, about: %v\n", 
+	return fmt.Sprintf("email: %v, name: %v, picurl: %v, username: %v, alias: %v, about: %v\n",
 		u.email, u.name, u.patillavatar, u.username, u.alias, u.about)
 }

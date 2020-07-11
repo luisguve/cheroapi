@@ -1,14 +1,14 @@
 package server
 
-import(
+import (
 	"context"
 	"errors"
 
-	"google.golang.org/grpc/status"
-	"google.golang.org/grpc/codes"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
-	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Update a thread, comment or subcomment
@@ -31,7 +31,7 @@ func (s *Server) DeleteContent(ctx context.Context, req *pbApi.DeleteContentRequ
 	}
 	var (
 		submitter = req.UserId
-		err error
+		err       error
 	)
 
 	switch ctx := req.ContentContext.(type) {
@@ -64,8 +64,8 @@ func (s *Server) CreateThread(ctx context.Context, req *pbApi.CreateThreadReques
 	}
 	var (
 		submitter = req.UserId
-		section = req.SectionCtx
-		content = req.Content
+		section   = req.SectionCtx
+		content   = req.Content
 	)
 	pbUser, err := s.dbHandler.User(submitter)
 	if err != nil {
@@ -185,18 +185,18 @@ func (s *Server) FollowUser(ctx context.Context, req *pbApi.FollowUserRequest) (
 	}
 	var (
 		followingId string
-		followerId = req.UserId
-		pbFollower *pbDataFormat.User
+		followerId  = req.UserId
+		pbFollower  *pbDataFormat.User
 		pbFollowing *pbDataFormat.User
-		done = make(chan error)
-		quit = make(chan error)
+		done        = make(chan error)
+		quit        = make(chan error)
 	)
 	// Get both users concurrently.
 	go func() {
 		var err error
 		pbFollower, err = s.dbHandler.User(followerId)
 		select {
-		case done<- err:
+		case done <- err:
 		case <-quit:
 		}
 	}()
@@ -207,7 +207,7 @@ func (s *Server) FollowUser(ctx context.Context, req *pbApi.FollowUserRequest) (
 			pbFollowing, err = s.dbHandler.User(followingId)
 		}
 		select {
-		case done<- err:
+		case done <- err:
 		case <-quit:
 		}
 	}()
@@ -232,14 +232,14 @@ func (s *Server) FollowUser(ctx context.Context, req *pbApi.FollowUserRequest) (
 	go func() {
 		err := s.dbHandler.UpdateUser(pbFollower, followerId)
 		select {
-		case done<- err:
+		case done <- err:
 		case <-quit:
 		}
 	}()
 	go func() {
 		err := s.dbHandler.UpdateUser(pbFollowing, followingId)
 		select {
-		case done<- err:
+		case done <- err:
 		case <-quit:
 		}
 	}()
@@ -269,8 +269,8 @@ func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserReques
 		ufId string
 		pbUf *pbDataFormat.User
 		// user unfollowing id
-		fId = req.UserId
-		pbF *pbDataFormat.User
+		fId  = req.UserId
+		pbF  *pbDataFormat.User
 		done = make(chan error)
 		quit = make(chan error)
 	)
@@ -279,7 +279,7 @@ func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserReques
 		var err error
 		pbF, err = s.dbHandler.User(fId)
 		select {
-		case done<- err:
+		case done <- err:
 		case <-quit:
 		}
 	}()
@@ -290,7 +290,7 @@ func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserReques
 			pbUf, err = s.dbHandler.User(ufId)
 		}
 		select {
-		case done<- err:
+		case done <- err:
 		case <-quit:
 		}
 	}()
@@ -326,14 +326,14 @@ func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserReques
 	go func() {
 		err := s.dbHandler.UpdateUser(pbF, fId)
 		select {
-		case done<- err:
+		case done <- err:
 		case <-quit:
 		}
 	}()
 	go func() {
 		err := s.dbHandler.UpdateUser(pbUf, ufId)
 		select {
-		case done<- err:
+		case done <- err:
 		case <-quit:
 		}
 	}()
@@ -400,8 +400,8 @@ func (s *Server) UndoSaveThread(ctx context.Context, req *pbApi.UndoSaveThreadRe
 		return nil, status.Error(codes.Internal, "No database connection")
 	}
 	var (
-		userId = req.UserId
-		id = req.Thread.Id
+		userId    = req.UserId
+		id        = req.Thread.Id
 		sectionId = req.Thread.SectionCtx.Id
 	)
 	pbUser, err := s.dbHandler.User(userId)

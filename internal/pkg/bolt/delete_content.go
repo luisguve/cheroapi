@@ -15,8 +15,8 @@ import (
 // recent or old activity of the given user by removing the reference to the thread.
 func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 	var (
-		id = thread.Id
-		sectionId = thread.SectionCtx.Id
+		id            = thread.Id
+		sectionId     = thread.SectionCtx.Id
 		usersWhoSaved []string
 	)
 	// check whether the section exists
@@ -109,7 +109,7 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 			}
 		}
 		select {
-		case done<- err:
+		case done <- err:
 		case <-quit:
 		}
 	}(userId)
@@ -131,7 +131,7 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 				err = h.UpdateUser(pbUser, userId)
 			}
 			select {
-			case done<- err:
+			case done <- err:
 			case <-quit:
 			}
 		}(userId)
@@ -154,8 +154,8 @@ func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 // recent or old activity of the given user by removing the reference to the comment.
 func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error {
 	var (
-		id = comment.Id
-		threadId = comment.ThreadCtx.Id
+		id        = comment.Id
+		threadId  = comment.ThreadCtx.Id
 		sectionId = comment.ThreadCtx.SectionCtx.Id
 	)
 	// check whether the section exists
@@ -235,8 +235,8 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 		// Find and remove comment from list of recent activity of user.
 		for i, c := range pbUser.RecentActivity.Comments {
 			if (c.ThreadCtx.SectionCtx.Id == sectionId) &&
-			(c.ThreadCtx.Id == threadId) &&
-			(c.Id == id) {
+				(c.ThreadCtx.Id == threadId) &&
+				(c.Id == id) {
 				found = true
 				last := len(pbUser.RecentActivity.Comments) - 1
 				pbUser.RecentActivity.Comments[i] = pbUser.RecentActivity.Comments[last]
@@ -250,8 +250,8 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 			// Find and remove comment from list of old activity of user.
 			for i, c := range pbUser.OldActivity.Comments {
 				if (c.ThreadCtx.SectionCtx.Id == sectionId) &&
-				(c.ThreadCtx.Id == threadId) &&
-				(c.Id == id) {
+					(c.ThreadCtx.Id == threadId) &&
+					(c.Id == id) {
 					found = true
 					last := len(pbUser.RecentActivity.Comments) - 1
 					pbUser.RecentActivity.Comments[i] = pbUser.RecentActivity.Comments[last]
@@ -274,9 +274,9 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 // to the subcomment.
 func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId string) error {
 	var (
-		id = subcomment.Id
+		id        = subcomment.Id
 		commentId = subcomment.CommentCtx.Id
-		threadId = subcomment.CommentCtx.ThreadCtx.Id
+		threadId  = subcomment.CommentCtx.ThreadCtx.Id
 		sectionId = subcomment.CommentCtx.ThreadCtx.SectionCtx.Id
 	)
 	// check whether the section exists
@@ -380,9 +380,9 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 		// Find and remove subcomment from list of recent activity of user.
 		for i, s := range pbUser.RecentActivity.Subcomments {
 			if (s.CommentCtx.ThreadCtx.SectionCtx.Id == sectionId) &&
-			(s.CommentCtx.ThreadCtx.Id == threadId) &&
-			(s.CommentCtx.Id == commentId) && 
-			(s.Id == id) {
+				(s.CommentCtx.ThreadCtx.Id == threadId) &&
+				(s.CommentCtx.Id == commentId) &&
+				(s.Id == id) {
 				found = true
 				last := len(pbUser.RecentActivity.Subcomments) - 1
 				pbUser.RecentActivity.Subcomments[i] = pbUser.RecentActivity.Subcomments[last]
@@ -396,9 +396,9 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 			// Find and remove subcomment from list of old activity of user.
 			for i, s := range pbUser.OldActivity.Subcomments {
 				if (s.CommentCtx.ThreadCtx.SectionCtx.Id == sectionId) &&
-				(s.CommentCtx.ThreadCtx.Id == threadId) &&
-				(s.CommentCtx.Id == commentId) && 
-				(s.Id == id) {
+					(s.CommentCtx.ThreadCtx.Id == threadId) &&
+					(s.CommentCtx.Id == commentId) &&
+					(s.Id == id) {
 					found = true
 					last := len(pbUser.RecentActivity.Subcomments) - 1
 					pbUser.RecentActivity.Subcomments[i] = pbUser.RecentActivity.Subcomments[last]

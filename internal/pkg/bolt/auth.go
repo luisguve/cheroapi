@@ -1,17 +1,17 @@
 package bolt
 
-import(
-	"log"
+import (
 	"errors"
+	"log"
 
+	"github.com/golang/protobuf/proto"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	uuid "github.com/satori/go.uuid"
+	bolt "go.etcd.io/bbolt"
+	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"github.com/satori/go.uuid"
-	"golang.org/x/crypto/bcrypt"
-	"github.com/golang/protobuf/proto"
-	bolt "go.etcd.io/bbolt"
-	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
-	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 )
 
 // FindUserIdByUsername looks for a user id with the given username as the key
@@ -22,7 +22,7 @@ import(
 func (h *handler) FindUserIdByUsername(username string) ([]byte, error) {
 	var (
 		userId []byte
-		err error
+		err    error
 	)
 	err = h.users.View(func(tx *bolt.Tx) error {
 		usernamesBucket := tx.Bucket([]byte(usernameIdsB))
@@ -47,7 +47,7 @@ func (h *handler) FindUserIdByUsername(username string) ([]byte, error) {
 func (h *handler) FindUserIdByEmail(email string) ([]byte, error) {
 	var (
 		userId []byte
-		err error
+		err    error
 	)
 	err = h.users.View(func(tx *bolt.Tx) error {
 		emailsBucket := tx.Bucket([]byte(emailIdsB))
@@ -113,14 +113,14 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 	// format user in protobuf message
 	pbUser := &pbDataFormat.User{
 		BasicUserData: &pbDataFormat.BasicUserData{
-			Alias: alias,
+			Alias:    alias,
 			Username: username,
-			PicUrl: patillavatar,
-			About: about,
-			Name: name,
+			PicUrl:   patillavatar,
+			About:    about,
+			Name:     name,
 		},
 		PrivateData: &pbDataFormat.PrivateData{
-			Email: email,
+			Email:    email,
 			Password: hashedPw,
 		},
 	}

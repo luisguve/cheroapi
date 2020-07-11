@@ -3,9 +3,9 @@ package main
 import (
 	"log"
 
-	"github.com/luisguve/cheroapi/internal/pkg/server"
-	"github.com/luisguve/cheroapi/internal/pkg/bolt"
 	app "github.com/luisguve/cheroapi/internal/app/cheroapi"
+	"github.com/luisguve/cheroapi/internal/pkg/bolt"
+	"github.com/luisguve/cheroapi/internal/pkg/server"
 )
 
 func main() {

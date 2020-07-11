@@ -1,13 +1,13 @@
 package cheroapi
 
-import(
+import (
+	"fmt"
 	"net"
 	"time"
-	"fmt"
 
-	"google.golang.org/grpc"
 	"github.com/go-co-op/gocron"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	"google.golang.org/grpc"
 )
 
 type Server interface {
@@ -33,7 +33,7 @@ func (a *App) Run() error {
 	s := grpc.NewServer()
 
 	pbApi.RegisterCrudCheropatillaServer(s, a.srv.(pbApi.CrudCheropatillaServer))
-	
+
 	// Run the Quality Assurance on the databases every day.
 	QAscheduler := gocron.NewScheduler(time.UTC)
 	QAscheduler.Every(1).Day().Do(a.srv.QA)

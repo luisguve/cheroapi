@@ -1,20 +1,20 @@
 package bolt_test
 
 import (
-	"time"
+	"fmt"
+	"io/ioutil"
+	"math/rand"
 	"os"
+	"strings"
 	"sync"
 	"testing"
-	"fmt"
-	"math/rand"
-	"strings"
-	"io/ioutil"
+	"time"
 
-	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
-	pbContext "github.com/luisguve/cheroproto-go/context"
-	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	"github.com/luisguve/cheroapi/internal/pkg/bolt"
+	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	pbContext "github.com/luisguve/cheroproto-go/context"
 )
 
 type user struct {
@@ -25,19 +25,21 @@ type post struct {
 	content *pbApi.Content
 	section *pbContext.Section
 	// Expected permalink to get back.
-	expLink   string
+	expLink string
 }
 
 // Map section ids to post permalink (includes section id).
 var sectionPosts = make(map[string][]string)
+
 // Map post id to user id.
 var postAuthor = make(map[string]string)
+
 // Map post id to post.
 var idPost = make(map[string]post)
 
 type comment struct {
 	// thread *pbContext.Thread
-	content  dbmodel.Reply
+	content dbmodel.Reply
 	// expNotif *pbApi.NotifyUser
 }
 
@@ -125,7 +127,7 @@ func TestThread(t *testing.T) {
 						go func(section, permalink, postId string, r dbmodel.Reply) {
 							defer wg.Done()
 							ctx := &pbContext.Thread{
-								Id:         postId,
+								Id: postId,
 								SectionCtx: &pbContext.Section{
 									Id: section,
 								},
@@ -231,10 +233,10 @@ func TestThread(t *testing.T) {
 		if !ok {
 			t.Errorf("%v is not in idPost.\n", permalink)
 		}
-		if post.content.Title != contentRule.Data.Content.Title || 
-		post.content.Content != contentRule.Data.Content.Content ||
-		post.content.FtFile != contentRule.Data.Content.FtFile ||
-		post.content.PublishDate.Seconds != contentRule.Data.Content.PublishDate.Seconds {
+		if post.content.Title != contentRule.Data.Content.Title ||
+			post.content.Content != contentRule.Data.Content.Content ||
+			post.content.FtFile != contentRule.Data.Content.FtFile ||
+			post.content.PublishDate.Seconds != contentRule.Data.Content.PublishDate.Seconds {
 			t.Errorf("Expected: %v, got: %v\n", post.content, contentRule.Data.Content)
 		}
 		var found bool
@@ -265,7 +267,7 @@ func TestThread(t *testing.T) {
 		go func(threadId string) {
 			defer wg.Done()
 			threadCtx := &pbContext.Thread{
-				Id:         threadId,
+				Id: threadId,
 				SectionCtx: &pbContext.Section{
 					Id: "mylife",
 				},
@@ -323,40 +325,40 @@ func TestThread(t *testing.T) {
 
 var users = map[string]user{
 	"usr1": user{
-		email: "luisguveal@gmail.com",
-		name: "Luis Villegas",
+		email:        "luisguveal@gmail.com",
+		name:         "Luis Villegas",
 		patillavatar: "pic.jpg",
-		username: "luisguve",
-		alias: "Luis",
-		about: "Some description about myself",
-		password: "1747018Lv/",
+		username:     "luisguve",
+		alias:        "Luis",
+		about:        "Some description about myself",
+		password:     "1747018Lv/",
 	},
 	"usr2": user{
-		email: "otheruser@other.com",
-		name: "Other User",
+		email:        "otheruser@other.com",
+		name:         "Other User",
 		patillavatar: "otherpic.jpg",
-		username: "other",
-		alias: "Other",
-		about: "Some other description",
-		password: "digital-dissent",
+		username:     "other",
+		alias:        "Other",
+		about:        "Some other description",
+		password:     "digital-dissent",
 	},
 	"usr3": user{
-		email: "cheesetris21@gmail.com",
-		name: "Artur Car",
+		email:        "cheesetris21@gmail.com",
+		name:         "Artur Car",
 		patillavatar: "ctpic.png",
-		username: "cheesetris21",
-		alias: "Cheez",
-		about: "Cheese description",
-		password: "436173918//",
+		username:     "cheesetris21",
+		alias:        "Cheez",
+		about:        "Cheese description",
+		password:     "436173918//",
 	},
 }
 
 var posts = []post{
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 01",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 01",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -368,9 +370,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 02",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 02",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -382,9 +384,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 03",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 03",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -396,9 +398,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 04",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 04",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -410,9 +412,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 05",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 05",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -424,9 +426,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 06",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 06",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -438,9 +440,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 07",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 07",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -452,9 +454,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 08",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 08",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -466,9 +468,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 09",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 09",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -480,9 +482,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 10",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 10",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -494,9 +496,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 11",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 11",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -508,9 +510,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 12",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 12",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -522,9 +524,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 13",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 13",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -536,9 +538,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 14",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 14",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -550,9 +552,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 15",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 15",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -564,9 +566,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 16",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 16",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -578,9 +580,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 17",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 17",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -592,9 +594,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 18",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 18",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -606,9 +608,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 19",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 19",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -620,9 +622,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 20",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 20",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -634,9 +636,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 21",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 21",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -648,9 +650,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 22",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 22",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -662,9 +664,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 23",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 23",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -676,9 +678,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 24",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 24",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -690,9 +692,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 25",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 25",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -704,9 +706,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 26",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 26",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -718,9 +720,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 27",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 27",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -732,9 +734,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 28",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 28",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -746,9 +748,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 29",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 29",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -760,9 +762,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 30",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 30",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -774,9 +776,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 31",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 31",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -788,9 +790,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 32",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 32",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -802,9 +804,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 33",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 33",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -816,9 +818,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 34",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 34",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -830,9 +832,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 35",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 35",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -844,9 +846,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 36",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 36",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -858,9 +860,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 37",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 37",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -872,9 +874,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 38",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 38",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -886,9 +888,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 39",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 39",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -900,9 +902,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 40",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 40",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -914,9 +916,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 41",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 41",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -928,9 +930,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 42",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 42",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -942,9 +944,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 43",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 43",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -956,9 +958,9 @@ var posts = []post{
 	},
 	post{
 		content: &pbApi.Content{
-			Title:       "Awesome blog post 44",
-			Content:     "Lorem ipsum dolor sit amet... Lest assume this is a long post",
-			FtFile:      "fresh-watermelon.jpg",
+			Title:   "Awesome blog post 44",
+			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
+			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
@@ -974,46 +976,46 @@ var comments = []comment{
 	comment{
 		content: dbmodel.Reply{
 			Content: "(1) HEY yo! I'm leaving a comment on your amazing post.",
-			FtFile: "animated_pic.gif",
+			FtFile:  "animated_pic.gif",
 			PublishDate: &pbTime.Timestamp{
 				Seconds: time.Now().Unix(),
 			},
 		},
-	},/*
-	comment{
-		content: dbmodel.Reply{
-			Content: "(2) HEY yo! I'm leaving a comment on your amazing post.",
-			FtFile: "animated_pic.gif",
-			PublishDate: &pbTime.Timestamp{
-				Seconds: time.Now().Unix(),
+	}, /*
+		comment{
+			content: dbmodel.Reply{
+				Content: "(2) HEY yo! I'm leaving a comment on your amazing post.",
+				FtFile: "animated_pic.gif",
+				PublishDate: &pbTime.Timestamp{
+					Seconds: time.Now().Unix(),
+				},
 			},
 		},
-	},
-	comment{
-		content: dbmodel.Reply{
-			Content: "(3) HEY yo! I'm leaving a comment on your amazing post.",
-			FtFile: "animated_pic.gif",
-			PublishDate: &pbTime.Timestamp{
-				Seconds: time.Now().Unix(),
+		comment{
+			content: dbmodel.Reply{
+				Content: "(3) HEY yo! I'm leaving a comment on your amazing post.",
+				FtFile: "animated_pic.gif",
+				PublishDate: &pbTime.Timestamp{
+					Seconds: time.Now().Unix(),
+				},
 			},
 		},
-	},
-	comment{
-		content: dbmodel.Reply{
-			Content: "(4) HEY yo! I'm leaving a comment on your amazing post.",
-			FtFile: "animated_pic.gif",
-			PublishDate: &pbTime.Timestamp{
-				Seconds: time.Now().Unix(),
+		comment{
+			content: dbmodel.Reply{
+				Content: "(4) HEY yo! I'm leaving a comment on your amazing post.",
+				FtFile: "animated_pic.gif",
+				PublishDate: &pbTime.Timestamp{
+					Seconds: time.Now().Unix(),
+				},
 			},
 		},
-	},
-	comment{
-		content: dbmodel.Reply{
-			Content: "(5) HEY yo! I'm leaving a comment on your amazing post.",
-			FtFile: "animated_pic.gif",
-			PublishDate: &pbTime.Timestamp{
-				Seconds: time.Now().Unix(),
+		comment{
+			content: dbmodel.Reply{
+				Content: "(5) HEY yo! I'm leaving a comment on your amazing post.",
+				FtFile: "animated_pic.gif",
+				PublishDate: &pbTime.Timestamp{
+					Seconds: time.Now().Unix(),
+				},
 			},
-		},
-	},*/
+		},*/
 }
