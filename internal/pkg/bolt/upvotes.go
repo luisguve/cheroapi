@@ -150,19 +150,28 @@ func (h *handler) UndoUpvoteThread(userId string, thread *pbContext.Thread) erro
 // either the thread or the comment.
 func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*pbApi.NotifyUser, error) {
 	var (
+		commentId = comment.Id
+		threadId = comment.ThreadCtx.Id
+		sectionId = comment.ThreadCtx.SectionCtx.Id
+		pbComment *pbDataFormat.Content
+		pbThread *pbDataFormat.Content
 		notifs []*pbApi.NotifyUser
-		done = make(chan errNotif)
-		quit = make(chan error)
-		// Buffered channel to send the comment from the go-routine that
-		// updates it to the go-routine that updates the thread it belongs to.
-		com = make(chan *pbDataFormat.Content, 1)
 	)
-
-	// Get and update comment data and set notification for the comment author.
-	go func(com chan<- *pbDataFormat.Content) {
-		var errNotifyUser errNotif
-		pbComment, err := h.GetCommentContent(comment)
-		if err == nil {
+	// check whether the section exists
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
+		return nil, dbmodel.ErrSectionNotFound
+	}
+	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
+		var (
+			commentBytes, threadBytes []byte
+			done = make(chan error)
+			quit = make(chan error)
+		)
+		// Get and update comment data.
+		go func() {
+			var err error
+			pbComment, err = h.GetCommentContent(comment)
 			pbComment.Upvotes++
 			pbComment.VoterIds = append(pbComment.VoterIds, userId)
 			// Increment interactions and calculata new average update time only
@@ -171,81 +180,75 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 			if !undoner {
 				incInteractions(pbComment.Metadata)
 			}
-			// Save comment.
-			err = h.SetCommentContent(comment, pbComment)
-			if (err == nil) {
-				com<- pbComment
-				// Set notification only if the submitter is not the comment
-				// author.
-				toNotify := pbComment.AuthorId
-				if (userId != toNotify) {
-					// set notification
-					var msg string
-					if pbComment.Upvotes > 1 {
-						msg = fmt.Sprintf("%d users have upvoted your comment", pbComment.Upvotes)
-					} else {
-						msg = "1 user has upvoted your comment"
-					}
-					subj := fmt.Sprintf("On your comment on %s", pbComment.Title)
-					notifType := pbDataFormat.Notif_UPVOTE_COMMENT
-					errNotifyUser.notifyUser = h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbComment)
-				}
+			commentBytes, err = proto.Marshal(pbComment)
+			select {
+			case done<- err:
+			case <-quit:
 			}
-		}
-		errNotifyUser.err = err
-		close(com)
-		select {
-		case done<- errNotifyUser:
-		case <-quit:
-		}
-	}(com)
-	// Get and update thread data and set notification for the thread author.
-	go func(thread *pbContext.Thread, com <-chan *pbDataFormat.Content) {
-		var errNotifyUser errNotif
-		pbThread, err := h.GetThreadContent(thread)
-		if err == nil {
+		}()
+		go func() {
+			var err error
+			pbThread, err = h.GetThreadContent(comment.ThreadCtx)
 			// increment interactions and calculata new average update time only
 			// if this user has not undone an interaction on this content before.
 			undoner, _ := inSlice(pbThread.UndonerIds, userId)
 			if !undoner {
 				incInteractions(pbThread.Metadata)
 			}
-			err = h.SetThreadContent(thread, pbThread)
-			toNotify := pbThread.AuthorId
-			if (err == nil) && (userId != toNotify) {
-				if pbComment, ok := <-com; ok {
-					// set notification
-					upvotes := int(pbComment.Upvotes)
-					var msg string
-					if upvotes > 1 {
-						msg = fmt.Sprintf("%d users have upvoted a comment on your thread", upvotes)
-					} else {
-						msg = "1 user has upvoted a comment on your thread"
-					}
-					subj := fmt.Sprintf("On your thread %s", pbThread.Title)
-					notifType := pbDataFormat.Notif_UPVOTE_COMMENT
-					errNotifyUser.notifyUser = h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbComment)
-				}
+			threadBytes, err = proto.Marshal(pbThread)
+			select {
+			case done<- err:
+			case <-quit:
+			}
+		}()
+		var err error
+		// Check for errors.
+		for i := 0; i < 2; i++ {
+			err = <-done
+			if err != nil {
+				close(quit)
+				return err
 			}
 		}
-		errNotifyUser.err = err
-		select {
-		case done<- errNotifyUser:
-		case <-quit:
+		if err = setCommentBytes(tx, threadId, commentId, commentBytes); err != nil {
+			return err
 		}
-	}(comment.ThreadCtx, com)
+		return setThreadBytes(tx, threadId, threadBytes)
+	})
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
 
-	// check for errors
-	for i := 0; i < 2; i++ {
-		errNotifyUser := <-done
-		if errNotifyUser.err != nil {
-			log.Println(errNotifyUser.err)
-			close(quit)
-			return nil, errNotifyUser.err
+	// Set notification only if the submitter is not the comment author.
+	toNotify := pbComment.AuthorId
+	if userId != toNotify {
+		// set notification
+		var msg string
+		if pbComment.Upvotes > 1 {
+			msg = fmt.Sprintf("%d users have upvoted your comment", pbComment.Upvotes)
+		} else {
+			msg = "1 user has upvoted your comment"
 		}
-		if errNotifyUser.notifyUser != nil {
-			notifs = append(notifs, errNotifyUser.notifyUser)
+		subj := fmt.Sprintf("On your comment on %s", pbComment.Title)
+		notifType := pbDataFormat.Notif_UPVOTE_COMMENT
+		notifyUser := h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbComment)
+		notifs = append(notifs, notifyUser)
+	}
+
+	toNotify = pbThread.AuthorId
+	if userId != toNotify {
+		// set notification
+		var msg string
+		if pbComment.Upvotes > 1 {
+			msg = fmt.Sprintf("%d users have upvoted a comment on your thread", pbComment.Upvotes)
+		} else {
+			msg = "1 user has upvoted a comment on your thread"
 		}
+		subj := fmt.Sprintf("On your thread %s", pbThread.Title)
+		notifType := pbDataFormat.Notif_UPVOTE_COMMENT
+		notifyUser := h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbComment)
+		notifs = append(notifs, notifyUser)
 	}
 	return notifs, nil
 }
