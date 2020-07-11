@@ -5,8 +5,6 @@ import(
 	"errors"
 	"strconv"
 	"fmt"
-	"sync"
-	"encoding/binary"
 
 	bolt "go.etcd.io/bbolt"
 	"github.com/golang/protobuf/proto"
@@ -187,65 +185,66 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) ([]*pbApi.NotifyUser, error) {
 	var (
 		notifyUsers []*pbApi.NotifyUser
+		commentId = comment.Id
 		threadId = comment.ThreadCtx.Id
 		sectionId = comment.ThreadCtx.SectionCtx.Id
 		pbThread *pbDataFormat.Content
 		pbComment *pbDataFormat.Content
-		pbUser *pbDataFormat.User
 	)
 	// check whether the section exists
 	sectionDB, ok := h.sections[sectionId]
 	if !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
-	var (
-		done = make(chan error)
-		quit = make(chan error)
-	)
-	go func() {
+	// Get thread, comment and user and format, marshal and save comment and
+	// update user, thread and comment in the same transaction.
+	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
+		var (
+			pbUser *pbDataFormat.User
+			done = make(chan error)
+			quit = make(chan error)
+		)
+		go func() {
+			var err error
+			pbThread, err = h.GetThreadContent(comment.ThreadCtx)
+			select {
+			case done<- err:
+			case <-quit:
+			}
+		}()
+		go func() {
+			var err error
+			pbComment, err = h.GetCommentContent(comment)
+			select {
+			case done<- err:
+			case <-quit:
+			}
+		}()
+		go func() {
+			var err error
+			pbUser, err = h.User(reply.Submitter)
+			select {
+			case done<- err:
+			case <-quit:
+			}
+		}()
+		// Check for errors. It terminates every go-routine hung on the statement
+		// "case done<- err" by closing the channel quit and returns the first err
+		// read.
 		var err error
-		pbThread, err = h.GetThreadContent(comment.ThreadCtx)
-		select {
-		case done<- err:
-		case <-quit:
+		for i := 0; i < 3; i++ {
+			err = <-done
+			if err != nil {
+				close(quit)
+				return nil
+			}
 		}
-	}()
-	go func() {
-		var err error
-		pbComment, err = h.GetCommentContent(comment)
-		select {
-		case done<- err:
-		case <-quit:
-		}
-	}()
-	go func() {
-		var err error
-		pbUser, err = h.User(reply.Submitter)
-		select {
-		case done<- err:
-		case <-quit:
-		}
-	}()
-	// Check for errors. It terminates every go-routine hung on the statement
-	// "case done<- err" by closing the channel quit and returns the first err
-	// read.
-	var err error
-	for i := 0; i < 3; i++ {
-		err = <-done
-		if err != nil {
-			close(quit)
-			log.Println(err)
-			return nil, err
-		}
-	}
-	// Format, marshal and save comment and update user in the same transaction.
-	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		subcommentsBucket, err := getActiveSubcommentsBucket(tx, threadId, comment.Id)
+		subcommentsBucket, err := getActiveSubcommentsBucket(tx, threadId, commentId)
 		if err != nil {
 			if errors.Is(err, dbmodel.ErrSubcommentsBucketNotFound) {
 				// this is the first comment; create the subcomments bucket
 				// associated to the comment.
-				subcommentsBucket, err = createSubcommentsBucket(tx, threadId, comment.Id)
+				subcommentsBucket, err = createSubcommentsBucket(tx, threadId, commentId)
 				if err != nil {
 					return err
 				}
@@ -291,50 +290,36 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 			CommentCtx: comment,
 		}
 		pbUser.RecentActivity.Subcomments = append(pbUser.RecentActivity.Subcomments, subcommentCtx)
-		return h.UpdateUser(pbUser, reply.Submitter)
+		if err = h.UpdateUser(pbUser, reply.Submitter); err != nil {
+			return err
+		}
+		// Update thread metadata.
+		pbThread.Replies++
+		incInteractions(pbThread.Metadata)
+		contentBytes, err := proto.Marshal(pbThread)
+		if err != nil {
+			log.Printf("Could not marshal content: %v\n", err)
+			return err
+		}
+		err = setThreadBytes(tx, threadId, contentBytes)
+		if err != nil {
+			return err
+		}
+		// Update comment metadata.
+		pbComment.Replies++
+		pbComment.ReplierIds = append(pbComment.ReplierIds, reply.Submitter)
+		incInteractions(pbComment.Metadata)
+		contentBytes, err = proto.Marshal(pbComment)
+		if err != nil {
+			log.Printf("Could not marshal content: %v\n", err)
+			return err
+		}
+		return setCommentBytes(tx, threadId, commentId, contentBytes)
 	})
 	if err != nil {
 		log.Println(err)
 		return nil, err
 	}
-	var wg sync.WaitGroup
-	// Update thread metadata.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		pbThread.Replies++
-		incInteractions(pbThread.Metadata)
-		err := h.SetThreadContent(comment.ThreadCtx, pbThread)
-		select {
-		case done<- err:
-		case <-quit:
-		}
-	}()
-	// Update comment metadata.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		pbComment.Replies++
-		pbComment.ReplierIds = append(pbComment.ReplierIds, reply.Submitter)
-		incInteractions(pbComment.Metadata)
-		err := h.SetCommentContent(comment, pbComment)
-		select {
-		case done<- err:
-		case <-quit:
-		}
-	}()
-	// Check for errors. It terminates every go-routine hung on the statement
-	// "case done<- err" by closing the channel quit and returns the first err
-	// read.
-	for i := 0; i < 2; i++ {
-		err = <-done
-		if err != nil {
-			log.Println(err)
-			close(quit)
-			break
-		}
-	}
-	wg.Wait()
 	// notify thread author
 	toNotify := pbThread.AuthorId
 	if reply.Submitter != toNotify {
@@ -377,11 +362,4 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		}
 	}
 	return notifyUsers, err
-}
-
-// uitob returns an 8-byte big endian representation of v.
-func uitob(v uint64) []byte {
-    b := make([]byte, 8)
-    binary.BigEndian.PutUint64(b, v)
-    return b
 }
