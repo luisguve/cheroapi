@@ -131,10 +131,7 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		}
 		// Update thread metadata.
 		pbThread.Replies++
-		replied, _ := inSlice(pbThread.ReplierIds, reply.Submitter)
-		if !replied {
-			pbThread.ReplierIds = append(pbThread.ReplierIds, reply.Submitter)
-		}
+		pbThread.ReplierIds = append(pbThread.ReplierIds, reply.Submitter)
 		incInteractions(pbThread.Metadata)
 		contentBytes, err := proto.Marshal(pbThread)
 		if err != nil {
