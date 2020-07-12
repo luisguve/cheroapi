@@ -27,11 +27,11 @@ Now how it works in **Cheropatilla**
 
 ![Grid of contents](grid.png)
 
-The most **new** contents are placed in the **smaller squares**, the **outstanding** ones are placed in the **mid-size squares** and the **main** content is in the **greatest square**.
+The most **new** contents are placed in the **smaller tiles**, the **outstanding** ones are placed in the **mid-size tiles** and the **main** content is in the **greatest tile**.
 
 The order in which the contents are arranged by their quality is called ***the pattern***.
 
-The way in which the contents are returned is completely random; the user enters the page of a section and the server fills the pattern in random fashion with ***active*** contents from the section. To be exact, this is the algorithm summarized in three steps:
+The way in which the contents are returned is completely random; the user enters the page of a section and the server fills the pattern in a random fashion with ***active*** contents from the section. To be exact, this is the algorithm summarized in three steps:
 
 1. Load all the *active* contents from the database into an array.
 1. Classify the contents in three categories: *new*, *outstanding* and *main*.
@@ -48,6 +48,16 @@ The way feeds are requested is through the button ***Recycle***. The contents (a
 1. The main content will **always** be the most outstanding of all the **active** contents. At the first recycle, the spot of the main content will be taken by the second most outstanding; at the second recycle, by the third most oustanding and so on in each recycle.
 1. The contents received by the client between recycles will **never** be repeated.
 1. The server will follow the pattern as much as possible, but in the case in which there are less outstanding contents than the required by the pattern, their places will be taken by contents classified as new and viceversa.
+
+As I mentioned earlier, the contents are taken from the database only if they're *active*.
+
+There are two states of contents: active and archived. Users cannot perform interactions on contents in archived state, and they will not be shown on section feeds.
+
+Once a day, all the contents from all the sections will be analized by an algorithm, which determines whether they are active enough and are still popular at the time. The unactive ones are moved to a place in the database as archived. This process is called ***Quality assurance***.
+
+A piece of content will stay active if it has interactions constantly, and that way it's status changes from new to outstanding. Are considered as interactions the following events: upvote on post, comment on post, upvote on comment, comment on a comment and upvote on a subcomment.
+
+That's how posts are listed in a section, but other types of contents, such as comments in a post and activities from a user follow the same idea of reducing the pagination of contents to a single button of **recycling**.
 
 ___
 
