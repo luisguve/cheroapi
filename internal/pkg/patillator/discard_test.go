@@ -20,9 +20,21 @@ func TestDiscardActivity(t *testing.T) {
 		t.Errorf("result should have the same activities, this is the result: %v\n", printActivities(t, result))
 	}
 	result = patillator.DiscardActivities(activities, activityIds)
-	if len(result.ThreadsCreated) != 0 || len(result.Comments) != 0 ||
+	if len(result.ThreadsCreated) != 1 || len(result.Comments) != 0 ||
 	len(result.Subcomments) != 0 {
 		t.Errorf("result should have no activities, these were left: %v\n", printActivities(t, result))
+	}
+	key := result.ThreadsCreated[0].Key()
+	contentCtx, ok := key.(*pbContext.Context)
+	if !ok {
+		t.Fatalf("Failed type assertion to Context: %t\n", key)
+	}
+	contextThreadCtx, ok := contentCtx.Ctx.(*pbContext.Context_ThreadCtx)
+	if !ok {
+		t.Fatalf("Failed type assertion to Context_ThreadCtx: %t\n", contentCtx.Ctx)
+	}
+	if contextThreadCtx.ThreadCtx.Id != "post-02" {
+		t.Errorf("Expected resulting thread id to be post-02, got instead: %v\n", contextThreadCtx.ThreadCtx.Id)
 	}
 }
 
@@ -204,7 +216,7 @@ var activityIds = &pbDataFormat.Activity{
 			},
 		},
 		&pbContext.Thread{
-			Id: "post-02",
+			Id: "post-22",
 			SectionCtx: &pbContext.Section{
 				Id: "mylife",
 			},
