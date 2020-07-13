@@ -42,7 +42,7 @@ func (s *Server) RecycleContent(req *pbApi.ContentPattern, stream pbApi.CrudCher
 	var (
 		metadata     []patillator.SegregateDiscarderFinder
 		cleanedUp    []patillator.SegregateFinder // metadata after discarding ids
-		contentIds   []string
+		contentIds   []patillator.Id
 		contentRules []*pbApi.ContentRule
 		getErr1      error // get contents metadata
 		getErr2      error // get contents data
