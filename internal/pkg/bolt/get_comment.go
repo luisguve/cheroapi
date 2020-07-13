@@ -98,7 +98,7 @@ func (h *handler) GetCommentsOverview(thread *pbContext.Thread) ([]patillator.Se
 }
 
 // Get content of the given comment ids in a thread
-func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.ContentRule, error) {
+func (h *handler) GetComments(thread *pbContext.Thread, ids []patillator.Id) ([]*pbApi.ContentRule, error) {
 	var (
 		err          error
 		id           = thread.Id
@@ -131,7 +131,7 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 			// same channel, meaning it could complete its work successfully.
 			elems++
 			wg.Add(1)
-			go func(idx int, id string) {
+			go func(idx int, id, status string) {
 				defer wg.Done()
 				contentRules[idx] = &pbApi.ContentRule{}
 				v := comments.Get([]byte(id))
@@ -143,6 +143,7 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 						log.Printf("Could not unmarshal content: %v\n", err)
 					} else {
 						contentRule := h.formatCommentContentRule(pbContent, thread, id)
+						contentRule.Status = status
 						contentRules[idx] = contentRule
 					}
 				}
@@ -150,7 +151,7 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []string) ([]*pbApi.
 				case done <- err:
 				case <-quit: // exit in case of getting stuck on above statement.
 				}
-			}(idx, id)
+			}(idx, id.Id, id.Status)
 		}
 		// Check for errors. It terminates every go-routine hung on the statement
 		// "case done<- err" by closing the channel quit and returns the first err

@@ -149,9 +149,17 @@ func (gc GeneralContent) Key() interface{} {
 	}
 }
 
+// Id holds information to get a thread from the database: its Id. The caller
+// should know the section it belongs to.
+type Id struct {
+	Id     string
+	Status string
+}
+
 // GeneralId holds information to get a thread from the database: its id and
 // the section it belongs to.
 type GeneralId struct {
 	Id        string
 	SectionId string
+	Status    string
 }

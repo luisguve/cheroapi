@@ -17,11 +17,11 @@ type Handler interface {
 	// Get metadata of threads in a section
 	GetThreadsOverview(*pbContext.Section, ...patillator.SetSDF) ([]patillator.SegregateDiscarderFinder, error)
 	// Get content of the given thread ids in a section
-	GetThreads(*pbContext.Section, []string) ([]*pbApi.ContentRule, error)
+	GetThreads(*pbContext.Section, []patillator.Id) ([]*pbApi.ContentRule, error)
 	// Get metadata of comments in a thread
 	GetCommentsOverview(*pbContext.Thread) ([]patillator.SegregateDiscarderFinder, error)
 	// Get content of the given comment ids in a thread
-	GetComments(*pbContext.Thread, []string) ([]*pbApi.ContentRule, error)
+	GetComments(*pbContext.Thread, []patillator.Id) ([]*pbApi.ContentRule, error)
 	// Get metadata of threads in every section
 	GetGeneralThreadsOverview() (map[string][]patillator.SegregateDiscarderFinder, []error)
 	// Get content of the given thread ids in the given sections
@@ -35,7 +35,7 @@ type Handler interface {
 	// Get activity of users
 	GetActivity(users ...string) (map[string]patillator.UserActivity, []error)
 	// Get contents by context
-	GetContentsByContext([]*pbContext.Context) ([]*pbApi.ContentRule, []error)
+	GetContentsByContext([]patillator.Context) ([]*pbApi.ContentRule, []error)
 	// Get metadata of saved threads of a given user
 	GetSavedThreadsOverview(user string) (map[string][]patillator.SegregateDiscarderFinder, []error)
 	// Add user credentials and data (sign in); returns the user id and a nil

@@ -74,9 +74,14 @@ type segregatedContents struct {
 	topContent  ContentFinder
 }
 
-// The SDF type is a Callback to convert a Content to a SegregateDiscarderFinder.
+// The setSDF type is a Callback to convert a Content to a SegregateDiscarderFinder.
 // It is defined for shortness.
 type SetSDF func(*pbDataFormat.Content) SegregateDiscarderFinder
+
+type Context struct {
+	Key *pbContext.Context
+	Status string
+}
 
 // FillActivityPattern merges the fields ThreadsCreated, Comments and
 // Subcomments (type []SegregateFinder) from the given map[string]UserActivity
@@ -87,7 +92,7 @@ type SetSDF func(*pbDataFormat.Content) SegregateDiscarderFinder
 //
 // It may return a smaller list of content contexts than the provided pattern
 // requires, depending upon the availability of contents.
-func FillActivityPattern(activity map[string]UserActivity, pattern []pbMetadata.ContentStatus) []*pbContext.Context {
+func FillActivityPattern(activity map[string]UserActivity, pattern []pbMetadata.ContentStatus) []Context {
 	var activities []SegregateFinder
 	for _, a := range activity {
 		activities = append(activities, a.ThreadsCreated...)
@@ -96,7 +101,7 @@ func FillActivityPattern(activity map[string]UserActivity, pattern []pbMetadata.
 	}
 	segActivities := segregate(activities)
 
-	var result []*pbContext.Context
+	var result []Context
 
 	var content ContentFinder
 	// empty is a flag that indicates whether both newContents and relContents
@@ -111,7 +116,7 @@ FOR:
 			if !empty {
 				// check type assertion to ensure there will not be a panic
 				if ctx, ok := content.Key().(*pbContext.Context); ok {
-					result = append(result, ctx)
+					result = append(result, Context{ctx, "NEW"})
 				}
 				continue
 			}
@@ -122,7 +127,7 @@ FOR:
 			if !empty {
 				// check type assertion to ensure there will not be a panic
 				if ctx, ok := content.Key().(*pbContext.Context); ok {
-					result = append(result, ctx)
+					result = append(result, Context{ctx, "REL"})
 				}
 				continue
 			}
@@ -131,7 +136,7 @@ FOR:
 			if segActivities.topContent != nil {
 				// check type assertion to ensure there will not be a panic
 				if ctx, ok := segActivities.topContent.Key().(*pbContext.Context); ok {
-					result = append(result, ctx)
+					result = append(result, Context{ctx, "TOP"})
 				}
 				// set topContent to nil to avoid reaching this point again.
 				segActivities.topContent = nil
@@ -174,8 +179,13 @@ FOR:
 				segContents.relContents)
 			if !empty {
 				// check type assertion to ensure there will not be a panic.
-				if id, ok := content.Key().(GeneralId); ok {
-					result = append(result, id)
+				if gi, ok := content.Key().(GeneralId); ok {
+					gi = GeneralId{
+						Id:        gi.Id,
+						SectionId: gi.SectionId,
+						Status:    "NEW",
+					}
+					result = append(result, gi)
 				}
 				continue
 			}
@@ -185,8 +195,13 @@ FOR:
 				segContents.newContents)
 			if !empty {
 				// check type assertion to ensure there will not be a panic.
-				if id, ok := content.Key().(GeneralId); ok {
-					result = append(result, id)
+				if gi, ok := content.Key().(GeneralId); ok {
+					gi = GeneralId{
+						Id: gi.Id,
+						SectionId: gi.SectionId,
+						Status: "REL",
+					}
+					result = append(result, gi)
 				}
 				continue
 			}
@@ -194,8 +209,13 @@ FOR:
 		case "TOP":
 			if segContents.topContent != nil {
 				// check type assertion to ensure there will not be a panic.
-				if id, ok := segContents.topContent.Key().(GeneralId); ok {
-					result = append(result, id)
+				if gi, ok := segContents.topContent.Key().(GeneralId); ok {
+					gi = GeneralId{
+						Id: gi.Id,
+						SectionId: gi.SectionId,
+						Status: "TOP",
+					}
+					result = append(result, gi)
 				}
 				// set topContent to nil to avoid reaching this point again.
 				segContents.topContent = nil
@@ -216,11 +236,11 @@ FOR:
 //
 // It may return a smaller list of content contexts than the provided pattern
 // requires, depending upon the availability of contents.
-func FillPattern(contents []SegregateFinder, pattern []pbMetadata.ContentStatus) []string {
+func FillPattern(contents []SegregateFinder, pattern []pbMetadata.ContentStatus) []Id {
 	// segregated contents
 	segContents := segregate(contents)
 
-	var result []string
+	var result []Id
 
 	var content ContentFinder
 	// empty is a flag that indicates whether both newContents and relContents
@@ -235,7 +255,7 @@ FOR:
 			if !empty {
 				// check type assertion to ensure there will not be a panic
 				if id, ok := content.Key().(string); ok {
-					result = append(result, id)
+					result = append(result, Id{Id: id, Status: "NEW"})
 				}
 				continue
 			}
@@ -246,7 +266,7 @@ FOR:
 			if !empty {
 				// check type assertion to ensure there will not be a panic
 				if id, ok := content.Key().(string); ok {
-					result = append(result, id)
+					result = append(result, Id{Id: id, Status: "REL"})
 				}
 				continue
 			}
@@ -255,7 +275,7 @@ FOR:
 			if segContents.topContent != nil {
 				// check type assertion to ensure there will not be a panic
 				if id, ok := segContents.topContent.Key().(string); ok {
-					result = append(result, id)
+					result = append(result, Id{Id: id, Status: "TOP"})
 				}
 				// set topContent to nil to avoid reaching this point again.
 				segContents.topContent = nil

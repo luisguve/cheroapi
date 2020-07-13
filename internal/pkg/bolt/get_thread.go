@@ -107,7 +107,7 @@ func (h *handler) GetThreadsOverview(section *pbContext.Section, setSDF ...patil
 //
 // It only queries threads from the bucket of active contents of the given
 // section.
-func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi.ContentRule, error) {
+func (h *handler) GetThreads(section *pbContext.Section, ids []patillator.Id) ([]*pbApi.ContentRule, error) {
 	var (
 		err          error
 		sectionId    = section.Id
@@ -138,7 +138,7 @@ func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi
 			// same channel, meaning it could complete its work successfully.
 			elems++
 			wg.Add(1)
-			go func(idx int, id string) {
+			go func(idx int, id, status string) {
 				contentRules[idx] = &pbApi.ContentRule{}
 				defer wg.Done()
 				v := activeContents.Get([]byte(id))
@@ -150,6 +150,7 @@ func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi
 						log.Printf("Could not unmarshal content: %v\n", err)
 					} else {
 						contentRule := h.formatThreadContentRule(pbContent, section, id)
+						contentRule.Status = status
 						contentRules[idx] = contentRule
 					}
 				}
@@ -157,7 +158,7 @@ func (h *handler) GetThreads(section *pbContext.Section, ids []string) ([]*pbApi
 				case done <- err:
 				case <-quit: // exit in case of getting stuck on above statement.
 				}
-			}(idx, id)
+			}(idx, id.Id, id.Status)
 		}
 		// Check for errors. It terminates every go-routine hung on the statement
 		// "case done<- err" by closing the channel quit and returns the first err
@@ -257,12 +258,12 @@ func (h *handler) GetGeneralThreads(threadsInfo []patillator.GeneralId) ([]*pbAp
 			}
 			contentRule, err := h.GetThread(ctx)
 			if err != nil {
-				contentRules[idx] = &pbApi.ContentRule{}
+				contentRule = &pbApi.ContentRule{}
 				m.Lock()
 				errs = append(errs, err)
 				m.Unlock()
-				return
 			}
+			contentRule.Status = threadInfo.Status
 			contentRules[idx] = contentRule
 		}(idx, threadInfo)
 	}

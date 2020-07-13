@@ -139,17 +139,17 @@ func (h *handler) GetActivity(users ...string) (map[string]patillator.UserActivi
 
 // GetContentsByContext gets and formats the contents with the given contexts
 // into a []*pbApi.ContentRule.
-func (h *handler) GetContentsByContext(contexts []*pbContext.Context) ([]*pbApi.ContentRule, []error) {
+func (h *handler) GetContentsByContext(contents []patillator.Context) ([]*pbApi.ContentRule, []error) {
 	var (
-		contentRules = make([]*pbApi.ContentRule, len(contexts))
+		contentRules = make([]*pbApi.ContentRule, len(contents))
 		errs         []error
 		m            sync.Mutex
 		wg           sync.WaitGroup
 	)
 
-	for idx, context := range contexts {
+	for idx, content := range contents {
 		wg.Add(1)
-		go func(idx int, context *pbContext.Context) {
+		go func(idx int, context *pbContext.Context, status string) {
 			defer wg.Done()
 			var (
 				contentRule *pbApi.ContentRule
@@ -184,8 +184,9 @@ func (h *handler) GetContentsByContext(contexts []*pbContext.Context) ([]*pbApi.
 					m.Unlock()
 				}
 			}
+			contentRule.Status = status
 			contentRules[idx] = contentRule
-		}(idx, context)
+		}(idx, content.Key, content.Status)
 	}
 	wg.Wait()
 	return contentRules, errs
