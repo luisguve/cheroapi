@@ -2,6 +2,7 @@ package cheroapi
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"time"
 
@@ -39,5 +40,6 @@ func (a *App) Run() error {
 	QAscheduler.Every(1).Day().Do(a.srv.QA)
 	QAscheduler.StartAsync()
 
+	log.Println("Running")
 	return s.Serve(lis)
 }
