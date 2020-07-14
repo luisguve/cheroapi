@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"errors"
 
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
@@ -58,6 +60,9 @@ func (s *Server) RecycleContent(req *pbApi.ContentPattern, stream pbApi.CrudCher
 		metadata, getErr1 = s.dbHandler.GetThreadsOverview(ctx.SectionCtx)
 		// return an error only if no content could be gotten
 		if (getErr1 != nil) && (len(metadata) == 0) {
+			if errors.Is(getErr1, dbmodel.ErrSectionNotFound) {
+				return status.Error(codes.NotFound, getErr1.Error())
+			}
 			return status.Error(codes.Internal, getErr1.Error())
 		}
 		// get rid of contents already seen by the user
@@ -69,6 +74,10 @@ func (s *Server) RecycleContent(req *pbApi.ContentPattern, stream pbApi.CrudCher
 		metadata, getErr1 = s.dbHandler.GetCommentsOverview(ctx.ThreadCtx)
 		// return an error only if no content could be gotten
 		if (getErr1 != nil) && (len(metadata) == 0) {
+			if errors.Is(getErr1, dbmodel.ErrSectionNotFound) ||
+			errors.Is(getErr1, dbmodel.ErrNoComments) {
+				return status.Error(codes.NotFound, getErr1.Error())
+			}
 			return status.Error(codes.Internal, getErr1.Error())
 		}
 		// get rid of contents already seen by the user
