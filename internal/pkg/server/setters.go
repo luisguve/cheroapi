@@ -225,6 +225,11 @@ func (s *Server) FollowUser(ctx context.Context, req *pbApi.FollowUserRequest) (
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 	}
+	// A user cannot follow itself. Check if that's the case.
+	if followingId == followerId {
+		return nil, status.Error(codes.InvalidArgument, "A user cannot follow itself")
+	}
+
 	// Update users data.
 	pbFollower.FollowingIds = append(pbFollower.FollowingIds, followingId)
 	pbFollowing.FollowersIds = append(pbFollowing.FollowersIds, followerId)
@@ -308,6 +313,11 @@ func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserReques
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 	}
+	// A user cannot unfollow itself. Check if that's the case.
+	if ufId == fId {
+		return nil, status.Error(codes.InvalidArgument, "A user cannot unfollow itself")
+	}
+
 	// Update users data.
 	following, idx := inSlice(pbF.FollowingIds, ufId)
 	if following {
