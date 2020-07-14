@@ -48,6 +48,9 @@ func (h *handler) GetActivity(users ...string) (map[string]patillator.UserActivi
 
 				pbUser, err := h.User(user)
 				if err != nil {
+					m.Lock()
+					defer m.Unlock()
+					errs = append(errs, err)
 					log.Println(err)
 					return
 				}
