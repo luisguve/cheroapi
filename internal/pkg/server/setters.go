@@ -77,8 +77,10 @@ func (s *Server) CreateThread(ctx context.Context, req *pbApi.CreateThreadReques
 
 	lastQA := s.dbHandler.LastQA()
 	// The last time this user created a thread must be before the last clean up.
-	if !(pbUser.LastTimeCreated.Seconds < lastQA) {
-		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	if pbUser.LastTimeCreated != nil {
+		if !(pbUser.LastTimeCreated.Seconds < lastQA) {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
 	}
 
 	permalink, err := s.dbHandler.CreateThread(content, section, submitter)
