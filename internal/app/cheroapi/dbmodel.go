@@ -127,8 +127,10 @@ var (
 	ErrNotUpvoted = errors.New("This user has not upvoted this content")
 	// A user has not the permission to do something.
 	ErrUserNotAllowed = errors.New("User not allowed")
-	// A user wants to change or set its username, but it's not available.
+	// A user wants to use an unavailable username.
 	ErrUsernameAlreadyExists = errors.New("Username already exists")
+	// A user wants to use an unavailable email.
+	ErrEmailAlreadyExists = errors.New("Email already exists")
 )
 
 var SectionIds = map[string]string{
