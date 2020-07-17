@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 	"testing"
 
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
@@ -41,7 +42,7 @@ func TestAuthUser(t *testing.T) {
 			email:        "luisguveal@gmail.com",
 			name:         "Luis Villegas",
 			patillavatar: "pic.jpg",
-			username:     "luisguve",
+			username:     "luiSguve",
 			alias:        "Luis",
 			about:        "Some description about myself",
 			password:     "1747018Lv/",
@@ -120,7 +121,7 @@ func TestAuthUser(t *testing.T) {
 	// Get user id by username.
 	for _, id := range ids {
 		username := userKeys[id].username
-		idBytes, err := db.FindUserIdByUsername(username)
+		idBytes, err := db.FindUserIdByUsername(strings.ToUpper(username))
 		if err != nil {
 			t.Errorf("Got err: %v\n", err)
 		}
