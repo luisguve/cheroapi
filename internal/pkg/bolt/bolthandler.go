@@ -19,8 +19,14 @@ const (
 	archivedContentsB = "ArchivedContents"
 	usersB            = "Everyone"
 	usernameIdsB      = "UsernameIdMappings"
-	idUsernamesB      = "IdUsernameMappings"
-	emailIdsB         = "EmailIdMappings"
+	// store usernames in lowercase as the keys and the real usernames as
+	// the values.
+	lowercasedUsernamesB = "LowercasedUsernames"
+	idUsernamesB         = "IdUsernameMappings"
+	emailIdsB            = "EmailIdMappings"
+	// store emails in lowercase as the keys and the real emails as the
+	// values.
+	lowercasedEmailsB = "LowercasedEmails"
 	idEmailsB         = "IdEmailMappings"
 	commentsB         = "Comments"
 	subcommentsB      = "Subcomments"
@@ -183,6 +189,18 @@ func New(path string) (dbmodel.Handler, error) {
 		return nil, err
 	}
 
+	// create bucket for lowercased usernames to real usernames mappings
+	err = usersDB.Update(func(tx *bolt.Tx) error {
+		_, err = tx.CreateBucketIfNotExists([]byte(lowercasedUsernamesB))
+		if err != nil {
+			log.Printf("Could not create bucket %s: %v\n", lowercasedUsernamesB, err)
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	// create bucket for emails to user ids mapping
 	err = usersDB.Update(func(tx *bolt.Tx) error {
 		_, err = tx.CreateBucketIfNotExists([]byte(emailIdsB))
@@ -200,6 +218,18 @@ func New(path string) (dbmodel.Handler, error) {
 		_, err = tx.CreateBucketIfNotExists([]byte(idEmailsB))
 		if err != nil {
 			log.Printf("Could not create bucket %s: %v\n", idEmailsB, err)
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// create bucket for lowercased emails to real emails mapping
+	err = usersDB.Update(func(tx *bolt.Tx) error {
+		_, err = tx.CreateBucketIfNotExists([]byte(lowercasedEmailsB))
+		if err != nil {
+			log.Printf("Could not create bucket %s: %v\n", lowercasedEmailsB, err)
 		}
 		return err
 	})

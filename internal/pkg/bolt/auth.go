@@ -3,6 +3,7 @@ package bolt
 import (
 	"errors"
 	"log"
+	"strings"
 
 	"github.com/golang/protobuf/proto"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
@@ -24,13 +25,26 @@ func (h *handler) FindUserIdByUsername(username string) ([]byte, error) {
 		userId []byte
 		err    error
 	)
+	// lowercased username
+	lcUsername := strings.ToLower(username)
 	err = h.users.View(func(tx *bolt.Tx) error {
-		usernamesBucket := tx.Bucket([]byte(usernameIdsB))
+		// First find the real username, which should be the value of the
+		// lowercased username as the key.
+		usernamesBucket := tx.Bucket([]byte(lowercasedUsernamesB))
+		if usernamesBucket == nil {
+			log.Printf("Bucket %s of users not found\n", lowercasedUsernamesB)
+			return dbmodel.ErrBucketNotFound
+		}
+		username := usernamesBucket.Get([]byte(lcUsername))
+		if username == nil {
+			return dbmodel.ErrUsernameNotFound
+		}
+		usernamesBucket = tx.Bucket([]byte(usernameIdsB))
 		if usernamesBucket == nil {
 			log.Printf("Bucket %s of users not found\n", usernameIdsB)
 			return dbmodel.ErrBucketNotFound
 		}
-		userId = usernamesBucket.Get([]byte(username))
+		userId = usernamesBucket.Get(username)
 		if userId == nil {
 			return dbmodel.ErrUsernameNotFound
 		}
@@ -49,13 +63,25 @@ func (h *handler) FindUserIdByEmail(email string) ([]byte, error) {
 		userId []byte
 		err    error
 	)
+	lcEmail := strings.ToLower(email)
 	err = h.users.View(func(tx *bolt.Tx) error {
-		emailsBucket := tx.Bucket([]byte(emailIdsB))
+		// First find the real email, which should be the value of the
+		// lowercased email as the key.
+		emailsBucket := tx.Bucket([]byte(lowercasedEmailsB))
 		if emailsBucket == nil {
 			log.Printf("Bucket %s of users not found\n", emailIdsB)
 			return dbmodel.ErrBucketNotFound
 		}
-		userId = emailsBucket.Get([]byte(email))
+		email := emailsBucket.Get([]byte(lcEmail))
+		if email == nil {
+			return dbmodel.ErrEmailNotFound
+		}
+		emailsBucket = tx.Bucket([]byte(emailIdsB))
+		if emailsBucket == nil {
+			log.Printf("Bucket %s of users not found\n", emailIdsB)
+			return dbmodel.ErrBucketNotFound
+		}
+		userId = emailsBucket.Get(email)
 		if userId == nil {
 			return dbmodel.ErrEmailNotFound
 		}
@@ -71,81 +97,84 @@ func (h *handler) FindUserIdByEmail(email string) ([]byte, error) {
 // error.
 func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about,
 	password string) (string, *status.Status) {
-	// check whether the username has been already taken
-	_, err := h.FindUserIdByUsername(username)
-	// there must be an error, which should be ErrUsernameNotFound, otherwise the
-	// query could not be completed or the username has already been taken.
-	if err != nil {
-		if !errors.Is(err, dbmodel.ErrUsernameNotFound) {
-			return "", status.New(codes.Internal, "Failed to query database")
+	var userId string
+	// Save user data. All the operations must be done on the same transaction,
+	// otherwise there could be a race condition if several users are trying to
+	// register the same username or email at the same time.
+	err := h.users.Update(func(tx *bolt.Tx) error {
+		// check whether the username has been already taken
+		_, err := h.FindUserIdByUsername(username)
+		// there must be an error, which should be ErrUsernameNotFound, otherwise the
+		// query could not be completed or the username has already been taken.
+		if err != nil {
+			if !errors.Is(err, dbmodel.ErrUsernameNotFound) {
+				return err
+			}
+		} else {
+			return dbmodel.ErrUsernameAlreadyExists
 		}
-	} else {
-		return "", status.New(codes.AlreadyExists, "Username already taken")
-	}
 
-	// check whether the email has been already taken
-	_, err = h.FindUserIdByEmail(email)
-	// there must be an error, which should be ErrEmailNotFound, otherwise the
-	// query could not be completed or the email has already been taken.
-	if err != nil {
-		if !errors.Is(err, dbmodel.ErrEmailNotFound) {
-			return "", status.New(codes.Internal, "Failed to query database")
+		// check whether the email has been already taken
+		_, err = h.FindUserIdByEmail(email)
+		// there must be an error, which should be ErrEmailNotFound, otherwise the
+		// query could not be completed or the email has already been taken.
+		if err != nil {
+			if !errors.Is(err, dbmodel.ErrEmailNotFound) {
+				return err
+			}
+		} else {
+			return dbmodel.ErrEmailAlreadyExists
 		}
-	} else {
-		return "", status.New(codes.AlreadyExists, "Email already taken")
-	}
 
-	// generate universally unique identifier for the user id.
-	userIdBytes, err := uuid.NewV4()
-	if err != nil {
-		log.Printf("Could not get new uuid V4: %v\n", err)
-		return "", status.New(codes.Internal, "Could not generate user id")
-	}
-	userId := userIdBytes.String()
+		// generate universally unique identifier for the user id.
+		userIdBytes, err := uuid.NewV4()
+		if err != nil {
+			log.Printf("Could not get new uuid V4: %v\n", err)
+			return errors.New("Could not generate user id")
+		}
+		userId = userIdBytes.String()
 
-	// hash password 10 times (Default cost)
-	hashedPw, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		log.Printf("Could not hash password \"%s\": %v\n", password, err)
-		return "", status.New(codes.Internal, "Could not generate password hash")
-	}
+		// hash password 10 times (Default cost)
+		hashedPw, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			log.Printf("Could not hash password \"%s\": %v\n", password, err)
+			return errors.New("Could not generate password hash")
+		}
 
-	// format user in protobuf message
-	pbUser := &pbDataFormat.User{
-		BasicUserData: &pbDataFormat.BasicUserData{
-			Alias:    alias,
-			Username: username,
-			PicUrl:   patillavatar,
-			About:    about,
-			Name:     name,
-		},
-		PrivateData: &pbDataFormat.PrivateData{
-			Email:    email,
-			Password: hashedPw,
-		},
-	}
-	// encode user into bytes
-	pbUserBytes, err := proto.Marshal(pbUser)
-	if err != nil {
-		log.Printf("Could not marshal user: %v\n", err)
-		return "", status.New(codes.Internal, "Could not marshal user")
-	}
+		// format user in protobuf message
+		pbUser := &pbDataFormat.User{
+			BasicUserData: &pbDataFormat.BasicUserData{
+				Alias:    alias,
+				Username: username,
+				PicUrl:   patillavatar,
+				About:    about,
+				Name:     name,
+			},
+			PrivateData: &pbDataFormat.PrivateData{
+				Email:    email,
+				Password: hashedPw,
+			},
+		}
+		// encode user into bytes
+		pbUserBytes, err := proto.Marshal(pbUser)
+		if err != nil {
+			log.Printf("Could not marshal user: %v\n", err)
+			return errors.New("Could not marshal user")
+		}
 
-	// save user data
-	err = h.users.Update(func(tx *bolt.Tx) error {
 		// save user into users database
 		usersBucket := tx.Bucket([]byte(usersB))
 		if usersBucket == nil {
 			log.Printf("Bucket %s of users not found\n", usersB)
 			return dbmodel.ErrBucketNotFound
 		}
-		err := usersBucket.Put([]byte(userId), pbUserBytes)
+		err = usersBucket.Put([]byte(userId), pbUserBytes)
 		if err != nil {
 			log.Printf("Could not put user: %v\n", err)
 			return err
 		}
 
-		// Associate username to user id and user id to username.
+		// Associate username to user id.
 		usernamesBucket := tx.Bucket([]byte(usernameIdsB))
 		if usernamesBucket == nil {
 			log.Printf("Bucket %s of users not found\n", usernameIdsB)
@@ -156,7 +185,7 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 			log.Printf("Could not put username: %v\n", err)
 			return err
 		}
-		// Like above, but vice-versa.
+		// Associate user id to username.
 		usernamesBucket = tx.Bucket([]byte(idUsernamesB))
 		if usernamesBucket == nil {
 			log.Printf("Bucket %s of users not found\n", idUsernamesB)
@@ -167,8 +196,20 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 			log.Printf("Could not put username: %v\n", err)
 			return err
 		}
+		// Associate lowercased username to real username.
+		usernamesBucket = tx.Bucket([]byte(lowercasedUsernamesB))
+		if usernamesBucket == nil {
+			log.Printf("Bucket %s of users not found\n", lowercasedUsernamesB)
+			return dbmodel.ErrBucketNotFound
+		}
+		lcUsername := strings.ToLower(username)
+		err = usernamesBucket.Put([]byte(lcUsername), []byte(username))
+		if err != nil {
+			log.Printf("Could not put username: %v\n", err)
+			return err
+		}
 
-		// associate email to user id
+		// Associate email to user id.
 		emailsBucket := tx.Bucket([]byte(emailIdsB))
 		if emailsBucket == nil {
 			log.Printf("Bucket %s of users not found\n", emailIdsB)
@@ -179,7 +220,7 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 			log.Printf("Could not put user email: %v\n", err)
 			return err
 		}
-		// Like above, but vice-versa.
+		// Associate user id to email.
 		emailsBucket = tx.Bucket([]byte(idEmailsB))
 		if emailsBucket == nil {
 			log.Printf("Bucket %s of users not found\n", idEmailsB)
@@ -190,11 +231,28 @@ func (h *handler) RegisterUser(email, name, patillavatar, username, alias, about
 			log.Printf("Could not put user email: %v\n", err)
 			return err
 		}
+		// Associate lowercased username to real username.
+		emailsBucket = tx.Bucket([]byte(lowercasedEmailsB))
+		if emailsBucket == nil {
+			log.Printf("Bucket %s of users not found\n", lowercasedEmailsB)
+			return dbmodel.ErrBucketNotFound
+		}
+		lcEmail := strings.ToLower(email)
+		err = emailsBucket.Put([]byte(lcEmail), []byte(email))
+		if err != nil {
+			log.Printf("Could not put user email: %v\n", err)
+			return err
+		}
 		return nil
 	})
+	if err == dbmodel.ErrUsernameAlreadyExists {
+		return "", status.New(codes.AlreadyExists, "Username already taken")
+	}
+	if err == dbmodel.ErrEmailAlreadyExists {
+		return "", status.New(codes.AlreadyExists, "Email already taken")
+	}
 	if err != nil {
-		log.Println(err)
-		return "", status.New(codes.Internal, "Failed to query database")
+		return "", status.New(codes.Internal, err.Error())
 	}
 	return userId, nil
 }
@@ -260,7 +318,20 @@ func (h *handler) MapUsername(newUsername, userId string) error {
 			return err
 		}
 		// Reset value in ids to usernames mapping.
-		return idsBucket.Put([]byte(userId), []byte(newUsername))
+		err = idsBucket.Put([]byte(userId), []byte(newUsername))
+		if err != nil {
+			return err
+		}
+		// Delete lowercased version of old username.
+		usernamesBucket = tx.Bucket([]byte(lowercasedUsernamesB))
+		lcOldUsername := strings.ToLower(string(oldUsername))
+		err = usernamesBucket.Delete([]byte(lcOldUsername))
+		if err != nil {
+			return err
+		}
+		// Set lowercased version of new username.
+		lcNewUsername := strings.ToLower(newUsername)
+		return usernamesBucket.Put([]byte(lcNewUsername), []byte(newUsername))
 	})
 }
 
