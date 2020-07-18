@@ -38,6 +38,10 @@ type Handler interface {
 	GetContentsByContext([]patillator.Context) ([]*pbApi.ContentRule, []error)
 	// Get metadata of saved threads of a given user
 	GetSavedThreadsOverview(user string) (map[string][]patillator.SegregateDiscarderFinder, []error)
+	// Append user id to list of users who saved.
+	AppendUserWhoSaved(thread *pbContext.Thread, userId string) error
+	// Remove user id from list of users who saved.
+	RemoveUserWhoSaved(thread *pbContext.Thread, userId string) error
 	// Add user credentials and data (sign in); returns the user id and a nil
 	// *status.Status on successful registering or an empty string an a *status.Status
 	// indicating what went wrong (email or username already in use) otherwise.

@@ -209,3 +209,79 @@ func (h *handler) SetSubcommentContent(subcomment *pbContext.Subcomment, content
 	})
 	return err
 }
+
+func (h *handler) AppendUserWhoSaved(thread *pbContext.Thread, userId string) error {
+	var (
+		id = thread.Id
+		sectionId = thread.SectionCtx.Id
+	)
+
+	// check whether the section exists
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
+		return dbmodel.ErrSectionNotFound
+	}
+	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
+		threadBytes, err := getThreadBytes(tx, id)
+		if err != nil {
+			log.Printf("Could not find thread (id: %s) [root]->[%s]: %v", id, sectionId, err)
+			return err
+		}
+		pbContent := new(pbDataFormat.Content)
+		if err = proto.Unmarshal(threadBytes, pbContent); err != nil {
+			log.Printf("Could not unmarshal content: %v\n", err)
+			return err
+		}
+		pbContent.UsersWhoSaved = append(pbContent.UsersWhoSaved, userId)
+		threadBytes, err = proto.Marshal(pbContent)
+		if err != nil {
+			log.Printf("Could not marshal content: %v\n", err)
+			return err
+		}
+		return setThreadBytes(tx, id, threadBytes)
+	})
+}
+
+func (h *handler) RemoveUserWhoSaved(thread *pbContext.Thread, userId string) error {
+	var (
+		id = thread.Id
+		sectionId = thread.SectionCtx.Id
+	)
+
+	// check whether the section exists
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
+		return dbmodel.ErrSectionNotFound
+	}
+	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
+		threadBytes, err := getThreadBytes(tx, id)
+		if err != nil {
+			log.Printf("Could not find thread (id: %s) [root]->[%s]: %v", id, sectionId, err)
+			return err
+		}
+		pbContent := new(pbDataFormat.Content)
+		if err = proto.Unmarshal(threadBytes, pbContent); err != nil {
+			log.Printf("Could not unmarshal content: %v\n", err)
+			return err
+		}
+		var found bool
+		for i, userWhoSaved := range pbContent.UsersWhoSaved {
+			if userWhoSaved == userId {
+				found = true
+				last := len(pbContent.UsersWhoSaved) - 1
+				pbContent.UsersWhoSaved[i] = pbContent.UsersWhoSaved[last]
+				pbContent.UsersWhoSaved = pbContent.UsersWhoSaved[:last]
+				break
+			}
+		}
+		if !found {
+			return nil
+		}
+		threadBytes, err = proto.Marshal(pbContent)
+		if err != nil {
+			log.Printf("Could not marshal content: %v\n", err)
+			return err
+		}
+		return setThreadBytes(tx, id, threadBytes)
+	})
+}

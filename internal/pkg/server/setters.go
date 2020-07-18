@@ -389,7 +389,7 @@ func (s *Server) SaveThread(ctx context.Context, req *pbApi.SaveThreadRequest) (
 		}
 	}
 	if !saved {
-		_, err = s.dbHandler.GetThreadContent(thread)
+		_, err := s.dbHandler.GetThreadContent(thread)
 		if err != nil {
 			if (errors.Is(err, dbmodel.ErrSectionNotFound)) ||
 				(errors.Is(err, dbmodel.ErrThreadNotFound)) {
@@ -400,6 +400,9 @@ func (s *Server) SaveThread(ctx context.Context, req *pbApi.SaveThreadRequest) (
 		pbUser.SavedThreads = append(pbUser.SavedThreads, thread)
 		err = s.dbHandler.UpdateUser(pbUser, userId)
 		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		if err = s.dbHandler.AppendUserWhoSaved(thread, userId); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 	}
@@ -431,6 +434,9 @@ func (s *Server) UndoSaveThread(ctx context.Context, req *pbApi.UndoSaveThreadRe
 			pbUser.SavedThreads = pbUser.SavedThreads[:last]
 			err = s.dbHandler.UpdateUser(pbUser, userId)
 			if err != nil {
+				return nil, status.Error(codes.Internal, err.Error())
+			}
+			if err = s.dbHandler.RemoveUserWhoSaved(req.Thread, userId); err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
 			}
 			break
