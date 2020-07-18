@@ -334,20 +334,15 @@ func segregate(contents []SegregateFinder) *segregatedContents {
 			// remove the last element from the list of relevant contents
 			// by reslicing relContents and leaving out the last element.
 			segContents.relContents = segContents.relContents[:last]
+			// set the top content.
+			segContents.topContent = ContentFinder(topContent)
 		} else {
 			// at the beginning, the first content was set as the top content.
 			//
-			// copy the last element from newContents into the position at
-			// which the topContent was retrieved from (first content).
-			last := len(segContents.newContents) - 1
-			segContents.newContents[0] = segContents.newContents[last]
-
-			// remove the last element from the list of new contents by
-			// reslicing newContents and leaving the last element out.
-			segContents.newContents = segContents.newContents[:last]
+			// since there are no relevant contents, the top content will be
+			// randomly fetched out from the list of new contents.
+			segContents.topContent, segContents.newContents = fetchRandomContent(segContents.newContents)
 		}
-		// set topContent
-		segContents.topContent = ContentFinder(topContent)
 	}
 	return segContents
 }
