@@ -43,14 +43,22 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 	if !ok {
 		return "", dbmodel.ErrSectionNotFound
 	}
-	// Get author data.
-	pbUser, err := h.User(userId)
-	if err != nil {
-		return "", err
-	}
 
 	// Save thread and user in the same transaction.
-	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
+	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
+		// Get author data.
+		pbUser, err := h.User(userId)
+		if err != nil {
+			return err
+		}
+
+		// The last time this user created a thread must be before the last clean
+		// up.
+		if pbUser.LastTimeCreated != nil {
+			if !(pbUser.LastTimeCreated.Seconds < h.lastQA) {
+				return dbmodel.ErrUserNotAllowed
+			}
+		}
 		activeContents := tx.Bucket([]byte(activeContentsB))
 		if activeContents == nil {
 			log.Printf("Bucket %s not found\n", activeContentsB)
