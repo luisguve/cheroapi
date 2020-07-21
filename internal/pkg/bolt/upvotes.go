@@ -70,6 +70,9 @@ func (h *handler) UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.
 		if err != nil {
 			return err
 		}
+		if voted, _ := inSlice(pbContent.VoterIds, userId); voted {
+			return dbmodel.ErrUserNotAllowed
+		}
 		pbContent.Upvotes++
 		pbContent.VoterIds = append(pbContent.VoterIds, userId)
 		// Increment interactions and calculata new average update time only if
@@ -168,15 +171,19 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 			var err error
 			pbComment, err = h.GetCommentContent(comment)
 			if err == nil {
-				pbComment.Upvotes++
-				pbComment.VoterIds = append(pbComment.VoterIds, userId)
-				// Increment interactions and calculata new average update time only
-				// if this user has not undone an interaction on this content before.
-				undoner, _ := inSlice(pbComment.UndonerIds, userId)
-				if !undoner {
-					incInteractions(pbComment.Metadata)
+				if voted, _ := inSlice(pbComment.VoterIds, userId); voted {
+					err = dbmodel.ErrUserNotAllowed
+				} else {
+					pbComment.Upvotes++
+					pbComment.VoterIds = append(pbComment.VoterIds, userId)
+					// Increment interactions and calculata new average update time only
+					// if this user has not undone an interaction on this content before.
+					undoner, _ := inSlice(pbComment.UndonerIds, userId)
+					if !undoner {
+						incInteractions(pbComment.Metadata)
+					}
+					commentBytes, err = proto.Marshal(pbComment)
 				}
-				commentBytes, err = proto.Marshal(pbComment)
 			}
 			select {
 			case done <- err:
@@ -313,15 +320,19 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 			var err error
 			pbSubcomment, err = h.GetSubcommentContent(subcomment)
 			if err == nil {
-				pbSubcomment.Upvotes++
-				pbSubcomment.VoterIds = append(pbSubcomment.VoterIds, userId)
-				// increment interactions and calculata new average update time only
-				// if this user has not undone an interaction on this content before.
-				undoner, _ := inSlice(pbSubcomment.UndonerIds, userId)
-				if !undoner {
-					incInteractions(pbSubcomment.Metadata)
+				if voted, _ := inSlice(pbSubcomment.VoterIds, userId); voted {
+					err = dbmodel.ErrUserNotAllowed
+				} else {
+					pbSubcomment.Upvotes++
+					pbSubcomment.VoterIds = append(pbSubcomment.VoterIds, userId)
+					// increment interactions and calculata new average update time only
+					// if this user has not undone an interaction on this content before.
+					undoner, _ := inSlice(pbSubcomment.UndonerIds, userId)
+					if !undoner {
+						incInteractions(pbSubcomment.Metadata)
+					}
+					subcommentBytes, err = proto.Marshal(pbSubcomment)
 				}
-				subcommentBytes, err = proto.Marshal(pbSubcomment)
 			}
 			select {
 			case done <- err:
