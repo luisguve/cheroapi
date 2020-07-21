@@ -214,33 +214,44 @@ func (s *Server) FollowUser(ctx context.Context, req *pbApi.FollowUserRequest) (
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 	}
-	// A user cannot follow itself. Check if that's the case.
+	// A user cannot follow itself. Check whether that's the case.
 	if followingId == followerId {
 		return nil, status.Error(codes.InvalidArgument, "A user cannot follow itself")
 	}
-
-	// Update users data.
-	pbFollower.FollowingIds = append(pbFollower.FollowingIds, followingId)
-	pbFollowing.FollowersIds = append(pbFollowing.FollowersIds, followerId)
 	// Save both users concurrently.
-	go func() {
-		err := s.dbHandler.UpdateUser(pbFollower, followerId)
-		select {
-		case done <- err:
-		case <-quit:
-		}
-	}()
-	go func() {
-		err := s.dbHandler.UpdateUser(pbFollowing, followingId)
-		select {
-		case done <- err:
-		case <-quit:
-		}
-	}()
+	var numGR int
+	// Check whether the user is already following the other user.
+	following, _ := inSlice(pbFollower.FollowingIds, followingId)
+	if !following {
+		// Update users' data.
+		pbFollower.FollowingIds = append(pbFollower.FollowingIds, followingId)
+		numGR++
+		go func() {
+			err := s.dbHandler.UpdateUser(pbFollower, followerId)
+			select {
+			case done <- err:
+			case <-quit:
+			}
+		}()
+	}
+	// Check whether the user is already a follower of the other user.
+	follower, _ := inSlice(pbFollowing.FollowersIds, followerId)
+	if !follower {
+		numGR++
+		// Update users' data.
+		pbFollowing.FollowersIds = append(pbFollowing.FollowersIds, followerId)
+		go func() {
+			err := s.dbHandler.UpdateUser(pbFollowing, followingId)
+			select {
+			case done <- err:
+			case <-quit:
+			}
+		}()
+	}
 	// Check for errors. If there was an error, it will close the channel quit,
 	// terminating any go-routine hung on the statement "case done<- err:", and
 	// return the error to the client.
-	for i := 0; i < 2; i++ {
+	for i := 0; i < numGR; i++ {
 		err = <-done
 		if err != nil {
 			close(quit)
@@ -302,44 +313,46 @@ func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserReques
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 	}
-	// A user cannot unfollow itself. Check if that's the case.
+	// A user cannot unfollow itself. Check whether that's the case.
 	if ufId == fId {
 		return nil, status.Error(codes.InvalidArgument, "A user cannot unfollow itself")
 	}
 
-	// Update users data.
+	// Update users data and save both users concurrently.
+	var numGR int
 	following, idx := inSlice(pbF.FollowingIds, ufId)
 	if following {
+		numGR++
 		last := len(pbF.FollowingIds) - 1
 		pbF.FollowingIds[idx] = pbF.FollowingIds[last]
 		pbF.FollowingIds = pbF.FollowingIds[:last]
+		go func() {
+			err := s.dbHandler.UpdateUser(pbF, fId)
+			select {
+			case done <- err:
+			case <-quit:
+			}
+		}()
 	}
-
+	
 	follower, idx := inSlice(pbUf.FollowersIds, fId)
 	if follower {
+		numGR++
 		last := len(pbUf.FollowersIds) - 1
 		pbUf.FollowersIds[idx] = pbUf.FollowersIds[last]
 		pbUf.FollowersIds = pbUf.FollowersIds[:last]
+		go func() {
+			err := s.dbHandler.UpdateUser(pbUf, ufId)
+			select {
+			case done <- err:
+			case <-quit:
+			}
+		}()
 	}
-	// Save both users concurrently.
-	go func() {
-		err := s.dbHandler.UpdateUser(pbF, fId)
-		select {
-		case done <- err:
-		case <-quit:
-		}
-	}()
-	go func() {
-		err := s.dbHandler.UpdateUser(pbUf, ufId)
-		select {
-		case done <- err:
-		case <-quit:
-		}
-	}()
 	// Check for errors. If there was an error, it will close the channel quit,
 	// terminating any go-routine hung on the statement "case done<- err:", and
 	// return the error to the client.
-	for i := 0; i < 2; i++ {
+	for i := 0; i < numGR; i++ {
 		err = <-done
 		if err != nil {
 			close(quit)
