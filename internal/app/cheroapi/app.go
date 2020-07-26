@@ -2,8 +2,9 @@ package cheroapi
 
 import (
 	"fmt"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net"
+	"os"
 	"time"
 
 	"github.com/go-co-op/gocron"
@@ -13,7 +14,7 @@ import (
 
 type Server interface {
 	pbApi.CrudCheropatillaServer
-	QA()
+	QA() (string, error)
 }
 
 func New(s Server) *App {
@@ -37,9 +38,50 @@ func (a *App) Run() error {
 
 	// Run the Quality Assurance on the databases every day.
 	QAscheduler := gocron.NewScheduler(time.UTC)
-	QAscheduler.Every(1).Day().Do(a.srv.QA)
+	QAscheduler.Every(1).Day().Do(func() {
+		logger := log.New()
+		logFile, err := os.OpenFile("logs/QA.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err == nil {
+			logger.SetOutput(logFile)
+			defer logFile.Close()
+		} else {
+			log.WithFields(log.Fields{
+				"package":  "cheroapi",
+				"file":     "app.go",
+				"function": "scheduled QA",
+			}).Error("Could not open log file. Writing to stderr.")
+		}
+		summary, err := a.srv.QA()
+		if err != nil {
+			log.WithFields(log.Fields{
+				"package":  "cheroapi",
+				"file":     "app.go",
+				"function": "scheduled QA",
+			}).Error("QA returned the following error:", err)
+			return
+		}
+		if summary == "" {
+			log.WithFields(log.Fields{
+				"package":  "cheroapi",
+				"file":     "app.go",
+				"function": "scheduled QA",
+			}).Error("QA returned the empty summary")
+			return
+		}
+		log.WithFields(log.Fields{
+			"package":  "cheroapi",
+			"file":     "app.go",
+			"function": "scheduled QA",
+		}).Info("QA returned the result:", summary)
+	})
 	QAscheduler.StartAsync()
 
 	log.Println("Running")
+	_, nextQA := QAscheduler.NextRun()
+	hoursLeft := int(time.Now().Sub(nextQA).Hours())
+	minutesLeft := int(time.Now().Sub(nextQA).Minutes())
+	secondsLeft := int(time.Now().Sub(nextQA).Seconds())
+	log.Printf("Next QA: %v (in %v hours, %v minutes, %v seconds)\n", 
+		nextQA.Format(time.Stamp), hoursLeft, minutesLeft, secondsLeft)
 	return s.Serve(lis)
 }
