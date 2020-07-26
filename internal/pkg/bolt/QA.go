@@ -1,8 +1,8 @@
 package bolt
 
 import (
+	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -11,6 +11,11 @@ import (
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	bolt "go.etcd.io/bbolt"
 )
+
+type resultErr struct {
+	err    error
+	result string
+}
 
 // Return the last time a clean up was done.
 func (h *handler) LastQA() int64 {
@@ -30,11 +35,28 @@ func (h *handler) LastQA() int64 {
 // In addition to moving the contents to the bucket of archived contents, it also
 // updates the activity of the users involved, moving contexts from the list of
 // recent activity of the users to their list of old activity.
-func (h *handler) QA() {
-	now := time.Now()
+// 
+// It returns the result of moving the contents in a string and an error.
+func (h *handler) QA() (string, error) {
+	var (
+		summary string
+		numGR int
+		done = make(chan resultErr)
+		quit = make(chan struct{})
+		now = time.Now()
+	)
+	defer close(quit)
+	summary = fmt.Sprintf("[%v] Starting QA.\n", now.Format(time.Stamp))
 	for _, s := range h.sections {
+		numGR++
 		go func(s section) {
-			s.contents.View(func(tx *bolt.Tx) error {
+			var (
+				localDone = make(chan resultErr)
+				localQuit = make(chan struct{})
+				numGR       int
+			)
+			defer close(localQuit)
+			err := s.contents.View(func(tx *bolt.Tx) error {
 				activeContents := tx.Bucket([]byte(activeContentsB))
 				if activeContents == nil {
 					log.Printf("Could not find bucket %s\n", activeContentsB)
@@ -42,8 +64,7 @@ func (h *handler) QA() {
 				}
 				// Iterate over every key/value pair of active contents.
 				var (
-					c  = activeContents.Cursor()
-					wg sync.WaitGroup
+					c = activeContents.Cursor()
 				)
 				for k, v := c.First(); k != nil; k, v = c.Next() {
 					// Check whether the value is a nested bucket. If so, just continue.
@@ -80,11 +101,22 @@ func (h *handler) QA() {
 					if (m.Interactions > 100) && (avgUpdateTime <= min.Seconds()) {
 						continue
 					}
-					// Otherwise, it will be moved to the bucket of archived contents for
-					// read only, along with the contents associated to it; comments and
+					// Otherwise, it will be moved to the bucket of archived contents,
+					// along with the contents associated to it; comments and
 					// subcomments.
-					wg.Add(1)
-					go h.moveContents(s, k, v, wg)
+					copyKey := make([]byte, len(k))
+					copy(copyKey, k)
+					copyVal := make([]byte, len(v))
+					copy(copyVal, v)
+					numGR++
+					go func(k, v []byte, c *pbDataFormat.Content) {
+						var resErr resultErr
+						resErr.result, resErr.err = h.moveContents(s, k, v, c)
+						select {
+						case localDone<- resErr:
+						case <-localQuit:
+						}
+					}(copyKey, copyVal, pbThread)
 				}
 				// Move comments and subcomments associated to deleted threads.
 				deletedContents := activeContents.Bucket([]byte(deletedThreadsB))
@@ -99,14 +131,84 @@ func (h *handler) QA() {
 					if v == nil {
 						continue
 					}
-					wg.Add(1)
-					go h.deleteThread(s, k, wg)
+					copyKey := make([]byte, len(k))
+					copy(copyKey, k)
+					numGR++
+					go func(k []byte) {
+						var resErr resultErr
+						resErr.result, resErr.err = h.deleteThread(s, k)
+						select {
+						case localDone<- resErr:
+						case <-localQuit:
+						}
+					}(copyKey)
 				}
-				wg.Wait()
 				return nil
 			})
+			if err != nil {
+				if numGR == 0 {
+					// Nothing to do; there are no summaries to receive.
+					select {
+					case done<- resultErr{err: err}:
+					case <-quit:
+					}
+					return
+				}
+				// There are summaries to receive, print the error and continue.
+				log.Println(err)
+			}
+			var (
+				resErr resultErr
+				sectionSummary string
+				// Flag to indicate that an error was found and that no more
+				// errors will be checked.
+				foundErr bool
+			)
+			// Check for errors, concatenate the resulting summaries and send
+			// the result along with the first error, if any, to the outer
+			// go-routine.
+			for i := 0; i < numGR; i++ {
+				resErr = <-localDone
+				if resErr.result != "" {
+					sectionSummary += resErr.result
+				}
+				if !foundErr {
+					if resErr.err != nil {
+						foundErr = true
+						err = resErr.err
+					}
+				}
+			}
+			resErr.result = sectionSummary
+			resErr.err = err
+			select {
+			case done<- resErr:
+			case <-quit:
+			}
 		}(s)
 	}
+	var (
+		resErr resultErr
+		err error
+		// Flag to indicate that an error was found and that no more errors
+		// will be checked.
+		foundErr bool
+	)
+	// Check for errors, concatenate the resulting summaries and return the
+	// result along with the first error, if any.
+	for i := 0; i < numGR; i++ {
+		resErr = <-done
+		if resErr.result != "" {
+			summary += resErr.result
+		}
+		if !foundErr {
+			if resErr.err != nil {
+				foundErr = true
+				err = resErr.err
+			}
+		}
+	}
+	return summary, err
 }
 
 // Update the given section by moving the thread, its comments and subcomments
@@ -119,90 +221,107 @@ func (h *handler) QA() {
 // Note that it will also move all of the subcomments of the deleted comments,
 // if any, to the bucket of archived contents under the same Id of the deleted
 // comment.
-func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.WaitGroup) {
-	defer wg.Done()
-	s.contents.Update(func(tx *bolt.Tx) error {
+func (h *handler) moveContents(s section, threadId, threadBytes []byte, pbContent *pbDataFormat.Content) (string, error) {
+	var (
+		result string
+		err    error
+	)
+	result += fmt.Sprintf("[%s]\tMoving thread %s to archived contents... ", s.name, threadId)
+	err = s.contents.Update(func(tx *bolt.Tx) error {
 		activeContents := tx.Bucket([]byte(activeContentsB))
 		if activeContents == nil {
-			log.Printf("Could not find bucket %s\n", activeContentsB)
+			result += fmt.Sprintf("\nCould not find bucket %s. Contents moving aborted.\n", activeContentsB)
 			return dbmodel.ErrBucketNotFound
 		}
 		archivedContents := tx.Bucket([]byte(archivedContentsB))
 		if archivedContents == nil {
-			log.Printf("Could not find bucket %s\n", archivedContentsB)
+			result += fmt.Sprintf("\nCould not find bucket %s. Contents moving aborted.\n", archivedContentsB)
 			return dbmodel.ErrBucketNotFound
 		}
 		var (
-			done  = make(chan error)
-			quit  = make(chan error)
-			count = 0
+			done  = make(chan resultErr)
+			quit  = make(chan struct{})
+			numGR = 0
 		)
 		defer close(quit)
-		// Put thread into archived contents.
-		count += 2 // Two go-routines will be launched.
+		// Update activity of user. This can be done in another go-routine.
+		numGR++
 		go func() {
-			pbContent := new(pbDataFormat.Content)
-			err := proto.Unmarshal(threadBytes, pbContent)
-			if err == nil {
-				ctx := &pbContext.Thread{
-					Id: string(threadId),
-					SectionCtx: &pbContext.Section{
-						Id: pbContent.SectionId,
-					},
-				}
-				userId := pbContent.AuthorId
-				go h.markThreadAsOld(userId, ctx, done, quit)
-				err = archivedContents.Put(threadId, threadBytes)
+			ctx := &pbContext.Thread{
+				Id: string(threadId),
+				SectionCtx: &pbContext.Section{
+					Id: pbContent.SectionId,
+				},
+			}
+			userId := pbContent.AuthorId
+			var resErr resultErr
+			err := h.markThreadAsOld(userId, ctx)
+			if err != nil {
+				resErr.result = fmt.Sprintf("Could not mark thread %s as old to user %s: %v. Contents moving aborted.\n", 
+					ctx.Id, userId, resErr.err)
+				resErr.err = err
+			} else {
+				resErr.result = fmt.Sprintln("Updated thread author's activity successfully.")
 			}
 			select {
-			case done <- err:
+			case done<- resErr:
 			case <-quit:
 			}
 		}()
 
+		// Put thread into archived contents.
+		err = archivedContents.Put(threadId, threadBytes)
+		if err != nil {
+			result += fmt.Sprintf("\nCould not put thread %s into archived contents: %v.\n", threadId, err)
+			return err
+		}
+		result += "Done.\n"
+
+		// Check whether there are comments and move them to archived contents.
 		commentsBucket := activeContents.Bucket([]byte(commentsB))
 		if commentsBucket == nil {
-			log.Printf("Could not find bucket %s\n", commentsB)
+			result += fmt.Sprintf("Could not find bucket %s\n", commentsB)
 			return dbmodel.ErrBucketNotFound
 		}
-		// Check whether there are comments and move them to archived contents.
 		if actComments := commentsBucket.Bucket(threadId); actComments != nil {
+			result += fmt.Sprintf("Found %d comments in thread %s to move.\n", actComments.Stats().KeyN, threadId)
 			// Get comments bucket in archived contents.
 			commentsBucket = archivedContents.Bucket([]byte(commentsB))
 			if commentsBucket == nil {
-				log.Printf("Bucket %s not found\n", commentsB)
+				result += fmt.Sprintf("Bucket %s not found. Contents moving aborted.\n", commentsB)
 				return dbmodel.ErrBucketNotFound
 			}
 			archComments, err := commentsBucket.CreateBucketIfNotExists(threadId)
 			if err != nil {
-				log.Printf("Could not create archived comments bucket %s: %v\n", threadId, err)
+				result += fmt.Sprintf("Could not create archived comments bucket %s: %v. Contents moving aborted.\n", threadId, err)
 				return err
 			}
-			count++
-			go func() {
-				err := h.moveComments(string(threadId), actComments, archComments)
-				select {
-				case done <- err:
-				case <-quit:
-				}
-			}()
-			// Check whether there are subcomments and move them to archived
-			// contents.
+			resErr := h.moveComments(string(threadId), actComments, archComments)
+			if resErr.result != "" {
+				result += resErr.result
+			}
+			if resErr.err != nil {
+				// Abort contents moving.
+				return err
+			}
+
+			// Check whether there are subcomments and move them to archived contents.
 			actSubcomKeys := actComments.Bucket([]byte(subcommentsB))
 			if actSubcomKeys != nil {
+				result += fmt.Sprintf("Moving subcomments from %d comments.\n", actSubcomKeys.Stats().BucketN)
 				archSubcomKeys, err := archComments.CreateBucketIfNotExists([]byte(subcommentsB))
 				if err != nil {
-					log.Printf("Could not create bucket %s: %v\n", subcommentsB, err)
+					result += fmt.Sprintf("Could not create bucket %s: %v. Contents moving aborted.\n", subcommentsB, err)
 					return err
 				}
-				count++
-				go func() {
-					err := h.moveSubcomments(actSubcomKeys, archSubcomKeys)
-					select {
-					case done <- err:
-					case <-quit:
-					}
-				}()
+				resErr := h.moveSubcomments(actSubcomKeys, archSubcomKeys)
+				if resErr.result != "" {
+					result += resErr.result
+				}
+				if resErr.err != nil {
+					// Abort contents moving.
+					return err
+				}
 			}
 			// Now the comments and subcomments are in the bucket of archived
 			// contents, with exactly the same structure as it were in the bucket
@@ -214,112 +333,121 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, wg sync.
 			// contents.
 			commentsBucket = activeContents.Bucket([]byte(commentsB))
 			if commentsBucket == nil {
-				log.Printf("Could not find bucket %s\n", commentsB)
+				result += fmt.Sprintf("Could not find bucket %s. Contents moving aborted.\n", commentsB)
 				return dbmodel.ErrBucketNotFound
 			}
 			// Delete the comments and subcomments from the bucket of active
 			// contents. Deleting the comments bucket will also delete the
 			// subcomments bucket.
 			if err = commentsBucket.DeleteBucket(threadId); err != nil {
-				log.Printf("Could not DEL comments bucket of thread %s: %v\n", string(threadId), err)
+				result += fmt.Sprintf("Could not DEL comments bucket of thread %s: %v. Contents moving aborted.\n", threadId, err)
 				return err
 			}
 		}
 		// Finally, delete thread from active contents.
 		if err := activeContents.Delete(threadId); err != nil {
-			log.Printf("Could not DEL thread from active contents: %v\n", err)
+			result += fmt.Sprintf("Could not DEL thread from active contents: %v. Contents moving aborted.\n", err)
 			return err
 		}
-		// Check for errors.
-		for i := 0; i < count; i++ {
-			if err := <-done; err != nil {
-				log.Println(err)
-				return err
+		var (
+			resErr resultErr
+			err error
+			foundErr bool
+		)
+		// Check for errors. All the results will be concatenated but only the first
+		// err read, if any, will be returned.
+		for i := 0; i < numGR; i++ {
+			resErr = <-done
+			if resErr.result != "" {
+				result += resErr.result
+			}
+			if !foundErr {
+				if resErr.err != nil {
+					foundErr = true
+					err = resErr.err
+				}
 			}
 		}
-		return nil
+		return err
 	})
+	return result, err
 }
 
 // Move comments and subcomments associated to the given thread, which has been
 // deleted, to the bucket of archived contents under the thread id as the key,
 // then remove the reference to the deleted thread from the bucket of deleted
 // contents.
-func (h *handler) deleteThread(s section, threadId []byte, wg sync.WaitGroup) error {
-	defer wg.Done()
-	return s.contents.Update(func(tx *bolt.Tx) error {
-		// These buckets must have been defined.
+func (h *handler) deleteThread(s section, threadId []byte) (string, error) {
+	var (
+		result string
+		err    error
+	)
+	err = s.contents.Update(func(tx *bolt.Tx) error {
+		// These buckets must have been defined on setup.
 		activeContents := tx.Bucket([]byte(activeContentsB))
 		if activeContents == nil {
-			log.Printf("Could not find bucket %s\n", activeContentsB)
+			result += fmt.Sprintf("Could not find bucket %s.\n", activeContentsB)
 			return dbmodel.ErrBucketNotFound
 		}
 		archivedContents := tx.Bucket([]byte(archivedContentsB))
 		if archivedContents == nil {
-			log.Printf("Could not find bucket %s\n", archivedContentsB)
+			result += fmt.Sprintf("Could not find bucket %s.\n", archivedContentsB)
 			return dbmodel.ErrBucketNotFound
 		}
 		deletedContents := activeContents.Bucket([]byte(deletedThreadsB))
 		if deletedContents == nil {
-			log.Printf("Could not find bucket %s\n", deletedThreadsB)
+			result += fmt.Sprintf("Could not find bucket %s.\n", deletedThreadsB)
 			return dbmodel.ErrBucketNotFound
 		}
 		commentsBucket := activeContents.Bucket([]byte(commentsB))
 		if commentsBucket == nil {
-			log.Printf("Could not find bucket %s\n", commentsB)
+			result += fmt.Sprintf("Could not find bucket %s.\n", commentsB)
 			return dbmodel.ErrBucketNotFound
 		}
 
+		result = fmt.Sprintf("Removing reference to deleted thread %s... ", threadId)
+		if err := deletedContents.Delete(threadId); err != nil {
+			result += fmt.Sprintf("\nCould not DEL thread from deleted contents: %v. Aborting contents moving.\n", err)
+			return err
+		}
+		result += "Done.\n"
+
 		// Check whether there are comments and move them to archived contents.
 		if actComments := commentsBucket.Bucket(threadId); actComments != nil {
+			result += fmt.Sprintf("Found %d comments in (deleted) thread %s to move.\n", actComments.Stats().KeyN, threadId)
 			// Get comments bucket in archived contents.
 			commentsBucket = archivedContents.Bucket([]byte(commentsB))
 			if commentsBucket == nil {
-				log.Printf("Bucket %s not found\n", commentsB)
+				result += fmt.Sprintf("Bucket %s not found.\n", commentsB)
 				return dbmodel.ErrBucketNotFound
 			}
 			archComments, err := commentsBucket.CreateBucketIfNotExists(threadId)
 			if err != nil {
-				log.Printf("Could not create archived comments bucket %s: %v\n", threadId, err)
+				result += fmt.Sprintf("Could not create archived comments bucket %s: %v\n", threadId, err)
 				return err
 			}
-			var (
-				count = 1 // At least 1 go-routine will be launched.
-				done  = make(chan error)
-				quit  = make(chan error)
-			)
-			defer close(quit)
-			go func() {
-				err := h.moveComments(string(threadId), actComments, archComments)
-				select {
-				case done <- err:
-				case <-quit:
-				}
-			}()
+			resErr := h.moveComments(string(threadId), actComments, archComments)
+			if resErr.result != "" {
+				result += resErr.result
+			}
+			if resErr.err != nil {
+				return err
+			}
 			// Check whether there are subcomments and move them to archived
 			// contents.
 			actSubcomKeys := actComments.Bucket([]byte(subcommentsB))
 			if actSubcomKeys != nil {
+				result += fmt.Sprintf("Moving subcomments from %d comments.\n", actSubcomKeys.Stats().BucketN)
 				archSubcomKeys, err := archComments.CreateBucketIfNotExists([]byte(subcommentsB))
 				if err != nil {
-					log.Printf("Could not create bucket %s: %v\n", subcommentsB, err)
+					result += fmt.Sprintf("Could not create bucket %s: %v\n", subcommentsB, err)
 					return err
 				}
-				count++
-				go func() {
-					err := h.moveSubcomments(actSubcomKeys, archSubcomKeys)
-					select {
-					case done <- err:
-					case <-quit:
-					}
-				}()
-			}
-			// Check for errors. No need to close quit channel since it was
-			// deferred.
-			for i := 0; i < count; i++ {
-				err = <-done
-				if err != nil {
-					log.Println(err)
+				resErr = h.moveSubcomments(actSubcomKeys, archSubcomKeys)
+				if resErr.result != "" {
+					result += resErr.result
+				}
+				if resErr.err != nil {
 					return err
 				}
 			}
@@ -333,47 +461,59 @@ func (h *handler) deleteThread(s section, threadId []byte, wg sync.WaitGroup) er
 			// contents.
 			commentsBucket = activeContents.Bucket([]byte(commentsB))
 			if commentsBucket == nil {
-				log.Printf("Could not find bucket %s\n", commentsB)
+				result += fmt.Sprintf("Could not find bucket %s\n", commentsB)
 				return dbmodel.ErrBucketNotFound
 			}
 			// Delete the comments and subcomments from the bucket of active
 			// contents. Deleting the comments bucket will also delete the
 			// subcomments bucket.
 			if err = commentsBucket.DeleteBucket(threadId); err != nil {
-				log.Printf("Could not DEL comments bucket of thread %s: %v\n", string(threadId), err)
+				result += fmt.Sprintf("Could not DEL comments bucket of thread %s: %v\n", string(threadId), err)
 				return err
 			}
 		}
-		// Finally, delete thread from deleted contents.
-		if err := deletedContents.Delete(threadId); err != nil {
-			log.Printf("Could not DEL thread from deleted contents: %v\n", err)
-			return err
-		}
 		return nil
 	})
+	return result, err
 }
 
 // Move the comments associated to the given thread, from actComments to
 // archComments.
-func (h *handler) moveComments(threadId string, actComments, archComments *bolt.Bucket) error {
+func (h *handler) moveComments(threadId string, actComments, archComments *bolt.Bucket) resultErr {
 	// Put comments from active comments into archived comments.
 	var (
-		count = 0
-		c     = actComments.Cursor()
-		done  = make(chan error)
-		quit  = make(chan error)
+		result string
+		numGR  = 0
+		c      = actComments.Cursor()
+		done   = make(chan resultErr)
+		quit   = make(chan struct{})
 	)
+	defer close(quit)
 	for k, v := c.First(); k != nil; k, v = c.Next() {
 		// Check whether the value is a nested bucket. If so, just continue.
 		// Cursors see nested buckets with value == nil.
 		if v == nil {
 			continue
 		}
-		count += 2 // Two go-routines will be launched.
+		result += fmt.Sprintf("Moving comment %s into archived contents... ", k)
+		if err := archComments.Put(k, v); err != nil {
+			// Finish early.
+			return resultErr {
+				result: result + fmt.Sprintf("\nCould not put comment %s into archived contents: %v.\n", k, err),
+				err:    err,
+			}
+		}
+		result += "Done.\n"
+		// Update activity of user. This can be done in another go-routine.
+		numGR++
 		go func(k, v []byte) {
+			var resErr resultErr
 			pbContent := new(pbDataFormat.Content)
 			err := proto.Unmarshal(v, pbContent)
-			if err == nil {
+			if err != nil {
+				resErr.result = fmt.Sprintf("Could not unmarshal comment %s: %v. Aborting comment moving.\n", k, err)
+				resErr.err = err
+			} else {
 				ctx := &pbContext.Comment{
 					Id: string(k),
 					ThreadCtx: &pbContext.Thread{
@@ -384,59 +524,97 @@ func (h *handler) moveComments(threadId string, actComments, archComments *bolt.
 					},
 				}
 				userId := pbContent.AuthorId
-				go h.markCommentAsOld(userId, ctx, done, quit)
-				err = archComments.Put(k, v)
+				err = h.markCommentAsOld(userId, ctx)
+				if err != nil {
+					resErr.result = fmt.Sprintf("Could not mark comment %s as old to user %s: %v. Aborting comment moving.\n",
+						ctx.Id, userId, resErr.err)
+					resErr.err = err
+				} else {
+					resErr.result = fmt.Sprintf("Updated comment %s author's activity successfully.\n", ctx.Id)
+				}
 			}
 			select {
-			case done <- err:
+			case done<- resErr:
 			case <-quit:
 			}
 		}(k, v)
 	}
-	// Check for errors. It terminates every go-routine hung on the statement
-	// "case done<- err:" by closing the channel quit and returns the first err
-	// received.
-	for i := 0; i < count; i++ {
-		err := <-done
-		if err != nil {
-			close(quit)
-			return err
+	var (
+		resErr resultErr
+		err error
+		foundErr bool
+	)
+	// Check for errors. All the results will be concatenated but only the first
+	// err read, if any, will be returned.
+	for i := 0; i < numGR; i++ {
+		resErr = <-done
+		if resErr.result != "" {
+			result += resErr.result
+		}
+		if !foundErr {
+			if resErr.err != nil {
+				foundErr = true
+				err = resErr.err
+			}
 		}
 	}
-	return nil
+	resErr.result = result
+	resErr.err = err
+	return resErr
 }
 
 // Move subcoments from every bucket in actSubcomKeys to a new bucket with the
 // same key in archSubcomKeys.
-func (h *handler) moveSubcomments(actSubcomKeys, archSubcomKeys *bolt.Bucket) error {
+func (h *handler) moveSubcomments(actSubcomKeys, archSubcomKeys *bolt.Bucket) resultErr {
 	var (
-		count = 0
-		c     = actSubcomKeys.Cursor()
-		done  = make(chan error)
-		quit  = make(chan error)
+		numGR  = 0
+		err    error
+		c      = actSubcomKeys.Cursor()
+		done   = make(chan resultErr)
+		quit   = make(chan struct{})
+		result string
 	)
+	defer close(quit)
 	// actSubcomKeys bucket only holds nested buckets, hence the values are
 	// discarded and the keys are used to find the buckets, which store the
 	// actual active subcomments.
 	for comKey, _ := c.First(); comKey != nil; comKey, _ = c.Next() {
 		activeSubcom := actSubcomKeys.Bucket(comKey)
 		if activeSubcom == nil {
-			log.Printf("Could not FIND subcomments bucket %s\n", string(comKey))
+			result += fmt.Sprintf("Could not find subcomments bucket %s.\n", string(comKey))
 			continue
 		}
+		result = fmt.Sprintf("Found %d subcomments in comment %s to move to archived contents.\n", activeSubcom.Stats().KeyN, comKey)
 		// Create the corresponding bucket in archSubcomKeys.
-		archivedSubcom, err := archSubcomKeys.CreateBucketIfNotExists(comKey)
+		var archivedSubcom *bolt.Bucket
+		archivedSubcom, err = archSubcomKeys.CreateBucketIfNotExists(comKey)
 		if err != nil {
-			log.Printf("Could not create bucket %s: %v\n", string(comKey), err)
-			return err
+			result += fmt.Sprintf("Could not create bucket %s: %v. Aborting subcomments moving.\n", comKey, err)
+			break
 		}
 		// Put subcomments from active comments into archived comments.
 		subcomCursor := activeSubcom.Cursor()
 		for k, v := subcomCursor.First(); k != nil; k, v = subcomCursor.Next() {
-			count += 2 // Two go-routines will be launched.
+			result += fmt.Sprintf("Moving subcomment %s into archived contents... ", k)
+			if err = archivedSubcom.Put(k, v); err != nil {
+				// Finish early.
+				return resultErr{
+					err:    err,
+					result: result + fmt.Sprintf("\nCould not put subcomment %s into archived contents: %v. Aborting subcomment moving\n",
+						k, err),
+				}
+			}
+			result += "Done.\n"
+			// Update activity of user. This can be done in another go-routine.
+			numGR++
 			go func(k, v []byte) {
+				var resErr resultErr
 				pbContent := new(pbDataFormat.Content)
-				if err := proto.Unmarshal(v, pbContent); err == nil {
+				err := proto.Unmarshal(v, pbContent)
+				if err != nil {
+					resErr.result = fmt.Sprintf("Could not unmarshal subcomment %s: %v. Aborting subcomment moving.\n", k, err)
+					resErr.err = err
+				} else {
 					ctx := &pbContext.Subcomment{
 						Id: string(k),
 						CommentCtx: &pbContext.Comment{
@@ -450,37 +628,52 @@ func (h *handler) moveSubcomments(actSubcomKeys, archSubcomKeys *bolt.Bucket) er
 						},
 					}
 					userId := pbContent.AuthorId
-					go h.markSubcommentAsOld(userId, ctx, done, quit)
-					err = archivedSubcom.Put(k, v)
+					err = h.markSubcommentAsOld(userId, ctx)
+					if err != nil {
+						resErr.err = err
+						resErr.result = fmt.Sprintf("Could not mark subcomment %s as old to user %s: %v. Aborting subcomment moving.\n",
+							ctx.Id, userId, err)
+					} else {
+						resErr.result = fmt.Sprintf("Updated subcomment %s author's activity successfully.\n", ctx.Id)
+					}
 				}
 				select {
-				case done <- err:
+				case done<- resErr:
 				case <-quit:
 				}
 			}(k, v)
 		}
 	}
-	// Check for errors. It terminates every go-routine hung on the statement
-	// "case done<- err:" by closing the channel quit and returns the first err
-	// received.
-	for i := 0; i < count; i++ {
-		err := <-done
-		if err != nil {
-			close(quit)
-			return err
+	var (
+		resErr resultErr
+		foundErr bool
+	)
+	// Check for errors. All the results will be concatenated but only the first
+	// err read, if any, will be returned.
+	for i := 0; i < numGR; i++ {
+		resErr = <-done
+		if resErr.result != "" {
+			result += resErr.result
+		}
+		if !foundErr {
+			if resErr.err != nil {
+				foundErr = true
+				err = resErr.err
+			}
 		}
 	}
-	return nil
+	resErr.result = result
+	resErr.err = err
+	return resErr
 }
 
-func (h *handler) markThreadAsOld(userId string, ctx *pbContext.Thread, done, quit chan error) {
+func (h *handler) markThreadAsOld(userId string, ctx *pbContext.Thread) error {
 	var (
 		id        = ctx.Id
 		sectionId = ctx.SectionCtx.Id
 		found     bool
 	)
-	pbUser, err := h.User(userId)
-	if err == nil {
+	return h.UpdateUser(userId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
 		if pbUser.RecentActivity != nil {
 			// Find and copy thread from recent activity to old activity of
 			// the user, then remove it from recent activity.
@@ -500,28 +693,22 @@ func (h *handler) markThreadAsOld(userId string, ctx *pbContext.Thread, done, qu
 					break
 				}
 			}
-			if found {
-				err = h.UpdateUser(pbUser, userId)
-			} else {
-				log.Printf("Could not find thread %v\n", ctx)
+			if !found {
+				log.Printf("Thread %v is not in recent activity of user %v.\n", ctx, userId)
 			}
 		}
-	}
-	select {
-	case done <- err:
-	case <-quit:
-	}
+		return pbUser
+	})
 }
 
-func (h *handler) markCommentAsOld(userId string, ctx *pbContext.Comment, done, quit chan error) {
+func (h *handler) markCommentAsOld(userId string, ctx *pbContext.Comment) error {
 	var (
 		id        = ctx.Id
 		threadId  = ctx.ThreadCtx.Id
 		sectionId = ctx.ThreadCtx.SectionCtx.Id
 		found     bool
 	)
-	pbUser, err := h.User(userId)
-	if err == nil {
+	return h.UpdateUser(userId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
 		if pbUser.RecentActivity != nil {
 			// Find and copy comment from recent activity to old activity of
 			// the user, then remove it from recent activity.
@@ -543,20 +730,15 @@ func (h *handler) markCommentAsOld(userId string, ctx *pbContext.Comment, done, 
 					break
 				}
 			}
-			if found {
-				err = h.UpdateUser(pbUser, userId)
-			} else {
-				log.Printf("Could not find comment %v\n", ctx)
+			if !found {
+				log.Printf("Comment %v is not in recent activity of user %v.\n", ctx, userId)
 			}
 		}
-	}
-	select {
-	case done <- err:
-	case <-quit:
-	}
+		return pbUser
+	})
 }
 
-func (h *handler) markSubcommentAsOld(userId string, ctx *pbContext.Subcomment, done, quit chan error) {
+func (h *handler) markSubcommentAsOld(userId string, ctx *pbContext.Subcomment) error {
 	var (
 		id        = ctx.Id
 		commentId = ctx.CommentCtx.Id
@@ -564,8 +746,7 @@ func (h *handler) markSubcommentAsOld(userId string, ctx *pbContext.Subcomment, 
 		sectionId = ctx.CommentCtx.ThreadCtx.SectionCtx.Id
 		found     bool
 	)
-	pbUser, err := h.User(userId)
-	if err == nil {
+	return h.UpdateUser(userId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
 		if pbUser.RecentActivity != nil {
 			// Find and copy thread from recent activity to old activity of
 			// the user, then remove it from recent activity.
@@ -588,15 +769,10 @@ func (h *handler) markSubcommentAsOld(userId string, ctx *pbContext.Subcomment, 
 					break
 				}
 			}
-			if found {
-				err = h.UpdateUser(pbUser, userId)
-			} else {
-				log.Printf("Could not find subcomment %v\n", ctx)
+			if !found {
+				log.Printf("Subcomment %v is not in recent activity of user %v.\n", ctx, userId)
 			}
 		}
-	}
-	select {
-	case done <- err:
-	case <-quit:
-	}
+		return pbUser
+	})
 }
