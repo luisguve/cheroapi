@@ -146,6 +146,8 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []patillator.Id) ([]
 						contentRule.Status = status
 						contentRules[idx] = contentRule
 					}
+				} else {
+					log.Printf("Id %s not found in bucket %s\n", id, thread.Id)
 				}
 				select {
 				case done <- err:
