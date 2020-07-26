@@ -72,7 +72,7 @@ func (a *App) Run() error {
 			"package":  "cheroapi",
 			"file":     "app.go",
 			"function": "scheduled QA",
-		}).Info("QA returned the result:", summary)
+		}).Info("Result of QA:", summary)
 	})
 	QAscheduler.StartAsync()
 
