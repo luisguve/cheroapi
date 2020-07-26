@@ -99,8 +99,10 @@ func TestAuthUser(t *testing.T) {
 	// Update users.
 	for _, id := range ids {
 		// append _UPDATED to about.
-		pbUsers[id].BasicUserData.About += "_UPDATED"
-		err = db.UpdateUser(pbUsers[id], id)
+		err = db.UpdateUser(id, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+			pbUser.BasicUserData.About += "_UPDATED"
+			return pbUser
+		})
 		if err != nil {
 			t.Errorf("Got err: %v\n", err)
 		}
@@ -155,10 +157,11 @@ func TestAuthUser(t *testing.T) {
 		user.username = username
 		userKeys[id] = user
 
-		pbUser := pbUsers[id]
-		pbUser.BasicUserData.Username = username
-		pbUsers[id] = pbUser
-		err = db.UpdateUser(pbUser, id)
+		err = db.UpdateUser(id, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+			pbUser.BasicUserData.Username = username
+			pbUsers[id] = pbUser
+			return pbUser
+		})
 		if err != nil {
 			t.Errorf("Got err: %v\n", err)
 		}
