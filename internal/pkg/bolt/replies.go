@@ -43,38 +43,10 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 	// Format, marshal and save comment and update user and thread content in
 	// the same transaction.
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		var (
-			done   = make(chan error)
-			quit   = make(chan error)
-			pbUser *pbDataFormat.User
-		)
-		go func() {
-			var err error
-			pbThread, err = h.GetThreadContent(thread)
-			select {
-			case done <- err:
-			case <-quit:
-			}
-		}()
-		go func() {
-			var err error
-			pbUser, err = h.User(reply.Submitter)
-			select {
-			case done <- err:
-			case <-quit:
-			}
-		}()
-		// Check for errors. It terminates every go-routine hung on the statement
-		// "case done<- err" by closing the channel quit and returns the first err
-		// read.
 		var err error
-		for i := 0; i < 2; i++ {
-			err = <-done
-			if err != nil {
-				log.Println(err)
-				close(quit)
-				return err
-			}
+		pbThread, err = h.GetThreadContent(thread)
+		if err != nil {
+			return err
 		}
 		commentsBucket, err := getActiveCommentsBucket(tx, thread.Id)
 		if err != nil {
@@ -106,7 +78,7 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 			Permalink:   permalink,
 			Metadata: &pbMetadata.Content{
 				LastUpdated: reply.PublishDate,
-				DataKey:     pbThread.Id,
+				DataKey:     commentId,
 			},
 		}
 		pbCommentBytes, err := proto.Marshal(pbComment)
@@ -118,15 +90,18 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 			return err
 		}
 		// Update user; append comment to list of activity of user.
-		if pbUser.RecentActivity == nil {
-			pbUser.RecentActivity = new(pbDataFormat.Activity)
-		}
-		commentCtx := &pbContext.Comment{
-			Id:        commentId,
-			ThreadCtx: thread,
-		}
-		pbUser.RecentActivity.Comments = append(pbUser.RecentActivity.Comments, commentCtx)
-		if err = h.UpdateUser(pbUser, reply.Submitter); err != nil {
+		err = h.UpdateUser(reply.Submitter, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+			if pbUser.RecentActivity == nil {
+				pbUser.RecentActivity = new(pbDataFormat.Activity)
+			}
+			commentCtx := &pbContext.Comment{
+				Id:        commentId,
+				ThreadCtx: thread,
+			}
+			pbUser.RecentActivity.Comments = append(pbUser.RecentActivity.Comments, commentCtx)
+			return pbUser
+		})
+		if err != nil {
 			return err
 		}
 		// Update thread metadata.
@@ -141,7 +116,6 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		return setThreadBytes(tx, thread.Id, contentBytes)
 	})
 	if err != nil {
-		log.Println(err)
 		return nil, err
 	}
 
@@ -197,31 +171,27 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 	// update user, thread and comment in the same transaction.
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
 		var (
-			pbUser *pbDataFormat.User
-			done   = make(chan error)
-			quit   = make(chan error)
+			done  = make(chan error)
+			quit  = make(chan error)
+			numGR = 0
 		)
+		// Get thread which the comment belongs to.
+		numGR++
 		go func() {
 			var err error
 			pbThread, err = h.GetThreadContent(comment.ThreadCtx)
 			select {
-			case done <- err:
+			case done<- err:
 			case <-quit:
 			}
 		}()
+		// Get comment which the subcomment is being submitted on.
+		numGR++
 		go func() {
 			var err error
 			pbComment, err = h.GetCommentContent(comment)
 			select {
-			case done <- err:
-			case <-quit:
-			}
-		}()
-		go func() {
-			var err error
-			pbUser, err = h.User(reply.Submitter)
-			select {
-			case done <- err:
+			case done<- err:
 			case <-quit:
 			}
 		}()
@@ -229,11 +199,11 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		// "case done<- err" by closing the channel quit and returns the first err
 		// read.
 		var err error
-		for i := 0; i < 3; i++ {
+		for i := 0; i < numGR; i++ {
 			err = <-done
 			if err != nil {
 				close(quit)
-				return nil
+				return err
 			}
 		}
 		subcommentsBucket, err := getActiveSubcommentsBucket(tx, threadId, commentId)
@@ -266,7 +236,7 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 			Permalink:   permalink,
 			Metadata: &pbMetadata.Content{
 				LastUpdated: reply.PublishDate,
-				DataKey:     pbThread.Id,
+				DataKey:     subcommentId,
 			},
 		}
 		pbSubcommentBytes, err := proto.Marshal(pbSubcomment)
@@ -279,15 +249,18 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 			return err
 		}
 		// Update user; append subcomment to list of activity of author.
-		if pbUser.RecentActivity == nil {
-			pbUser.RecentActivity = new(pbDataFormat.Activity)
-		}
-		subcommentCtx := &pbContext.Subcomment{
-			Id:         subcommentId,
-			CommentCtx: comment,
-		}
-		pbUser.RecentActivity.Subcomments = append(pbUser.RecentActivity.Subcomments, subcommentCtx)
-		if err = h.UpdateUser(pbUser, reply.Submitter); err != nil {
+		err = h.UpdateUser(reply.Submitter, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+			if pbUser.RecentActivity == nil {
+				pbUser.RecentActivity = new(pbDataFormat.Activity)
+			}
+			subcommentCtx := &pbContext.Subcomment{
+				Id:         subcommentId,
+				CommentCtx: comment,
+			}
+			pbUser.RecentActivity.Subcomments = append(pbUser.RecentActivity.Subcomments, subcommentCtx)
+			return pbUser
+		})
+		if err != nil {
 			return err
 		}
 		// Update thread metadata.
