@@ -44,35 +44,34 @@ func (h *handler) notifyInteraction(userId, toNotify, msg, subject string,
 // it to the list of unread notifications of the given user.
 // If the notification was in the list of read notifications, it removes it.
 func (h *handler) SaveNotif(toNotify string, notif *pbDataFormat.Notif) {
-	pbUser, err := h.User(toNotify)
+	err := h.UpdateUser(toNotify, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+		// If a notification with the same Id was there before, the old
+		// notification will be overriden with the new one; it's an update.
+		var set bool
+		for idx, unreadNotif := range pbUser.UnreadNotifs {
+			if unreadNotif.Id == notif.Id {
+				pbUser.UnreadNotifs[idx] = notif
+				set = true
+				break
+			}
+		}
+		// Otherwise, the new notification will be appended.
+		if !set {
+			pbUser.UnreadNotifs = append(pbUser.UnreadNotifs, notif)
+		}
+		// Find and remove the notification from the list of read notifications
+		// if it was there before.
+		for idx, readNotif := range pbUser.ReadNotifs {
+			if readNotif.Id == notif.Id {
+				last := len(pbUser.ReadNotifs) - 1
+				pbUser.ReadNotifs[idx] = pbUser.ReadNotifs[last]
+				pbUser.ReadNotifs = pbUser.ReadNotifs[:last]
+				break
+			}
+		}
+		return pbUser
+	})
 	if err != nil {
-		log.Printf("SaveNotif get user: %v\n", err)
-		return
-	}
-	// If a notification with the same Id was there before, the old
-	// notification will be overriden with the new one; it's an update.
-	var set bool
-	for idx, unreadNotif := range pbUser.UnreadNotifs {
-		if unreadNotif.Id == notif.Id {
-			pbUser.UnreadNotifs[idx] = notif
-			set = true
-			break
-		}
-	}
-	// Otherwise, the new notification will be appended.
-	if !set {
-		pbUser.UnreadNotifs = append(pbUser.UnreadNotifs, notif)
-	}
-	// Find and remove the notification from the list of read notifications.
-	for idx, readNotif := range pbUser.ReadNotifs {
-		if readNotif.Id == notif.Id {
-			last := len(pbUser.ReadNotifs) - 1
-			pbUser.ReadNotifs[idx] = pbUser.ReadNotifs[last]
-			pbUser.ReadNotifs = pbUser.ReadNotifs[:last]
-			break
-		}
-	}
-	if err = h.UpdateUser(pbUser, toNotify); err != nil {
-		log.Printf("SaveNotif update user: %v\n", err)
+		log.Printf("SaveNotif update user: %v.\n", err)
 	}
 }
