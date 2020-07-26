@@ -335,21 +335,33 @@ func (h *handler) MapUsername(newUsername, userId string) error {
 	})
 }
 
-// UpdateUser marshals the given pbUser and puts it into the database with
-// userId as the key.
-func (h *handler) UpdateUser(pbUser *pbDataFormat.User, userId string) error {
-	pbUserBytes, err := proto.Marshal(pbUser)
-	if err != nil {
-		log.Printf("Could not marshal user: %v\n", err)
-		return err
-	}
+// UpdateUser gets the user with the given user id, passes it to updateUserFn,
+// which modifies it then returns it, and marshals the resulting pbUser and puts
+// it into the database with userId as the key, all in the same transaction.
+func (h *handler) UpdateUser(userId string, updateFn dbmodel.UpdateUserFunc) error {
 	return h.users.Update(func(tx *bolt.Tx) error {
-		// save user into users database
 		usersBucket := tx.Bucket([]byte(usersB))
 		if usersBucket == nil {
 			log.Printf("Bucket %s of users not found\n", usersB)
 			return dbmodel.ErrBucketNotFound
 		}
-		return usersBucket.Put([]byte(userId), pbUserBytes)
+		userBytes := usersBucket.Get([]byte(userId))
+		if userBytes == nil {
+			log.Printf("Could not find user data (id %s)\n", string(userId))
+			return dbmodel.ErrUserNotFound
+		}
+		pbUser := new(pbDataFormat.User)
+		err := proto.Unmarshal(userBytes, pbUser)
+		if err != nil {
+			log.Printf("Could not unmarshal user: %v.\n", err)
+			return err
+		}
+		pbUser = updateFn(pbUser)
+		userBytes, err = proto.Marshal(pbUser)
+		if err != nil {
+			log.Printf("Could not marshal user: %v\n", err)
+			return err
+		}
+		return usersBucket.Put([]byte(userId), userBytes)
 	})
 }
