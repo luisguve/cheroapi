@@ -100,25 +100,26 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 			log.Printf("Could not marshal content: %v\n", err)
 			return err
 		}
-		if pbUser.RecentActivity == nil {
-			pbUser.RecentActivity = new(pbDataFormat.Activity)
-		}
-		// Append new thread context to users' recent activity.
-		threadCtx := &pbContext.Thread{
-			Id:         newId,
-			SectionCtx: section,
-		}
-		pbUser.RecentActivity.ThreadsCreated = append(pbUser.RecentActivity.ThreadsCreated, threadCtx)
-		// Update last time created field.
-		pbUser.LastTimeCreated = content.PublishDate
-
-		if err = activeContents.Put([]byte(newId), pbContentBytes); err != nil {
+		err = h.UpdateUser(userId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+			if pbUser.RecentActivity == nil {
+				pbUser.RecentActivity = new(pbDataFormat.Activity)
+			}
+			// Append new thread context to users' recent activity.
+			threadCtx := &pbContext.Thread{
+				Id:         newId,
+				SectionCtx: section,
+			}
+			pbUser.RecentActivity.ThreadsCreated = append(pbUser.RecentActivity.ThreadsCreated, threadCtx)
+			// Update last time created field.
+			pbUser.LastTimeCreated = content.PublishDate
+			return pbUser
+		})
+		if err != nil {
 			return err
 		}
-		return h.UpdateUser(pbUser, userId)
+		return activeContents.Put([]byte(newId), pbContentBytes)
 	})
 	if err != nil {
-		log.Println(err)
 		return "", err
 	}
 	return permalink, nil
