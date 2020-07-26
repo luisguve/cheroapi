@@ -11,6 +11,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+type UpdateUserFunc func(*pbDataFormat.User) *pbDataFormat.User
+
 // Handler defines the set of available CRUD operations to perform on the
 // database.
 type Handler interface {
@@ -80,7 +82,7 @@ type Handler interface {
 	// Associate username to user id.
 	MapUsername(username, userId string) error
 	// Update data of user.
-	UpdateUser(pbUser *pbDataFormat.User, userId string) error
+	UpdateUser(userId string, updateFn UpdateUserFunc) error
 	// Get user id with the given username.
 	FindUserIdByUsername(username string) ([]byte, error)
 	// Get user id with the given email.
@@ -88,7 +90,7 @@ type Handler interface {
 	// Return the last time a clean up was done.
 	LastQA() int64
 	// Clean up every section database.
-	QA()
+	QA() (string, error)
 	// Release all database resources.
 	Close() error
 }
