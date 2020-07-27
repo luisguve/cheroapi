@@ -87,35 +87,44 @@ func (s *Server) UpdateBasicUserData(ctx context.Context, req *pbApi.UpdateBasic
 	if s.dbHandler == nil {
 		return nil, status.Error(codes.Internal, "No database connection")
 	}
-	pbUser, err := s.dbHandler.User(req.UserId)
-	if err != nil {
-		if errors.Is(err, dbmodel.ErrUserNotFound) {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	if req.Username != "" {
-		err = s.dbHandler.MapUsername(req.Username, req.UserId)
+	if req.PicUrl != "" || req.Alias != "" || req.Description != "" || req.Username != "" {
+		_, err := s.dbHandler.User(req.UserId)
 		if err != nil {
-			if errors.Is(err, dbmodel.ErrUsernameAlreadyExists) {
-				return nil, status.Error(codes.AlreadyExists, "Username already taken")
+			if errors.Is(err, dbmodel.ErrUserNotFound) {
+				return nil, status.Error(codes.NotFound, err.Error())
 			}
 			return nil, status.Error(codes.Internal, err.Error())
 		}
-		pbUser.BasicUserData.Username = req.Username
-	}
-	if req.Description != "" {
-		pbUser.BasicUserData.About = req.Description
-	}
-	if req.PicUrl != "" {
-		pbUser.BasicUserData.PicUrl = req.PicUrl
-	}
-	if req.Alias != "" {
-		pbUser.BasicUserData.Alias = req.Alias
-	}
-	err = s.dbHandler.UpdateUser(pbUser, req.UserId)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		if req.Username != "" {
+			err = s.dbHandler.MapUsername(req.Username, req.UserId)
+			if err != nil {
+				if errors.Is(err, dbmodel.ErrUsernameAlreadyExists) {
+					return nil, status.Error(codes.AlreadyExists, "Username already taken")
+				}
+				return nil, status.Error(codes.Internal, err.Error())
+			}
+		}
+		err = s.dbHandler.UpdateUser(req.UserId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+			if req.Description != "" {
+				pbUser.BasicUserData.About = req.Description
+			}
+			if req.PicUrl != "" {
+				pbUser.BasicUserData.PicUrl = req.PicUrl
+			}
+			if req.Alias != "" {
+				pbUser.BasicUserData.Alias = req.Alias
+			}
+			if req.Username != "" {
+				pbUser.BasicUserData.Username = req.Username
+			}
+			return pbUser
+		})
+		if err != nil {
+			if errors.Is(err, dbmodel.ErrUserNotFound) {
+				return nil, status.Error(codes.NotFound, err.Error())
+			}
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 	}
 	return &pbApi.UpdateBasicUserDataResponse{}, nil
 }
@@ -125,22 +134,19 @@ func (s *Server) MarkAllAsRead(ctx context.Context, req *pbApi.ReadNotifsRequest
 	if s.dbHandler == nil {
 		return nil, status.Error(codes.Internal, "No database connection")
 	}
-	pbUser, err := s.dbHandler.User(req.UserId)
+	err := s.dbHandler.UpdateUser(req.UserId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+		// Append read notifs to list of unread notifs to keep unread as the
+		// first notifs, then set the resulting list of notifs to read notifs
+		// and nil to unread notifs.
+		pbUser.UnreadNotifs = append(pbUser.UnreadNotifs, pbUser.ReadNotifs...)
+		pbUser.ReadNotifs = pbUser.UnreadNotifs
+		pbUser.UnreadNotifs = nil
+		return pbUser
+	})
 	if err != nil {
 		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	// Append read notifs to list of unread notifs to keep unread as the
-	// first notifs, then set the resulting list of notifs to read notifs
-	// and nil to unread notifs.
-	pbUser.UnreadNotifs = append(pbUser.UnreadNotifs, pbUser.ReadNotifs...)
-	pbUser.ReadNotifs = pbUser.UnreadNotifs
-	pbUser.UnreadNotifs = nil
-
-	err = s.dbHandler.UpdateUser(pbUser, req.UserId)
-	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &pbApi.ReadNotifsResponse{}, nil
@@ -151,17 +157,15 @@ func (s *Server) ClearNotifs(ctx context.Context, req *pbApi.ClearNotifsRequest)
 	if s.dbHandler == nil {
 		return nil, status.Error(codes.Internal, "No database connection")
 	}
-	pbUser, err := s.dbHandler.User(req.UserId)
+	err := s.dbHandler.UpdateUser(req.UserId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+		pbUser.ReadNotifs = nil
+		pbUser.UnreadNotifs = nil
+		return pbUser
+	})
 	if err != nil {
 		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	pbUser.ReadNotifs = nil
-	pbUser.UnreadNotifs = nil
-	err = s.dbHandler.UpdateUser(pbUser, req.UserId)
-	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &pbApi.ClearNotifsResponse{}, nil
@@ -175,79 +179,63 @@ func (s *Server) FollowUser(ctx context.Context, req *pbApi.FollowUserRequest) (
 	var (
 		followingId string
 		followerId  = req.UserId
-		pbFollower  *pbDataFormat.User
-		pbFollowing *pbDataFormat.User
-		done        = make(chan error)
-		quit        = make(chan error)
 	)
-	// Get both users concurrently.
-	go func() {
-		var err error
-		pbFollower, err = s.dbHandler.User(followerId)
-		select {
-		case done <- err:
-		case <-quit:
+
+	followingIdB, err := s.dbHandler.FindUserIdByUsername(req.UserToFollow)
+	if err != nil {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
 		}
-	}()
-	go func() {
-		followingIdB, err := s.dbHandler.FindUserIdByUsername(req.UserToFollow)
-		if err == nil {
-			followingId = string(followingIdB)
-			pbFollowing, err = s.dbHandler.User(followingId)
-		}
-		select {
-		case done <- err:
-		case <-quit:
-		}
-	}()
-	var err error
-	// Check for errors. If there was an error, it will close the channel quit,
-	// terminating any go-routine hung on the statement "case done<- err:", and
-	// return the error to the client.
-	for i := 0; i < 2; i++ {
-		err = <-done
-		if err != nil {
-			close(quit)
-			if errors.Is(err, dbmodel.ErrUserNotFound) {
-				return nil, status.Error(codes.NotFound, err.Error())
-			}
-			return nil, status.Error(codes.Internal, err.Error())
-		}
+		return nil, status.Error(codes.Internal, err.Error())
 	}
+	followingId = string(followingIdB)
+
 	// A user cannot follow itself. Check whether that's the case.
 	if followingId == followerId {
 		return nil, status.Error(codes.InvalidArgument, "A user cannot follow itself")
 	}
-	// Save both users concurrently.
-	var numGR int
-	// Check whether the user is already following the other user.
-	following, _ := inSlice(pbFollower.FollowingIds, followingId)
-	if !following {
-		// Update users' data.
-		pbFollower.FollowingIds = append(pbFollower.FollowingIds, followingId)
-		numGR++
-		go func() {
-			err := s.dbHandler.UpdateUser(pbFollower, followerId)
-			select {
-			case done <- err:
-			case <-quit:
+
+	// Update both users concurrently.
+	var (
+		numGR int
+		done = make(chan error)
+		quit = make(chan struct{})
+	)
+	// Data of new follower.
+	numGR++
+	go func() {
+		err := s.dbHandler.UpdateUser(followerId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+			// Check whether the user is already following the other user.
+			following, _ := inSlice(pbUser.FollowingIds, followingId)
+			if !following {
+				// Update users' data.
+				pbUser.FollowingIds = append(pbUser.FollowingIds, followingId)
 			}
-		}()
-	}
-	// Check whether the user is already a follower of the other user.
-	follower, _ := inSlice(pbFollowing.FollowersIds, followerId)
-	if !follower {
-		numGR++
-		// Update users' data.
-		pbFollowing.FollowersIds = append(pbFollowing.FollowersIds, followerId)
-		go func() {
-			err := s.dbHandler.UpdateUser(pbFollowing, followingId)
-			select {
-			case done <- err:
-			case <-quit:
+			return pbUser
+		})
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	// Data of new following.
+	numGR++
+	go func() {
+		err := s.dbHandler.UpdateUser(followingId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+			// Check whether the user is already a follower of the other user.
+			follower, _ := inSlice(pbUser.FollowersIds, followerId)
+			if !follower {
+				// Update users' data.
+				pbUser.FollowersIds = append(pbUser.FollowersIds, followerId)
 			}
-		}()
-	}
+			return pbUser
+		})
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+
 	// Check for errors. If there was an error, it will close the channel quit,
 	// terminating any go-routine hung on the statement "case done<- err:", and
 	// return the error to the client.
@@ -270,85 +258,64 @@ func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserReques
 		return nil, status.Error(codes.Internal, "No database connection")
 	}
 	var (
-		// user to stop following
-		ufId string
-		pbUf *pbDataFormat.User
-		// user unfollowing id
-		fId  = req.UserId
-		pbF  *pbDataFormat.User
-		done = make(chan error)
-		quit = make(chan error)
+		followingId string
+		followerId  = req.UserId
 	)
-	// Get both users concurrently.
-	go func() {
-		var err error
-		pbF, err = s.dbHandler.User(fId)
-		select {
-		case done <- err:
-		case <-quit:
+
+	followingIdB, err := s.dbHandler.FindUserIdByUsername(req.UserToUnfollow)
+	if err != nil {
+		if errors.Is(err, dbmodel.ErrUserNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
 		}
-	}()
-	go func() {
-		ufIdB, err := s.dbHandler.FindUserIdByUsername(req.UserToUnfollow)
-		if err == nil {
-			ufId = string(ufIdB)
-			pbUf, err = s.dbHandler.User(ufId)
-		}
-		select {
-		case done <- err:
-		case <-quit:
-		}
-	}()
-	var err error
-	// Check for errors. If there was an error, it will close the channel quit,
-	// terminating any go-routine hung on the statement "case done<- err:", and
-	// return the error to the client.
-	for i := 0; i < 2; i++ {
-		err = <-done
-		if err != nil {
-			close(quit)
-			if errors.Is(err, dbmodel.ErrUserNotFound) {
-				return nil, status.Error(codes.NotFound, err.Error())
-			}
-			return nil, status.Error(codes.Internal, err.Error())
-		}
+		return nil, status.Error(codes.Internal, err.Error())
 	}
+	followingId = string(followingIdB)
+
 	// A user cannot unfollow itself. Check whether that's the case.
-	if ufId == fId {
+	if followingId == followerId {
 		return nil, status.Error(codes.InvalidArgument, "A user cannot unfollow itself")
 	}
 
-	// Update users data and save both users concurrently.
-	var numGR int
-	following, idx := inSlice(pbF.FollowingIds, ufId)
-	if following {
-		numGR++
-		last := len(pbF.FollowingIds) - 1
-		pbF.FollowingIds[idx] = pbF.FollowingIds[last]
-		pbF.FollowingIds = pbF.FollowingIds[:last]
-		go func() {
-			err := s.dbHandler.UpdateUser(pbF, fId)
-			select {
-			case done <- err:
-			case <-quit:
+	// Update both users concurrently.
+	var (
+		numGR int
+		done = make(chan error)
+		quit = make(chan struct{})
+	)
+	// Data of former follower.
+	numGR++
+	go func() {
+		err := s.dbHandler.UpdateUser(followerId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+			following, idx := inSlice(pbUser.FollowingIds, followingId)
+			if following {
+				last := len(pbUser.FollowingIds) - 1
+				pbUser.FollowingIds[idx] = pbUser.FollowingIds[last]
+				pbUser.FollowingIds = pbUser.FollowingIds[:last]
 			}
-		}()
-	}
-	
-	follower, idx := inSlice(pbUf.FollowersIds, fId)
-	if follower {
-		numGR++
-		last := len(pbUf.FollowersIds) - 1
-		pbUf.FollowersIds[idx] = pbUf.FollowersIds[last]
-		pbUf.FollowersIds = pbUf.FollowersIds[:last]
-		go func() {
-			err := s.dbHandler.UpdateUser(pbUf, ufId)
-			select {
-			case done <- err:
-			case <-quit:
+			return pbUser
+		})
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
+	// Data of former following.
+	numGR++
+	go func() {
+		err := s.dbHandler.UpdateUser(followingId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+			follower, idx := inSlice(pbUser.FollowersIds, followerId)
+			if follower {
+				last := len(pbUser.FollowersIds) - 1
+				pbUser.FollowersIds[idx] = pbUser.FollowersIds[last]
+				pbUser.FollowersIds = pbUser.FollowersIds[:last]
 			}
-		}()
-	}
+			return pbUser
+		})
+		select {
+		case done<- err:
+		case <-quit:
+		}
+	}()
 	// Check for errors. If there was an error, it will close the channel quit,
 	// terminating any go-routine hung on the statement "case done<- err:", and
 	// return the error to the client.
@@ -373,38 +340,39 @@ func (s *Server) SaveThread(ctx context.Context, req *pbApi.SaveThreadRequest) (
 	var (
 		userId = req.UserId
 		thread = req.Thread
+		getErr error
 	)
-	pbUser, err := s.dbHandler.User(userId)
+	err := s.dbHandler.UpdateUser(userId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+		var saved bool
+		for _, t := range pbUser.SavedThreads {
+			if (t.SectionCtx.Id == thread.SectionCtx.Id) && (t.Id == thread.Id) {
+				saved = true
+				break
+			}
+		}
+		if !saved {
+			if _, getErr = s.dbHandler.GetThreadContent(thread); getErr != nil {
+				return pbUser
+			}
+			if getErr = s.dbHandler.AppendUserWhoSaved(thread, userId); getErr != nil {
+				return pbUser
+			}
+			pbUser.SavedThreads = append(pbUser.SavedThreads, thread)
+		}
+		return pbUser
+	})
 	if err != nil {
 		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	var saved bool
-	for _, t := range pbUser.SavedThreads {
-		if (t.SectionCtx.Id == thread.SectionCtx.Id) && (t.Id == thread.Id) {
-			saved = true
-			break
+	if getErr != nil {
+		if errors.Is(getErr, dbmodel.ErrSectionNotFound) ||
+			errors.Is(getErr, dbmodel.ErrThreadNotFound) {
+			return nil, status.Error(codes.NotFound, getErr.Error())
 		}
-	}
-	if !saved {
-		_, err := s.dbHandler.GetThreadContent(thread)
-		if err != nil {
-			if (errors.Is(err, dbmodel.ErrSectionNotFound)) ||
-				(errors.Is(err, dbmodel.ErrThreadNotFound)) {
-				return nil, status.Error(codes.NotFound, err.Error())
-			}
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		pbUser.SavedThreads = append(pbUser.SavedThreads, thread)
-		err = s.dbHandler.UpdateUser(pbUser, userId)
-		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		if err = s.dbHandler.AppendUserWhoSaved(thread, userId); err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		}
+		return nil, status.Error(codes.Internal, getErr.Error())
 	}
 	return &pbApi.SaveThreadResponse{}, nil
 }
@@ -418,29 +386,32 @@ func (s *Server) UndoSaveThread(ctx context.Context, req *pbApi.UndoSaveThreadRe
 		userId    = req.UserId
 		id        = req.Thread.Id
 		sectionId = req.Thread.SectionCtx.Id
+		setErr    error
 	)
-	pbUser, err := s.dbHandler.User(userId)
+	err := s.dbHandler.UpdateUser(userId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
+		// Find and remove reference to the thread.
+		for idx, t := range pbUser.SavedThreads {
+			if (t.SectionCtx.Id == sectionId) && (t.Id == id) {
+				setErr = s.dbHandler.RemoveUserWhoSaved(req.Thread, userId)
+				if setErr != nil {
+					return pbUser
+				}
+				last := len(pbUser.SavedThreads) - 1
+				pbUser.SavedThreads[idx] = pbUser.SavedThreads[last]
+				pbUser.SavedThreads = pbUser.SavedThreads[:last]
+				break
+			}
+		}
+		return pbUser
+	})
 	if err != nil {
 		if errors.Is(err, dbmodel.ErrUserNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	// Find and remove reference to the thread.
-	for idx, t := range pbUser.SavedThreads {
-		if (t.SectionCtx.Id == sectionId) && (t.Id == id) {
-			last := len(pbUser.SavedThreads) - 1
-			pbUser.SavedThreads[idx] = pbUser.SavedThreads[last]
-			pbUser.SavedThreads = pbUser.SavedThreads[:last]
-			err = s.dbHandler.UpdateUser(pbUser, userId)
-			if err != nil {
-				return nil, status.Error(codes.Internal, err.Error())
-			}
-			if err = s.dbHandler.RemoveUserWhoSaved(req.Thread, userId); err != nil {
-				return nil, status.Error(codes.Internal, err.Error())
-			}
-			break
-		}
+	if setErr != nil {
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &pbApi.UndoSaveThreadResponse{}, nil
 }
