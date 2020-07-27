@@ -17,6 +17,6 @@ type Server struct {
 	dbHandler dbmodel.Handler
 }
 
-func (s *Server) QA() {
-	s.dbHandler.QA()
+func (s *Server) QA() (string, error) {
+	return s.dbHandler.QA()
 }
