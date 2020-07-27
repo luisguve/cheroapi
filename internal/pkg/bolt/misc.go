@@ -270,8 +270,9 @@ func getActiveThreadBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 // id and returns it along with the name of the top-level bucket; either
 // activeContentsB or archivedContentsB.
 //
-// It returns an ErrBucketNotFound if either the thread or the comments bucket
-// does not exist in the database associated to tx.
+// It returns an ErrBucketNotFound if the thread does not exist or an
+// ErrCommentsBucketNotFound if the comments bucket does not exist in the
+// database associated to tx.
 func getCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, string, error) {
 	contents, name, err := getThreadBucket(tx, threadId)
 	if err != nil {
@@ -294,9 +295,9 @@ func getCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, string, erro
 // getActiveCommentsBucket looks for a comments bucket associated to the given
 // thread id IN the bucket of active contents.
 //
-// It returns an ErrBucketNotFound if either the thread or the comments bucket
-// does not exist in the bucket of active contents in the database associated
-// to tx.
+// It returns an ErrBucketNotFound if the thread does not exist or an 
+// ErrCommentsBucketNotFound it the the comments bucket does not exist in the
+// bucket of active contents in the database associated to tx.
 func getActiveCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 	activeContents, err := getActiveThreadBucket(tx, threadId)
 	if err != nil {
@@ -340,8 +341,9 @@ func createCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, error) {
 // with the name of the top-level bucket; either activeContentsB or
 // archivedContentsB.
 //
-// It returns an ErrBucketNotFound it either the thread or the comments bucket
-// or the subcomments bucket does not exist in the database associated to tx.
+// It returns an ErrBucketNotFound if either the thread or the comment does not
+// exist or an ErrSubcommentsBucketNotFound if the subcomments bucket does not
+// exist in the database associated to tx.
 func getSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.Bucket, string, error) {
 	contents, name, err := getCommentsBucket(tx, threadId)
 	if err != nil {
@@ -356,7 +358,7 @@ func getSubcommentsBucket(tx *bolt.Tx, threadId, commentId string) (*bolt.Bucket
 
 	subcomments := subcommentsBucket.Bucket([]byte(commentId))
 	if subcomments == nil {
-		return nil, "", dbmodel.ErrBucketNotFound
+		return nil, "", dbmodel.ErrSubcommentsBucketNotFound
 	}
 	return subcomments, name, nil
 }
