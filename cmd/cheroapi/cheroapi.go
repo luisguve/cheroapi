@@ -4,12 +4,20 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 
+	"github.com/BurntSushi/toml"
 	"github.com/joho/godotenv"
 	app "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	"github.com/luisguve/cheroapi/internal/pkg/bolt"
 	"github.com/luisguve/cheroapi/internal/pkg/server"
 )
+
+type cheroapiConfig struct {
+	SectionsPath string `toml:"sections"`
+	DBdir        string `toml:"db_dir"`
+}
 
 func siteConfig(file string, vars ...string) (map[string]string, error) {
 	config, err := godotenv.Read(file)
@@ -33,13 +41,26 @@ func siteConfig(file string, vars ...string) (map[string]string, error) {
 }
 
 func main() {
+	gopath, ok := os.LookupEnv("GOPATH")
+	if !ok || gopath == "" {
+		log.Fatal("GOPATH must be set.")
+	}
+
+	configDir := filepath.Join(gopath, "src", "github.com", "luisguve",
+		"cheroapi", "cheroapi.toml")
+
+	cheroConfig := new(cheroapiConfig)
+	if _, err := toml.DecodeFile(configDir, cheroConfig); err != nil {
+		log.Fatal(err)
+	}
+
 	// Get section names mapped to their ids.
-	sections, err := siteConfig("C:/cheroshared_files/sections.env")
+	sections, err := siteConfig(cheroConfig.SectionsPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	h, err := bolt.New("C:/cheroapi_files/db", sections)
+	h, err := bolt.New(cheroConfig.DBdir, sections)
 	if err != nil {
 		log.Fatalf("Could not setup database: %v\n", err)
 	}
