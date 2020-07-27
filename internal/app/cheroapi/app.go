@@ -2,10 +2,12 @@ package cheroapi
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
+	defaultLog "log"
 	"net"
 	"os"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/go-co-op/gocron"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
@@ -40,7 +42,7 @@ func (a *App) Run() error {
 	QAscheduler := gocron.NewScheduler(time.UTC)
 	QAscheduler.Every(1).Day().Do(func() {
 		logger := log.New()
-		logFile, err := os.OpenFile("C:cherofiles/logs/QA.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		logFile, err := os.OpenFile("C:cheroapi_files/logs/QA.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err == nil {
 			logger.SetOutput(logFile)
 			defer logFile.Close()
@@ -76,14 +78,16 @@ func (a *App) Run() error {
 	})
 	QAscheduler.StartAsync()
 
-	log.Println("Running")
+	defaultLog.Println("Running")
+
 	_, nextQA := QAscheduler.NextRun()
 	now := time.Now()
 	diff := nextQA.Sub(now)
 	hoursLeft := int(diff.Hours())
 	minutesLeft := int(diff.Minutes()) - (hoursLeft * 60)
 	secondsLeft := int(diff.Seconds()) - (hoursLeft * 60 * 60) - (minutesLeft * 60)
-	log.Printf("Next QA: %v (in %v hours, %v minutes, %v seconds)", 
+
+	defaultLog.Printf("Next QA: %v (in %v hours, %v minutes, %v seconds)",
 		nextQA.Format(time.Stamp), hoursLeft, minutesLeft, secondsLeft)
 	return s.Serve(lis)
 }
