@@ -40,7 +40,7 @@ func (a *App) Run() error {
 	QAscheduler := gocron.NewScheduler(time.UTC)
 	QAscheduler.Every(1).Day().Do(func() {
 		logger := log.New()
-		logFile, err := os.OpenFile("logs/QA.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		logFile, err := os.OpenFile("C:cherofiles/logs/QA.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err == nil {
 			logger.SetOutput(logFile)
 			defer logFile.Close()
@@ -78,10 +78,12 @@ func (a *App) Run() error {
 
 	log.Println("Running")
 	_, nextQA := QAscheduler.NextRun()
-	hoursLeft := int(time.Now().Sub(nextQA).Hours())
-	minutesLeft := int(time.Now().Sub(nextQA).Minutes())
-	secondsLeft := int(time.Now().Sub(nextQA).Seconds())
-	log.Printf("Next QA: %v (in %v hours, %v minutes, %v seconds)\n", 
+	now := time.Now()
+	diff := nextQA.Sub(now)
+	hoursLeft := int(diff.Hours())
+	minutesLeft := int(diff.Minutes()) - (hoursLeft * 60)
+	secondsLeft := int(diff.Seconds()) - (hoursLeft * 60 * 60) - (minutesLeft * 60)
+	log.Printf("Next QA: %v (in %v hours, %v minutes, %v seconds)", 
 		nextQA.Format(time.Stamp), hoursLeft, minutesLeft, secondsLeft)
 	return s.Serve(lis)
 }
