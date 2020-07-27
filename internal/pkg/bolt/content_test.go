@@ -13,6 +13,7 @@ import (
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	"github.com/luisguve/cheroapi/internal/pkg/bolt"
+	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 )
@@ -183,7 +184,7 @@ func TestThread(t *testing.T) {
 	// the slice of copies should be empty.
 	var idCopies = make([]string, len(sectionPosts["mylife"]))
 	copy(idCopies, sectionPosts["mylife"])
-	var threadIds []string
+	var threadIds []patillator.Id
 	for _, thread := range threads {
 		threadId, ok := thread.Key().(string)
 		if !ok {
@@ -199,7 +200,8 @@ func TestThread(t *testing.T) {
 				last := len(idCopies) - 1
 				idCopies[idx] = idCopies[last]
 				idCopies = idCopies[:last]
-				threadIds = append(threadIds, threadId)
+				patillaId := patillator.Id{Id: threadId, Status: "NEW"}
+				threadIds = append(threadIds, patillaId)
 				break
 			}
 		}
@@ -317,7 +319,7 @@ func TestThread(t *testing.T) {
 			if n != upvotes {
 				t.Errorf("%s should have %d upvotes, but have %d\n", logTitle, n, upvotes)
 			}
-		}(threadId)
+		}(threadId.Id)
 	}
 	wg.Wait()
 	t.Log("Finished upvoting threads")
