@@ -138,14 +138,3 @@ var (
 	// A user wants to use an unavailable email.
 	ErrEmailAlreadyExists = errors.New("Email already exists")
 )
-
-var SectionIds = map[string]string{
-	"My Life": "mylife", /*
-		"Food": "food",
-		"Technology": "tech",
-		"Art": "art",
-		"Music": "music",
-		"Do it yourself": "diy",
-		"Questions": "questions",
-		"Literature": "literature",*/
-}

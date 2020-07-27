@@ -98,11 +98,11 @@ func (h *handler) Close() error {
 // New only creates the bucket of active contents and the bucket of archived
 // contents, along with their top-level bucket for comments. In the bucket of
 // active contents, it also creates a bucket for deleted threads.
-func New(path string) (dbmodel.Handler, error) {
+func New(path string, sectionIds map[string]string) (dbmodel.Handler, error) {
 	sectionsDBs := make(map[string]section)
 
 	// open or create section databases
-	for sectionName, sectionId := range dbmodel.SectionIds {
+	for sectionName, sectionId := range sectionIds {
 		dbPath := filepath.Join(path, sectionId)
 		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 			os.MkdirAll(dbPath, os.ModeDir)
