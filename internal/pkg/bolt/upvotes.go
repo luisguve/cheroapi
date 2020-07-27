@@ -34,8 +34,8 @@ func incInteractions(m *pbMetadata.Content) {
 }
 
 // inSlice returns whether user is in users and an integer indicating the index
-// where the user id is in the slice. Returns false an 0 if the user is not in
-// users slice.
+// where the user id is in the slice. Returns false and 0 if the user is not in
+// the given slice.
 func inSlice(users []string, user string) (bool, int) {
 	for idx, u := range users {
 		if u == user {
@@ -57,7 +57,7 @@ func (h *handler) UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.
 	var (
 		id        = thread.Id
 		sectionId = thread.SectionCtx.Id
-		pbContent *pbDataFormat.Content
+		pbThread  = new(pbDataFormat.Content)
 	)
 	// check whether the section exists
 	sectionDB, ok := h.sections[sectionId]
@@ -65,45 +65,49 @@ func (h *handler) UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.
 		return nil, dbmodel.ErrSectionNotFound
 	}
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		var err error
-		pbContent, err = h.GetThreadContent(thread)
+		threadBytes, err := getThreadBytes(tx, id)
 		if err != nil {
+			log.Printf("Could not find thread %s in section %s: %v.\n", id, sectionId, err)
 			return err
 		}
-		if voted, _ := inSlice(pbContent.VoterIds, userId); voted {
+		if err = proto.Unmarshal(threadBytes, pbThread); err != nil {
+			log.Printf("Could not unmarshal content: %v.\n", err)
+			return err
+		}
+		// Check whether the user has already upvoted this thread.
+		if voted, _ := inSlice(pbThread.VoterIds, userId); voted {
 			return dbmodel.ErrUserNotAllowed
 		}
-		pbContent.Upvotes++
-		pbContent.VoterIds = append(pbContent.VoterIds, userId)
+		pbThread.Upvotes++
+		pbThread.VoterIds = append(pbThread.VoterIds, userId)
 		// Increment interactions and calculata new average update time only if
 		// this user has not undone an interaction on this content before.
-		undoner, _ := inSlice(pbContent.UndonerIds, userId)
+		undoner, _ := inSlice(pbThread.UndonerIds, userId)
 		if !undoner {
-			incInteractions(pbContent.Metadata)
+			incInteractions(pbThread.Metadata)
 		}
-		contentBytes, err := proto.Marshal(pbContent)
+		threadBytes, err = proto.Marshal(pbThread)
 		if err != nil {
 			log.Printf("Could not marshal content: %v\n", err)
 			return err
 		}
-		return setThreadBytes(tx, id, contentBytes)
+		return setThreadBytes(tx, id, threadBytes)
 	})
 	if err != nil {
-		log.Println(err)
 		return nil, err
 	}
 	// Set notification and notify user only if the submitter is not the author.
-	toNotify := pbContent.AuthorId
+	toNotify := pbThread.AuthorId
 	if userId != toNotify {
 		var msg string
-		if int(pbContent.Upvotes) > 1 {
-			msg = fmt.Sprintf("%d users have upvoted your thread", pbContent.Upvotes)
+		if int(pbThread.Upvotes) > 1 {
+			msg = fmt.Sprintf("%d users have upvoted your thread", pbThread.Upvotes)
 		} else {
 			msg = "1 user has upvoted your thread"
 		}
-		subj := fmt.Sprintf("On your thread %s", pbContent.Title)
+		subj := fmt.Sprintf("On your thread %s", pbThread.Title)
 		notifType := pbDataFormat.Notif_UPVOTE
-		notifyUser := h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbContent)
+		notifyUser := h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbThread)
 		return notifyUser, nil
 	}
 	return nil, nil
@@ -113,25 +117,47 @@ func (h *handler) UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.
 // received, removes the user id from the list of voters and appends it to the
 // list of undoners. It does not update the interactions of the thread.
 func (h *handler) UndoUpvoteThread(userId string, thread *pbContext.Thread) error {
-	pbContent, err := h.GetThreadContent(thread)
-	if err != nil {
-		return err
+	var (
+		id        = thread.Id
+		sectionId = thread.SectionCtx.Id
+	)
+	// check whether the section exists
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
+		return dbmodel.ErrSectionNotFound
 	}
-	voted, idx := inSlice(pbContent.VoterIds, userId)
-	if !voted {
-		return dbmodel.ErrNotUpvoted
-	}
-	pbContent.Upvotes--
+	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
+		threadBytes, err := getThreadBytes(tx, id)
+		if err != nil {
+			log.Printf("Could not find thread %s in section %s: %v.\n", id, sectionId, err)
+			return err
+		}
+		pbThread := new(pbDataFormat.Content)
+		if err = proto.Unmarshal(threadBytes, pbThread); err != nil {
+			log.Printf("Could not unmarshal content: %v.\n", err)
+			return err
+		}
+		voted, idx := inSlice(pbThread.VoterIds, userId)
+		if !voted {
+			return dbmodel.ErrNotUpvoted
+		}
+		pbThread.Upvotes--
 
-	last := len(pbContent.VoterIds) - 1
-	pbContent.VoterIds[idx] = pbContent.VoterIds[last]
-	pbContent.VoterIds = pbContent.VoterIds[:last]
+		last := len(pbThread.VoterIds) - 1
+		pbThread.VoterIds[idx] = pbThread.VoterIds[last]
+		pbThread.VoterIds = pbThread.VoterIds[:last]
 
-	undoner, _ := inSlice(pbContent.UndonerIds, userId)
-	if !undoner {
-		pbContent.UndonerIds = append(pbContent.UndonerIds, userId)
-	}
-	return h.SetThreadContent(thread, pbContent)
+		undoner, _ := inSlice(pbThread.UndonerIds, userId)
+		if !undoner {
+			pbThread.UndonerIds = append(pbThread.UndonerIds, userId)
+		}
+		threadBytes, err = proto.Marshal(pbThread)
+		if err != nil {
+			log.Printf("Could not marshal content: %v.\n", err)
+			return err
+		}
+		return setThreadBytes(tx, id, threadBytes)
+	})
 }
 
 // UpvoteComment increases by one the number of upvotes that the given comment
@@ -151,8 +177,8 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 		commentId = comment.Id
 		threadId  = comment.ThreadCtx.Id
 		sectionId = comment.ThreadCtx.SectionCtx.Id
-		pbComment *pbDataFormat.Content
-		pbThread  *pbDataFormat.Content
+		pbComment = new(pbDataFormat.Content)
+		pbThread  = new(pbDataFormat.Content)
 		notifs    []*pbApi.NotifyUser
 	)
 	// check whether the section exists
@@ -161,71 +187,64 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 		return nil, dbmodel.ErrSectionNotFound
 	}
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		var (
-			commentBytes, threadBytes []byte
-			done                      = make(chan error)
-			quit                      = make(chan error)
-		)
-		// Get and update comment data.
-		go func() {
-			var err error
-			pbComment, err = h.GetCommentContent(comment)
-			if err == nil {
-				if voted, _ := inSlice(pbComment.VoterIds, userId); voted {
-					err = dbmodel.ErrUserNotAllowed
-				} else {
-					pbComment.Upvotes++
-					pbComment.VoterIds = append(pbComment.VoterIds, userId)
-					// Increment interactions and calculata new average update time only
-					// if this user has not undone an interaction on this content before.
-					undoner, _ := inSlice(pbComment.UndonerIds, userId)
-					if !undoner {
-						incInteractions(pbComment.Metadata)
-					}
-					commentBytes, err = proto.Marshal(pbComment)
-				}
-			}
-			select {
-			case done <- err:
-			case <-quit:
-			}
-		}()
-		go func() {
-			var err error
-			pbThread, err = h.GetThreadContent(comment.ThreadCtx)
-			if err == nil {
-				// increment interactions and calculata new average update time only
-				// if this user has not undone an interaction on this content before.
-				undoner, _ := inSlice(pbThread.UndonerIds, userId)
-				if !undoner {
-					incInteractions(pbThread.Metadata)
-				}
-				threadBytes, err = proto.Marshal(pbThread)
-			}
-			select {
-			case done <- err:
-			case <-quit:
-			}
-		}()
-		var err error
-		// Check for errors.
-		for i := 0; i < 2; i++ {
-			err = <-done
+		// Get thread which the comment belongs to.
+		threadBytes, err := getThreadBytes(tx, threadId)
+		if err != nil {
+			log.Printf("Could not find thread %s in section %s: %v.\n", threadId, sectionId, err)
+			return err
+		}
+		if err = proto.Unmarshal(threadBytes, pbThread); err != nil {
+			log.Printf("Could not unmarshal content: %v.\n", err)
+			return err
+		}
+		// Update thread metadata: increment interactions and calculata new
+		// average update time only if this user has not undone an interaction
+		// on this content before.
+		undoner, _ := inSlice(pbThread.UndonerIds, userId)
+		if !undoner {
+			incInteractions(pbThread.Metadata)
+			threadBytes, err = proto.Marshal(pbThread)
 			if err != nil {
-				close(quit)
+				log.Printf("Could not marshal content: %v.\n", err)
+				return err
+			}
+			if err = setThreadBytes(tx, threadId, threadBytes); err != nil {
 				return err
 			}
 		}
-		if err = setCommentBytes(tx, threadId, commentId, commentBytes); err != nil {
+		// Get comment.
+		commentBytes, err := getCommentBytes(tx, threadId, commentId)
+		if err != nil {
+			log.Printf("Could not find comment %s in thread %s in section %s: %v.\n",
+				commentId, threadId, sectionId, err)
 			return err
 		}
-		return setThreadBytes(tx, threadId, threadBytes)
+		if err = proto.Unmarshal(commentBytes, pbComment); err != nil {
+			log.Printf("Could not unmarshal content: %v.\n", err)
+			return err
+		}
+		// Check whether the user has already upvoted this comment.
+		if voted, _ := inSlice(pbComment.VoterIds, userId); voted {
+			return dbmodel.ErrUserNotAllowed
+		}
+		pbComment.Upvotes++
+		pbComment.VoterIds = append(pbComment.VoterIds, userId)
+		// Increment interactions and calculata new average update time only
+		// if this user has not undone an interaction on this content before.
+		undoner, _ = inSlice(pbComment.UndonerIds, userId)
+		if !undoner {
+			incInteractions(pbComment.Metadata)
+		}
+		commentBytes, err = proto.Marshal(pbComment)
+		if err != nil {
+			log.Printf("Could not marshal content: %v.\n", err)
+			return err
+		}
+		return setCommentBytes(tx, threadId, commentId, commentBytes)
 	})
 	if err != nil {
-		log.Println(err)
 		return nil, err
 	}
-
 	// Set notification only if the submitter is not the comment author.
 	toNotify := pbComment.AuthorId
 	if userId != toNotify {
@@ -241,7 +260,7 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 		notifyUser := h.notifyInteraction(userId, toNotify, msg, subj, notifType, pbComment)
 		notifs = append(notifs, notifyUser)
 	}
-
+	// Set notification only if the submitter is not the thread author.
 	toNotify = pbThread.AuthorId
 	if userId != toNotify {
 		// set notification
@@ -263,25 +282,48 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 // received, removes the user id from the list of voters and appends it to the
 // list of undoners. It does not update the interactions of the comment.
 func (h *handler) UndoUpvoteComment(userId string, comment *pbContext.Comment) error {
-	pbComment, err := h.GetCommentContent(comment)
-	if err != nil {
-		return err
+	var (
+		commentId = comment.Id
+		sectionId = comment.ThreadCtx.SectionCtx.Id
+		threadId  = comment.ThreadCtx.Id
+	)
+	// Check whether the section exists.
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
+		return dbmodel.ErrSectionNotFound
 	}
-	voted, idx := inSlice(pbComment.VoterIds, userId)
-	if !voted {
-		return dbmodel.ErrNotUpvoted
-	}
-	pbComment.Upvotes--
+	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
+		commentBytes, err := getCommentBytes(tx, threadId, commentId)
+		if err != nil {
+			log.Printf("Could not find comment %s in thread %s in section %s: %v.\n",
+				commentId, threadId, sectionId, err)
+			return err
+		}
+		pbComment := new(pbDataFormat.Content)
+		if err = proto.Unmarshal(commentBytes, pbComment); err != nil {
+			log.Printf("Could not unmarshal content: %v.\n", err)
+			return err
+		}
+		voted, idx := inSlice(pbComment.VoterIds, userId)
+		if !voted {
+			return dbmodel.ErrNotUpvoted
+		}
+		pbComment.Upvotes--
 
-	last := len(pbComment.VoterIds) - 1
-	pbComment.VoterIds[idx] = pbComment.VoterIds[last]
-	pbComment.VoterIds = pbComment.VoterIds[:last]
+		last := len(pbComment.VoterIds) - 1
+		pbComment.VoterIds[idx] = pbComment.VoterIds[last]
+		pbComment.VoterIds = pbComment.VoterIds[:last]
 
-	undoner, _ := inSlice(pbComment.UndonerIds, userId)
-	if !undoner {
-		pbComment.UndonerIds = append(pbComment.UndonerIds, userId)
-	}
-	return h.SetCommentContent(comment, pbComment)
+		undoner, _ := inSlice(pbComment.UndonerIds, userId)
+		if !undoner {
+			pbComment.UndonerIds = append(pbComment.UndonerIds, userId)
+		}
+		commentBytes, err = proto.Marshal(pbComment)
+		if err != nil {
+			log.Printf("Could not marshal content: %v.\n", err)
+		}
+		return setCommentBytes(tx, threadId, commentId, commentBytes)
+	})
 }
 
 // UpvoteSubcomment increases by one the number of upvotes that the given
@@ -298,104 +340,98 @@ func (h *handler) UndoUpvoteComment(userId string, comment *pbContext.Comment) e
 // either the thread, or the subcomment.
 func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomment) ([]*pbApi.NotifyUser, error) {
 	var (
-		notifs                            []*pbApi.NotifyUser
-		pbSubcomment, pbComment, pbThread *pbDataFormat.Content
-		comment                           = subcomment.CommentCtx
-		thread                            = subcomment.CommentCtx.ThreadCtx
-		section                           = subcomment.CommentCtx.ThreadCtx.SectionCtx
+		notifs       []*pbApi.NotifyUser
+		pbSubcomment = new(pbDataFormat.Content)
+		pbComment    = new(pbDataFormat.Content)
+		pbThread     = new(pbDataFormat.Content)
+		subcommentId = subcomment.Id
+		commentId    = subcomment.CommentCtx.Id
+		threadId     = subcomment.CommentCtx.ThreadCtx.Id
+		sectionId    = subcomment.CommentCtx.ThreadCtx.SectionCtx.Id
 	)
 	// check whether the section exists
-	sectionDB, ok := h.sections[section.Id]
+	sectionDB, ok := h.sections[sectionId]
 	if !ok {
 		return nil, dbmodel.ErrSectionNotFound
 	}
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		var (
-			subcommentBytes, commentBytes, threadBytes []byte
-			done                                       = make(chan error)
-			quit                                       = make(chan error)
-		)
-		// Get and update subcomment data.
-		go func() {
-			var err error
-			pbSubcomment, err = h.GetSubcommentContent(subcomment)
-			if err == nil {
-				if voted, _ := inSlice(pbSubcomment.VoterIds, userId); voted {
-					err = dbmodel.ErrUserNotAllowed
-				} else {
-					pbSubcomment.Upvotes++
-					pbSubcomment.VoterIds = append(pbSubcomment.VoterIds, userId)
-					// increment interactions and calculata new average update time only
-					// if this user has not undone an interaction on this content before.
-					undoner, _ := inSlice(pbSubcomment.UndonerIds, userId)
-					if !undoner {
-						incInteractions(pbSubcomment.Metadata)
-					}
-					subcommentBytes, err = proto.Marshal(pbSubcomment)
-				}
-			}
-			select {
-			case done <- err:
-			case <-quit:
-			}
-		}()
-		// Get and update comment metadata.
-		go func() {
-			var err error
-			pbComment, err = h.GetCommentContent(comment)
-			if err == nil {
-				// Increment interactions and calculata new average update time only
-				// if this user has not undone an interaction on this content before.
-				undoner, _ := inSlice(pbComment.UndonerIds, userId)
-				if !undoner {
-					incInteractions(pbComment.Metadata)
-				}
-				commentBytes, err = proto.Marshal(pbComment)
-			}
-			select {
-			case done <- err:
-			case <-quit:
-			}
-		}()
-		// Get and update thread metadata.
-		go func() {
-			var err error
-			pbThread, err = h.GetThreadContent(thread)
-			if err == nil {
-				// Increment interactions and calculata new average update time only
-				// if this user has not undone an interaction on this content before.
-				undoner, _ := inSlice(pbThread.UndonerIds, userId)
-				if !undoner {
-					incInteractions(pbThread.Metadata)
-				}
-				threadBytes, err = proto.Marshal(pbThread)
-			}
-			select {
-			case done <- err:
-			case <-quit:
-			}
-		}()
-		// Check for errors.
-		var err error
-		for i := 0; i < 3; i++ {
-			err = <-done
+		// Get thread which both the comment and subcomment belongs to.
+		threadBytes, err := getThreadBytes(tx, threadId)
+		if err != nil {
+			log.Printf("Could not find thread %s in section %s: %v.\n", 
+				threadId, sectionId, err)
+			return err
+		}
+		if err = proto.Unmarshal(threadBytes, pbThread); err != nil {
+			log.Printf("Could not unmarshal content: %v.\n", err)
+			return err
+		}
+		// Increment interactions and calculata new average update time only
+		// if this user has not undone an interaction on this content before.
+		undoner, _ := inSlice(pbThread.UndonerIds, userId)
+		if !undoner {
+			incInteractions(pbThread.Metadata)
+			threadBytes, err = proto.Marshal(pbThread)
 			if err != nil {
-				close(quit)
+				log.Printf("Could not marshal content: %v.\n", err)
+				return err
+			}
+			if err = setThreadBytes(tx, threadId, threadBytes); err != nil {
 				return err
 			}
 		}
-		err = setSubcommentBytes(tx, thread.Id, comment.Id, subcomment.Id, subcommentBytes)
+		// Get comment which the subcomment belongs to.
+		commentBytes, err := getCommentBytes(tx, threadId, commentId)
 		if err != nil {
+			log.Printf("Could not find comment %s in thread %s in section %s: %v.\n",
+				commentId, threadId, sectionId, err)
 			return err
 		}
-		err = setCommentBytes(tx, thread.Id, comment.Id, commentBytes)
-		if err != nil {
+		if err = proto.Unmarshal(commentBytes, pbComment); err != nil {
+			log.Printf("Could not unmarshal content: %v.\n", err)
 			return err
 		}
-		return setThreadBytes(tx, thread.Id, threadBytes)
+		// Increment interactions and calculata new average update time only
+		// if this user has not undone an interaction on this content before.
+		undoner, _ = inSlice(pbComment.UndonerIds, userId)
+		if !undoner {
+			incInteractions(pbComment.Metadata)
+			commentBytes, err = proto.Marshal(pbComment)
+			if err = setCommentBytes(tx, threadId, commentId, commentBytes); err != nil {
+				return err
+			}
+		}
+		// Get subcomment.
+		subcommentBytes, err := getSubcommentBytes(tx, threadId, commentId, subcommentId)
+		if err != nil {
+			log.Printf("Could not find subcomment %s in comemnt %s in thread %s in section %s: %v.\n",
+				subcommentId, commentId, threadId, sectionId, err)
+			return err
+		}
+		if err = proto.Unmarshal(subcommentBytes, pbSubcomment); err != nil {
+			log.Printf("Could not unmarshal content: %v.\n", err)
+			return err
+		}
+		// Check whether the user has already upvoted this subcomment.
+		if voted, _ := inSlice(pbSubcomment.VoterIds, userId); voted {
+			return dbmodel.ErrUserNotAllowed
+		}
+		pbSubcomment.Upvotes++
+		pbSubcomment.VoterIds = append(pbSubcomment.VoterIds, userId)
+		// Increment interactions and calculata new average update time only
+		// if this user has not undone an interaction on this content before.
+		undoner, _ = inSlice(pbSubcomment.UndonerIds, userId)
+		if !undoner {
+			incInteractions(pbSubcomment.Metadata)
+		}
+		subcommentBytes, err = proto.Marshal(pbSubcomment)
+		if err != nil {
+			log.Printf("Could not marshal subcomment: %v\n", err)
+			return err
+		}
+		return setSubcommentBytes(tx, threadId, commentId, subcommentId, subcommentBytes)
 	})
 	if err != nil {
-		log.Println(err)
 		return nil, err
 	}
 	// Set notification only if the submitter is not the subcomment author.
@@ -433,23 +469,50 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 // has received, removes the user id from the list of voters and appends it to the
 // list of undoners. It does not update the interactions of the subcomment.
 func (h *handler) UndoUpvoteSubcomment(userId string, subcomment *pbContext.Subcomment) error {
-	pbSubcomment, err := h.GetSubcommentContent(subcomment)
-	if err != nil {
-		return err
+	var (
+		subcommentId = subcomment.Id
+		commentId    = subcomment.CommentCtx.Id
+		threadId     = subcomment.CommentCtx.ThreadCtx.Id
+		sectionId    = subcomment.CommentCtx.ThreadCtx.SectionCtx.Id
+	)
+	// Check whether the section exists.
+	sectionDB, ok := h.sections[sectionId]
+	if !ok {
+		return dbmodel.ErrSectionNotFound
 	}
-	voted, idx := inSlice(pbSubcomment.VoterIds, userId)
-	if !voted {
-		return dbmodel.ErrNotUpvoted
-	}
-	pbSubcomment.Upvotes--
+	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
+		// Get subcomment.
+		subcommentBytes, err := getSubcommentBytes(tx, threadId, commentId, subcommentId)
+		if err != nil {
+			log.Printf("Could not find subcomment %s in comemnt %s in thread %s in section %s: %v.\n",
+				subcommentId, commentId, threadId, sectionId, err)
+			return err
+		}
+		pbSubcomment := new(pbDataFormat.Content)
+		if err = proto.Unmarshal(subcommentBytes, pbSubcomment); err != nil {
+			log.Printf("Could not unmarshal content: %v.\n", err)
+			return err
+		}
+		// Check whether the user has upvoted this subcomment and get the index.
+		voted, idx := inSlice(pbSubcomment.VoterIds, userId)
+		if !voted {
+			return dbmodel.ErrNotUpvoted
+		}
+		pbSubcomment.Upvotes--
+		last := len(pbSubcomment.VoterIds) - 1
+		pbSubcomment.VoterIds[idx] = pbSubcomment.VoterIds[last]
+		pbSubcomment.VoterIds = pbSubcomment.VoterIds[:last]
 
-	last := len(pbSubcomment.VoterIds) - 1
-	pbSubcomment.VoterIds[idx] = pbSubcomment.VoterIds[last]
-	pbSubcomment.VoterIds = pbSubcomment.VoterIds[:last]
-
-	undoner, _ := inSlice(pbSubcomment.UndonerIds, userId)
-	if !undoner {
-		pbSubcomment.UndonerIds = append(pbSubcomment.UndonerIds, userId)
-	}
-	return h.SetSubcommentContent(subcomment, pbSubcomment)
+		undoner, _ := inSlice(pbSubcomment.UndonerIds, userId)
+		if !undoner {
+			pbSubcomment.UndonerIds = append(pbSubcomment.UndonerIds, userId)
+		}
+		// Update subcomment.
+		subcommentBytes, err = proto.Marshal(pbSubcomment)
+		if err != nil {
+			log.Printf("Could not marshal content: %v.\n", err)
+			return err
+		}
+		return setSubcommentBytes(tx, threadId, commentId, subcommentId, subcommentBytes)
+	})
 }
