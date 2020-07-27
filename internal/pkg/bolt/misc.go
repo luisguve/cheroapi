@@ -286,7 +286,7 @@ func getCommentsBucket(tx *bolt.Tx, threadId string) (*bolt.Bucket, string, erro
 
 	comments := commentsBucket.Bucket([]byte(threadId))
 	if comments == nil {
-		return nil, "", dbmodel.ErrBucketNotFound
+		return nil, "", dbmodel.ErrCommentsBucketNotFound
 	}
 	return comments, name, nil
 }
