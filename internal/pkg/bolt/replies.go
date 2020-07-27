@@ -32,8 +32,8 @@ import (
 func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*pbApi.NotifyUser, error) {
 	var (
 		sectionId = thread.SectionCtx.Id
-		pbComment *pbDataFormat.Content
-		pbThread  *pbDataFormat.Content
+		pbComment = new(pbDataFormat.Content)
+		pbThread  = new(pbDataFormat.Content)
 	)
 	// check whether the section exists
 	sectionDB, ok := h.sections[sectionId]
@@ -44,8 +44,13 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 	// the same transaction.
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
 		var err error
-		pbThread, err = h.GetThreadContent(thread)
+		threadBytes, err := getThreadBytes(tx, thread.Id)
 		if err != nil {
+			log.Printf("Could not find thread %s in section %s: %v.\n", thread.Id, sectionId, err)
+			return err
+		}
+		if err = proto.Unmarshal(threadBytes, pbThread); err != nil {
+			log.Printf("Could not unmarshal content: %v\n", err)
 			return err
 		}
 		commentsBucket, err := getActiveCommentsBucket(tx, thread.Id)
@@ -159,8 +164,8 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		commentId   = comment.Id
 		threadId    = comment.ThreadCtx.Id
 		sectionId   = comment.ThreadCtx.SectionCtx.Id
-		pbThread    *pbDataFormat.Content
-		pbComment   *pbDataFormat.Content
+		pbThread    = new(pbDataFormat.Content)
+		pbComment   = new(pbDataFormat.Content)
 	)
 	// check whether the section exists
 	sectionDB, ok := h.sections[sectionId]
@@ -170,41 +175,26 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 	// Get thread, comment and user and format, marshal and save comment and
 	// update user, thread and comment in the same transaction.
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		var (
-			done  = make(chan error)
-			quit  = make(chan error)
-			numGR = 0
-		)
 		// Get thread which the comment belongs to.
-		numGR++
-		go func() {
-			var err error
-			pbThread, err = h.GetThreadContent(comment.ThreadCtx)
-			select {
-			case done<- err:
-			case <-quit:
-			}
-		}()
+		threadBytes, err := getThreadBytes(tx, threadId)
+		if err != nil {
+			log.Printf("Could not find thread %s in section %s: %v.\n", threadId, sectionId, err)
+			return err
+		}
+		if err = proto.Unmarshal(threadBytes, pbThread); err != nil {
+			log.Printf("Could not unmarshal content: %v.\n", err)
+			return err
+		}
 		// Get comment which the subcomment is being submitted on.
-		numGR++
-		go func() {
-			var err error
-			pbComment, err = h.GetCommentContent(comment)
-			select {
-			case done<- err:
-			case <-quit:
-			}
-		}()
-		// Check for errors. It terminates every go-routine hung on the statement
-		// "case done<- err" by closing the channel quit and returns the first err
-		// read.
-		var err error
-		for i := 0; i < numGR; i++ {
-			err = <-done
-			if err != nil {
-				close(quit)
-				return err
-			}
+		commentBytes, err := getCommentBytes(tx, threadId, commentId)
+		if err != nil {
+			log.Printf("Could not find comment %s in thread %s in section %s: %v.\n",
+				commentId, threadId, sectionId, err)
+			return err
+		}
+		if err = proto.Unmarshal(commentBytes, pbComment); err != nil {
+			log.Printf("Could not unmarshal content: %v.\n", err)
+			return err
 		}
 		subcommentsBucket, err := getActiveSubcommentsBucket(tx, threadId, commentId)
 		if err != nil {
@@ -266,12 +256,12 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		// Update thread metadata.
 		pbThread.Replies++
 		incInteractions(pbThread.Metadata)
-		contentBytes, err := proto.Marshal(pbThread)
+		threadBytes, err = proto.Marshal(pbThread)
 		if err != nil {
 			log.Printf("Could not marshal content: %v\n", err)
 			return err
 		}
-		err = setThreadBytes(tx, threadId, contentBytes)
+		err = setThreadBytes(tx, threadId, threadBytes)
 		if err != nil {
 			return err
 		}
@@ -279,12 +269,12 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		pbComment.Replies++
 		pbComment.ReplierIds = append(pbComment.ReplierIds, reply.Submitter)
 		incInteractions(pbComment.Metadata)
-		contentBytes, err = proto.Marshal(pbComment)
+		commentBytes, err = proto.Marshal(pbComment)
 		if err != nil {
 			log.Printf("Could not marshal content: %v\n", err)
 			return err
 		}
-		return setCommentBytes(tx, threadId, commentId, contentBytes)
+		return setCommentBytes(tx, threadId, commentId, commentBytes)
 	})
 	if err != nil {
 		log.Println(err)
