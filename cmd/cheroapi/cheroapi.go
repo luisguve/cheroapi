@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	h, err := bolt.New("C:/cherofiles/db")
+	h, err := bolt.New("C:/cheroapi_files/db")
 	if err != nil {
 		log.Fatalf("Could not setup database: %v\n", err)
 	}
