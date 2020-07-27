@@ -338,6 +338,8 @@ func (h *handler) MapUsername(newUsername, userId string) error {
 // UpdateUser gets the user with the given user id, passes it to updateUserFn,
 // which modifies it then returns it, and marshals the resulting pbUser and puts
 // it into the database with userId as the key, all in the same transaction.
+// If updateFn returns nil, it does not marshal the pbUser, does not update
+// the database and returns a nil error.
 func (h *handler) UpdateUser(userId string, updateFn dbmodel.UpdateUserFunc) error {
 	return h.users.Update(func(tx *bolt.Tx) error {
 		usersBucket := tx.Bucket([]byte(usersB))
@@ -357,6 +359,9 @@ func (h *handler) UpdateUser(userId string, updateFn dbmodel.UpdateUserFunc) err
 			return err
 		}
 		pbUser = updateFn(pbUser)
+		if pbUser == nil {
+			return nil
+		}
 		userBytes, err = proto.Marshal(pbUser)
 		if err != nil {
 			log.Printf("Could not marshal user: %v\n", err)

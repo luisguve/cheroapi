@@ -207,10 +207,11 @@ func (s *Server) FollowUser(ctx context.Context, req *pbApi.FollowUserRequest) (
 		err := s.dbHandler.UpdateUser(followerId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
 			// Check whether the user is already following the other user.
 			following, _ := inSlice(pbUser.FollowingIds, followingId)
-			if !following {
-				// Update users' data.
-				pbUser.FollowingIds = append(pbUser.FollowingIds, followingId)
+			if following {
+				return nil
 			}
+			// Update users' data.
+			pbUser.FollowingIds = append(pbUser.FollowingIds, followingId)
 			return pbUser
 		})
 		select {
@@ -218,16 +219,17 @@ func (s *Server) FollowUser(ctx context.Context, req *pbApi.FollowUserRequest) (
 		case <-quit:
 		}
 	}()
-	// Data of new following.
+	// Data of user following.
 	numGR++
 	go func() {
 		err := s.dbHandler.UpdateUser(followingId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
 			// Check whether the user is already a follower of the other user.
 			follower, _ := inSlice(pbUser.FollowersIds, followerId)
-			if !follower {
-				// Update users' data.
-				pbUser.FollowersIds = append(pbUser.FollowersIds, followerId)
+			if follower {
+				return nil
 			}
+			// Update users' data.
+			pbUser.FollowersIds = append(pbUser.FollowersIds, followerId)
 			return pbUser
 		})
 		select {
@@ -287,11 +289,12 @@ func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserReques
 	go func() {
 		err := s.dbHandler.UpdateUser(followerId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
 			following, idx := inSlice(pbUser.FollowingIds, followingId)
-			if following {
-				last := len(pbUser.FollowingIds) - 1
-				pbUser.FollowingIds[idx] = pbUser.FollowingIds[last]
-				pbUser.FollowingIds = pbUser.FollowingIds[:last]
+			if !following {
+				return nil
 			}
+			last := len(pbUser.FollowingIds) - 1
+			pbUser.FollowingIds[idx] = pbUser.FollowingIds[last]
+			pbUser.FollowingIds = pbUser.FollowingIds[:last]
 			return pbUser
 		})
 		select {
@@ -304,11 +307,12 @@ func (s *Server) UnfollowUser(ctx context.Context, req *pbApi.UnfollowUserReques
 	go func() {
 		err := s.dbHandler.UpdateUser(followingId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
 			follower, idx := inSlice(pbUser.FollowersIds, followerId)
-			if follower {
-				last := len(pbUser.FollowersIds) - 1
-				pbUser.FollowersIds[idx] = pbUser.FollowersIds[last]
-				pbUser.FollowersIds = pbUser.FollowersIds[:last]
+			if !follower {
+				return nil
 			}
+			last := len(pbUser.FollowersIds) - 1
+			pbUser.FollowersIds[idx] = pbUser.FollowersIds[last]
+			pbUser.FollowersIds = pbUser.FollowersIds[:last]
 			return pbUser
 		})
 		select {
@@ -350,15 +354,16 @@ func (s *Server) SaveThread(ctx context.Context, req *pbApi.SaveThreadRequest) (
 				break
 			}
 		}
-		if !saved {
-			if _, getErr = s.dbHandler.GetThreadContent(thread); getErr != nil {
-				return pbUser
-			}
-			if getErr = s.dbHandler.AppendUserWhoSaved(thread, userId); getErr != nil {
-				return pbUser
-			}
-			pbUser.SavedThreads = append(pbUser.SavedThreads, thread)
+		if saved {
+			return nil
 		}
+		if _, getErr = s.dbHandler.GetThreadContent(thread); getErr != nil {
+			return nil
+		}
+		if getErr = s.dbHandler.AppendUserWhoSaved(thread, userId); getErr != nil {
+			return nil
+		}
+		pbUser.SavedThreads = append(pbUser.SavedThreads, thread)
 		return pbUser
 	})
 	if err != nil {
@@ -390,17 +395,22 @@ func (s *Server) UndoSaveThread(ctx context.Context, req *pbApi.UndoSaveThreadRe
 	)
 	err := s.dbHandler.UpdateUser(userId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
 		// Find and remove reference to the thread.
+		var found bool
 		for idx, t := range pbUser.SavedThreads {
 			if (t.SectionCtx.Id == sectionId) && (t.Id == id) {
 				setErr = s.dbHandler.RemoveUserWhoSaved(req.Thread, userId)
 				if setErr != nil {
-					return pbUser
+					return nil
 				}
+				found = true
 				last := len(pbUser.SavedThreads) - 1
 				pbUser.SavedThreads[idx] = pbUser.SavedThreads[last]
 				pbUser.SavedThreads = pbUser.SavedThreads[:last]
 				break
 			}
+		}
+		if !found {
+			return nil
 		}
 		return pbUser
 	})
