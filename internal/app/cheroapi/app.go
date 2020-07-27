@@ -29,8 +29,8 @@ type App struct {
 	srv Server
 }
 
-func (a *App) Run() error {
-	lis, err := net.Listen("tcp", "0.0.0.0:50051")
+func (a *App) Run(addr string) error {
+	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("Failed to listen: %v\n", err)
 	}

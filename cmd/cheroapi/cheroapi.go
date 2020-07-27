@@ -14,9 +14,14 @@ import (
 	"github.com/luisguve/cheroapi/internal/pkg/server"
 )
 
+type grpcConfig struct {
+	BindAddress string `toml:"bind_address"`
+}
+
 type cheroapiConfig struct {
 	SectionsPath string `toml:"sections"`
 	DBdir        string `toml:"db_dir"`
+	SrvConf      grpcConfig `toml:"grpc_config"`
 }
 
 func siteConfig(file string, vars ...string) (map[string]string, error) {
@@ -67,5 +72,5 @@ func main() {
 	srv := server.New(h)
 	// Start App.
 	a := app.New(srv)
-	log.Fatal(a.Run())
+	log.Fatal(a.Run(cheroConfig.SrvConf.BindAddress))
 }
