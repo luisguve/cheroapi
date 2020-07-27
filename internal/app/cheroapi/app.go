@@ -88,6 +88,6 @@ func (a *App) Run() error {
 	secondsLeft := int(diff.Seconds()) - (hoursLeft * 60 * 60) - (minutesLeft * 60)
 
 	defaultLog.Printf("Next QA: %v (in %v hours, %v minutes, %v seconds)",
-		nextQA.Format(time.Stamp), hoursLeft, minutesLeft, secondsLeft)
+		nextQA.Format(time.RFC822), hoursLeft, minutesLeft, secondsLeft)
 	return s.Serve(lis)
 }
