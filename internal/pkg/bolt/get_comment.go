@@ -338,7 +338,7 @@ func (h *handler) GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.Co
 				case done <- err:
 				case <-quit:
 				}
-			}(k, v, count-n)
+			}(k, v, count - (n + 1))
 		}
 		// Check for errors. It terminates every go-routine hung on the statement
 		// "case done<- err" by closing the channel quit and returns the first err
