@@ -102,7 +102,7 @@ func New(path string, sectionIds map[string]string) (dbmodel.Handler, error) {
 	sectionsDBs := make(map[string]section)
 
 	// open or create section databases
-	for sectionName, sectionId := range sectionIds {
+	for sectionId, sectionName := range sectionIds {
 		dbPath := filepath.Join(path, sectionId)
 		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 			os.MkdirAll(dbPath, os.ModeDir)
