@@ -44,6 +44,8 @@ type comment struct {
 	// expNotif *pbApi.NotifyUser
 }
 
+var sections = map[string]string{"mylife": "My life"}
+
 // Register users, then create threads, then leave replies on those threads.
 func TestThread(t *testing.T) {
 	dir, err := ioutil.TempDir("db", "storage")
@@ -55,7 +57,7 @@ func TestThread(t *testing.T) {
 			t.Errorf("RemoveAll Error: %v\n", err)
 		}
 	}()
-	db, err := bolt.New(dir)
+	db, err := bolt.New(dir, sections)
 	if err != nil {
 		t.Errorf("DB open error: %v\n", err)
 	}
