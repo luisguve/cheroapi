@@ -51,11 +51,13 @@ func (h *handler) QA() (string, error) {
 		numGR++
 		go func(s section) {
 			var (
+				sectionSummary string
 				localDone = make(chan resultErr)
 				localQuit = make(chan struct{})
 				numGR       int
 			)
 			defer close(localQuit)
+			sectionSummary = fmt.Sprintf("\t[%v]\n", s.name)
 			err := s.contents.View(func(tx *bolt.Tx) error {
 				activeContents := tx.Bucket([]byte(activeContentsB))
 				if activeContents == nil {
@@ -83,6 +85,9 @@ func (h *handler) QA() (string, error) {
 					published := time.Unix(pbThread.PublishDate.Seconds, 0)
 					diff := now.Sub(published)
 					if diff < (24 * time.Hour) {
+						sectionSummary += fmt.Sprintln("-----------------------------------------------------")
+						sectionSummary += fmt.Sprintf("%s has been around for less than one day, ", pbThread.Title)
+						sectionSummary += fmt.Sprintf("hence it is not a candidate for moving to archived contents.\n")
 						continue
 					}
 					m := pbThread.Metadata
@@ -98,7 +103,11 @@ func (h *handler) QA() (string, error) {
 					// interactions must be no longer than 1 hour.
 					// If so, it will be skipped.
 					min := 1 * time.Hour
-					if (m.Interactions > 100) && (avgUpdateTime <= min.Seconds()) {
+					if (m.Interactions > 49) && (avgUpdateTime <= min.Seconds()) {
+						sectionSummary += fmt.Sprintln("-----------------------------------------------------")
+						sectionSummary += fmt.Sprintf("With an average update time difference of %v (< %v), ", avgUpdateTime, min.Seconds())
+						sectionSummary += fmt.Sprintf("and a total of %v interactions (> 49), %s keeps active.\n", m.Interactions, 
+							pbThread.Title)
 						continue
 					}
 					// Otherwise, it will be moved to the bucket of archived contents,
@@ -109,14 +118,22 @@ func (h *handler) QA() (string, error) {
 					copyVal := make([]byte, len(v))
 					copy(copyVal, v)
 					numGR++
-					go func(k, v []byte, c *pbDataFormat.Content) {
-						var resErr resultErr
-						resErr.result, resErr.err = h.moveContents(s, k, v, c)
+					go func(k, v []byte, c *pbDataFormat.Content, avgUpdateTime float64) {
+						var (
+							result string
+							resErr resultErr
+						)
+						resErr.result += fmt.Sprintln("-----------------------------------------------------")
+						resErr.result += fmt.Sprintf("With an average update time difference of %v, ", avgUpdateTime)
+						resErr.result += fmt.Sprintf("and a total of %v interactions, %s will be moved to archived contents.\n", 
+							c.Metadata.Interactions, pbThread.Title)
+						result, resErr.err = h.moveContents(s, k, v, c)
+						resErr.result += result
 						select {
 						case localDone<- resErr:
 						case <-localQuit:
 						}
-					}(copyKey, copyVal, pbThread)
+					}(copyKey, copyVal, pbThread, avgUpdateTime)
 				}
 				// Move comments and subcomments associated to deleted threads.
 				deletedContents := activeContents.Bucket([]byte(deletedThreadsB))
@@ -159,7 +176,6 @@ func (h *handler) QA() (string, error) {
 			}
 			var (
 				resErr resultErr
-				sectionSummary string
 				// Flag to indicate that an error was found and that no more
 				// errors will be checked.
 				foundErr bool
@@ -226,7 +242,7 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, pbConten
 		result string
 		err    error
 	)
-	result += fmt.Sprintf("[%s]\tMoving thread %s to archived contents... ", s.name, threadId)
+	result += fmt.Sprintf("Moving %s to archived contents... ", threadId)
 	err = s.contents.Update(func(tx *bolt.Tx) error {
 		activeContents := tx.Bucket([]byte(activeContentsB))
 		if activeContents == nil {
