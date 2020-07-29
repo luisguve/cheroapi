@@ -59,6 +59,21 @@ A piece of content will stay active if it has interactions constantly, and that 
 
 That's how posts are listed in a section, but other types of contents, such as comments in a post and activities from a user follow the same idea of reducing the pagination of contents to a single button of **recycling**.
 
+Now let's take a look at the levels of contents: post->comment->subcomment.
+
+The idea is that a subcomment is inside of a comment, which in turn is inside of a thread (which belongs to a section).
+
+In the view of the post page, the grid of comments begins at the end of the post content and like the contents in a section, they are ordered in a random fashion, following a given pattern, and again, more comments are gotten with the *recycle* button.
+
+The flow is totally different when we're viewing the subcomments of any comment; this is the only content shown sequentially (one below each other) and by chronological order. It makes sense that this is the only place where a discussion forum-alike between several user could exist, making a thread.
+
+There are only two more views: the dashboard and the user profile.
+
+- The dashboard is divided by three sections: recent activity of users followed, own activity and saved posts. All with their own *pattern* and their *recycle* button. Are considered activity posts published, comments and subcomments.
+- The user profile lists the recent activity of the user. Again, with its own *pattern* and *recycle* button.
+
+This model of content listing in a random fashion (with the exception of the subcomments), is designed for every post to have the same probabilities to be viewed by all the users, but at the same time to keep the representation of importance and popularity, asigning to every post a specific spot in the grid, depending upon its activity.
+
 ___
 
 Sus caracteristicas son similares a las de un foro de discusión; usuarios crean posts en una sección y otros usuarios los ven en la página de la seccion, pueden entrar en la página del post, dejar un comentario, o responder un comentario del post. Es decir, hay hasta tres niveles aqui: post->comentario->subcomentario. 
