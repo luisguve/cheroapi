@@ -4,5 +4,8 @@ sections = "C:/cheroshared_files/sections.env"
 # Specify the absolute path of the directory where the database files will live in.
 db_dir = "C:/cheroapi_files/db"
 
+# Specify the absolute path of the directory where the log files will live in.
+log_dir = "C:/cheroapi_files/logs"
+
 [grpc_config]
 bind_address = "localhost:50051"
