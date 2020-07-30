@@ -22,6 +22,7 @@ type cheroapiConfig struct {
 	SectionsPath string `toml:"sections"`
 	DBdir        string `toml:"db_dir"`
 	SrvConf      grpcConfig `toml:"grpc_config"`
+	LogDir       string `toml:"log_dir"`
 }
 
 func siteConfig(file string, vars ...string) (map[string]string, error) {
@@ -71,6 +72,6 @@ func main() {
 	}
 	srv := server.New(h)
 	// Start App.
-	a := app.New(srv)
+	a := app.New(srv, cheroConfig.LogDir)
 	log.Fatal(a.Run(cheroConfig.SrvConf.BindAddress))
 }

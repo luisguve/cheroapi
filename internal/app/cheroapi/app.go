@@ -5,6 +5,7 @@ import (
 	defaultLog "log"
 	"net"
 	"os"
+	"path/filepath"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -19,14 +20,16 @@ type Server interface {
 	QA() (string, error)
 }
 
-func New(s Server) *App {
+func New(s Server, logPath string) *App {
 	return &App{
-		srv: s,
+		logFile: filepath.Join(logPath, "QA.log"),
+		srv:     s,
 	}
 }
 
 type App struct {
-	srv Server
+	logFile string
+	srv     Server
 }
 
 func (a *App) Run(addr string) error {
@@ -42,7 +45,7 @@ func (a *App) Run(addr string) error {
 	QAscheduler := gocron.NewScheduler(time.UTC)
 	QAscheduler.Every(1).Day().Do(func() {
 		logger := log.New()
-		logFile, err := os.OpenFile("C:cheroapi_files/logs/QA.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		logFile, err := os.OpenFile(a.logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err == nil {
 			logger.SetOutput(logFile)
 			defer logFile.Close()
