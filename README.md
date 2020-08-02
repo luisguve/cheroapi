@@ -145,20 +145,4 @@ Adicionalmente, tiene potencial para adoptar una temática de sandias (de ahi la
 
 ¿Por que Chero? puede ser un nuevo término, un saludo... Chero everyone!
 
----
-
-Sean bienvenidos al equipo de desarrollo de Cheropatilla, una plataforma social que introduce un sistema de paginación de contenido como ningun otro.
-
-Este grupo será para organizar ideas sobre las caracteristicas del sistema y los detalles de su implementación, compartir sugerencias para que el resto de los integrantes den su punto de vista y aclarar dudas sobre el codigo fuente.
-
-Por aqui solo se compartirá informacion que el resto del equipo deba saber; anuncios sobre el estado del desarrollo, todas las decisiones que se tomen y recomendaciones sobre cambios que puedan considerarse radicales. En otras palabras, el grupo es solo para publicaciones importantes.
-
-También es válido compartir material referente a temas de programación y diseño web, como tutoriales y mejores prácticas, pero estas publicaciones deben estar acompañadas con una propuesta para mejorar o desarrollar algo.
-
-El resto de la comunicación será a través del grupo en Telegram: https://t.me/cherodevelopers, donde podrán plantear sus dudas y compartir sus ideas de forma mas rápida.
-
-Mi experiencia en programación es poca; he sido programador aficionado durante los ultimos dos años. Asi que este inicié este proyecto principalmente para adquirir experiencia, pero no abandono la idea de que pueda convertirse en un éxito comercial por su originalidad.
-
-Este es un proyecto amateur: no contamos con ningun tipo de financiamiento. En este equipo se admiten profesionales y aficionados de las tecnologias informaticas y el diseño web, con o sin experiencia. El unico requisito indispensable es la disposición a aportar ideas, compartir conocimientos y experiencia.
-
 - Luis Villegas
