@@ -8,7 +8,7 @@ This repository contains the implementation for the CrudCheropatilla service, as
 
 **Cheropatilla** is a social platform that introduces a pagination system like no other else.
 
-It's features are pretty similar to a regular discussion forum; users can create *posts* in a *section*, other users can leave *replies* on that post or other replies on the post, i.e. there are three levels of contents: post->comments->subcomments.
+It's features are pretty similar to a regular discussion forum; users can create *posts* in a *section*, other users can leave *replies* on that post or on other replies of the post, so that there are three levels of contents: post->comments->subcomments.
 
 Users can also have followers and follow other users so that they can see the recent activity of the users they follow in their homepage (their posts, comments and subcomments).
 
@@ -18,20 +18,21 @@ The feature that differentiates it from the rest is the way it makes **paginatio
 
 * **Infinite scrolling 1**; showing contents sequentially in cronological order and requesting more contents as the last one was reached. An example: **Twitter**.
 * **Infinide scrolling 2**; showing contents sequentially, using an algorithm as complex as necessary to define the order in which they appear in the screen. For example: **Facebook**.
+![infinite scrolling by twitter](twitter_infinite_scrolling.gif)
 * **Usual pagination 1**; distributing the content in *pages* and showing a navigation bar at the top or the bottom of the screen. In each page it shows contents sequentially in cronological order, e.g. any blog made in **WordPress**.
-* **Usual pagination 2**; showing the same navigation in the pages but the contents are placed by order of relevance defined by a complex algorithm. For example: **Google search**
-
+* **Usual pagination 2**; showing the same navigation bar in the pages but the contents are placed by order of relevance defined by a complex algorithm. For example: **Google search**
+![google pagination](google_pagination.PNG)
 Now how it works in **Cheropatilla**
 
-24 contents per page: 15 of them are new, 8 are relevants and 1 of them is the main content, which turns out to be the most popular at the time. In the frontend, a grid where each content occupies a different number of cells, is rendered as shown in the following picture:
+24 contents per page: 15 of them are **new**, 8 are **popular** and 1 of them is the **main** content, which turns out to be the most popular at the time. In the frontend, a grid where each content occupies a different number of cells, is rendered following this model:
 
 ![Grid of contents](grid.png)
 
 The most **new** contents are placed in the **smaller tiles**, the **outstanding** ones are placed in the **mid-size tiles** and the **main** content is in the **greatest tile**.
 
-The order in which the contents are arranged by their quality is called ***the pattern***.
+The order in which the contents are arranged by their status (i.e. *new*, *popular* or *top*) is called ***the pattern***.
 
-The way in which the contents are returned is completely random; the user enters the page of a section and the server fills the pattern in a random fashion with ***active*** contents from the section. To be exact, this is the algorithm summarized in three steps:
+The way in which the contents are returned to make up a feed is completely random; the user enters the page of a section and the server fills the pattern in a random fashion with ***active*** contents from the section. To be exact, this is the algorithm summarized in three steps:
 
 1. Load all the *active* contents from the database into an array.
 1. Classify the contents in three categories: *new*, *outstanding* and *main*.
@@ -45,9 +46,9 @@ Now another step is placed in between the **step 1** and **step 2** from the pre
 
 The way feeds are requested is through the button ***Recycle***. The contents (and the order) that are obtained by recicling the page is actually unpredictable, but three things can be guaranteed:
 
-1. The main content will **always** be the most outstanding of all the **active** contents. At the first recycle, the spot of the main content will be taken by the second most outstanding; at the second recycle, by the third most oustanding and so on in each recycle.
+1. The main content will **always** be the most popular of all the **active** contents. At the first recycle, the spot of the main content will be taken by the second most popular; at the second recycle, by the third most oustanding and so on in each recycle.
 1. The contents received by the client between recycles will **never** be repeated.
-1. The server will follow the pattern as much as possible, but in the case in which there are less outstanding contents than the required by the pattern, their places will be taken by contents classified as new and viceversa.
+1. The server will follow the pattern as much as possible, but in the case in which there are less popular contents than the required by the pattern, their places will be taken by contents classified as new and viceversa.
 
 As I mentioned earlier, the contents are taken from the database only if they're *active*.
 
