@@ -97,7 +97,12 @@ func (h *handler) QA() (string, error) {
 					diff = now.Sub(lastUpdated)
 					diff += time.Duration(m.Diff) * time.Second
 
-					avgUpdateTime := diff.Seconds() / float64(m.Interactions)
+					var avgUpdateTime float64
+					if m.Interactions > 0 {
+						avgUpdateTime = diff.Seconds() / float64(m.Interactions)
+					} else {
+						avgUpdateTime = diff.Seconds()
+					}
 					// Check whether the thread is still relevant. It should have more
 					// than 100 interactions and the average time difference between
 					// interactions must be no longer than 1 hour.
@@ -623,7 +628,7 @@ func (h *handler) moveSubcomments(actSubcomKeys, archSubcomKeys *bolt.Bucket) re
 			result += "Done.\n"
 			// Update activity of user. This can be done in another go-routine.
 			numGR++
-			go func(k, v []byte) {
+			go func(k, v, comKey []byte) {
 				var resErr resultErr
 				pbContent := new(pbDataFormat.Content)
 				err := proto.Unmarshal(v, pbContent)
@@ -657,7 +662,7 @@ func (h *handler) moveSubcomments(actSubcomKeys, archSubcomKeys *bolt.Bucket) re
 				case done<- resErr:
 				case <-quit:
 				}
-			}(k, v)
+			}(k, v, comKey)
 		}
 	}
 	var (
