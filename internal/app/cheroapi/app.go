@@ -50,7 +50,7 @@ func (a *App) Run(addr string) error {
 			logger.SetOutput(logFile)
 			defer logFile.Close()
 		} else {
-			log.WithFields(log.Fields{
+			logger.WithFields(log.Fields{
 				"package":  "cheroapi",
 				"file":     "app.go",
 				"function": "scheduled QA",
@@ -58,7 +58,7 @@ func (a *App) Run(addr string) error {
 		}
 		summary, err := a.srv.QA()
 		if err != nil {
-			log.WithFields(log.Fields{
+			logger.WithFields(log.Fields{
 				"package":  "cheroapi",
 				"file":     "app.go",
 				"function": "scheduled QA",
@@ -66,14 +66,14 @@ func (a *App) Run(addr string) error {
 			return
 		}
 		if summary == "" {
-			log.WithFields(log.Fields{
+			logger.WithFields(log.Fields{
 				"package":  "cheroapi",
 				"file":     "app.go",
 				"function": "scheduled QA",
 			}).Error("QA returned the empty summary")
 			return
 		}
-		log.WithFields(log.Fields{
+		logger.WithFields(log.Fields{
 			"package":  "cheroapi",
 			"file":     "app.go",
 			"function": "scheduled QA",
