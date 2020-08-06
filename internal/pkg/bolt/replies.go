@@ -136,7 +136,9 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		}
 		subj := fmt.Sprintf("On your thread %s", pbThread.Title)
 		notifType := pbDataFormat.Notif_COMMENT
-		notifyUser := h.notifyInteraction(reply.Submitter, toNotify, msg, subj, notifType, pbComment)
+		// Add fragment comments to permalink.
+		pbThread.Permalink += "#comments"
+		notifyUser := h.notifyInteraction(reply.Submitter, toNotify, msg, subj, notifType, pbThread)
 
 		return notifyUser, err
 	}
