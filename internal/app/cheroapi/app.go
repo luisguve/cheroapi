@@ -32,15 +32,7 @@ type App struct {
 	srv     Server
 }
 
-func (a *App) Run(addr string) error {
-	lis, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("Failed to listen: %v\n", err)
-	}
-	s := grpc.NewServer()
-
-	pbApi.RegisterCrudCheropatillaServer(s, a.srv.(pbApi.CrudCheropatillaServer))
-
+func (a *App) scheduleQA() {
 	// Run the Quality Assurance on the databases every day.
 	QAscheduler := gocron.NewScheduler(time.UTC)
 	QAscheduler.Every(1).Day().Do(func() {
@@ -81,8 +73,6 @@ func (a *App) Run(addr string) error {
 	})
 	QAscheduler.StartAsync()
 
-	defaultLog.Println("Running")
-
 	_, nextQA := QAscheduler.NextRun()
 	now := time.Now()
 	diff := nextQA.Sub(now)
@@ -92,5 +82,19 @@ func (a *App) Run(addr string) error {
 
 	defaultLog.Printf("Next QA: %v (in %v hours, %v minutes, %v seconds)",
 		nextQA.Format(time.RFC822), hoursLeft, minutesLeft, secondsLeft)
+}
+
+func (a *App) Run(addr string) error {
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("Failed to listen: %v\n", err)
+	}
+	s := grpc.NewServer()
+
+	pbApi.RegisterCrudCheropatillaServer(s, a.srv.(pbApi.CrudCheropatillaServer))
+
+	// Uncomment this line to turn on the daily QA on the sections.
+	// a.scheduleQA()
+	defaultLog.Println("Running")
 	return s.Serve(lis)
 }
