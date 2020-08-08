@@ -17,7 +17,7 @@ func (am ActivityMetadata) IsRelevant() bool {
 	// type cast for ease of use
 	metadata := pbMetadata.Content(am)
 	min := 10 * time.Minute
-	return (metadata.Interactions > 10) && (metadata.AvgUpdateTime <= min.Minutes())
+	return (metadata.Interactions > 10) && (metadata.AvgUpdateTime <= min.Seconds())
 }
 
 // IsLessRelevantThan compares the field Interactions and the field AvgUpdateTime
@@ -28,16 +28,20 @@ func (am ActivityMetadata) IsRelevant() bool {
 // if either some of the conditions are false or the underlying type of other
 // is not an ActivityMetadata.
 func (am ActivityMetadata) IsLessRelevantThan(other interface{}) bool {
-	// type assert to get the underlying ActivityMetadata
-	otherAM, ok := other.(ActivityMetadata)
-	if !ok {
+	var otherAM ActivityMetadata
+	// type switch to get the underlying ActivityMetadata
+	switch act := other.(type) {
+	case ThreadActivity:
+		otherAM = act.ActivityMetadata
+	case CommentActivity:
+		otherAM = act.ActivityMetadata
+	case SubcommentActivity:
+		otherAM = act.ActivityMetadata
+	default:
 		return false
 	}
-	// type cast for ease of use
-	metadata := pbMetadata.Content(am)
-	otherMetadata := pbMetadata.Content(otherAM)
-	return (metadata.Interactions < otherMetadata.Interactions) &&
-		(metadata.AvgUpdateTime >= otherMetadata.AvgUpdateTime)
+	return (am.Interactions < otherAM.Interactions) &&
+		(am.AvgUpdateTime >= otherAM.AvgUpdateTime)
 }
 
 // ThreadActivity holds the metadata of a thread as well as its context.
