@@ -426,7 +426,8 @@ func (h *handler) deleteThread(s section, threadId []byte) (string, error) {
 			return dbmodel.ErrBucketNotFound
 		}
 
-		result = fmt.Sprintf("Removing reference to deleted thread %s... ", threadId)
+		result = fmt.Println("-----------------------------------------------------")
+		result += fmt.Sprintf("Removing reference to deleted thread %s... ", threadId)
 		if err := deletedContents.Delete(threadId); err != nil {
 			result += fmt.Sprintf("\nCould not DEL thread from deleted contents: %v. Aborting contents moving.\n", err)
 			return err
