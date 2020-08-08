@@ -45,7 +45,7 @@ func (c Content) IsRelevant() bool {
 	// type cast for ease of use
 	metadata := pbMetadata.Content(c)
 	min := 10 * time.Minute
-	return (metadata.Interactions > 10) && (metadata.AvgUpdateTime <= min.Minutes())
+	return (metadata.Interactions > 10) && (metadata.AvgUpdateTime <= min.Seconds())
 }
 
 // IsLessRelevantThan compares the field Interactions and the field AvgUpdateTime
@@ -115,7 +115,7 @@ func (gc GeneralContent) IsRelevant() bool {
 	metadata := pbMetadata.GeneralContent(gc)
 	min := 10 * time.Minute
 	return (metadata.Content.Interactions > 10) &&
-		(metadata.Content.AvgUpdateTime <= min.Minutes())
+		(metadata.Content.AvgUpdateTime <= min.Seconds())
 }
 
 // IsLessRelevantThan compares the field Interactions and the field AvgUpdateTime
