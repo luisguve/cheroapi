@@ -79,7 +79,7 @@ type segregatedContents struct {
 type SetSDF func(*pbDataFormat.Content) SegregateDiscarderFinder
 
 type Context struct {
-	Key *pbContext.Context
+	Key    *pbContext.Context
 	Status string
 }
 
@@ -197,9 +197,9 @@ FOR:
 				// check type assertion to ensure there will not be a panic.
 				if gi, ok := content.Key().(GeneralId); ok {
 					gi = GeneralId{
-						Id: gi.Id,
+						Id:        gi.Id,
 						SectionId: gi.SectionId,
-						Status: "REL",
+						Status:    "REL",
 					}
 					result = append(result, gi)
 				}
@@ -211,9 +211,9 @@ FOR:
 				// check type assertion to ensure there will not be a panic.
 				if gi, ok := segContents.topContent.Key().(GeneralId); ok {
 					gi = GeneralId{
-						Id: gi.Id,
+						Id:        gi.Id,
 						SectionId: gi.SectionId,
-						Status: "TOP",
+						Status:    "TOP",
 					}
 					result = append(result, gi)
 				}
