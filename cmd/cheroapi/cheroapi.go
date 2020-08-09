@@ -23,6 +23,7 @@ type cheroapiConfig struct {
 	DBdir        string `toml:"db_dir"`
 	SrvConf      grpcConfig `toml:"grpc_config"`
 	LogDir       string `toml:"log_dir"`
+	DoQA         bool `toml:"schedule_qa"`
 }
 
 func siteConfig(file string, vars ...string) (map[string]string, error) {
@@ -73,5 +74,5 @@ func main() {
 	srv := server.New(h)
 	// Start App.
 	a := app.New(srv, cheroConfig.LogDir)
-	log.Fatal(a.Run(cheroConfig.SrvConf.BindAddress))
+	log.Fatal(a.Run(cheroConfig.SrvConf.BindAddress, cheroConfig.DoQA))
 }

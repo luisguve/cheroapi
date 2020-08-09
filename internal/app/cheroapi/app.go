@@ -36,6 +36,8 @@ func (a *App) scheduleQA() {
 	// Run the Quality Assurance on the databases every day.
 	QAscheduler := gocron.NewScheduler(time.UTC)
 	QAscheduler.Every(1).Day().Do(func() {
+		defaultLog.Println("Starting QA")
+
 		logger := log.New()
 		logFile, err := os.OpenFile(a.logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err == nil {
@@ -46,7 +48,7 @@ func (a *App) scheduleQA() {
 				"package":  "cheroapi",
 				"file":     "app.go",
 				"function": "scheduled QA",
-			}).Error("Could not open log file. Writing to stderr.")
+			}).Errorf("Could not open log file: %v. Writing to stderr.\n", err)
 		}
 		summary, err := a.srv.QA()
 		if err != nil {
@@ -54,7 +56,7 @@ func (a *App) scheduleQA() {
 				"package":  "cheroapi",
 				"file":     "app.go",
 				"function": "scheduled QA",
-			}).Error("QA returned the following error:", err)
+			}).Errorf("QA returned error: %v\n", err)
 			return
 		}
 		if summary == "" {
@@ -62,14 +64,16 @@ func (a *App) scheduleQA() {
 				"package":  "cheroapi",
 				"file":     "app.go",
 				"function": "scheduled QA",
-			}).Error("QA returned the empty summary")
+			}).Error("QA returned an empty summary")
 			return
 		}
 		logger.WithFields(log.Fields{
 			"package":  "cheroapi",
 			"file":     "app.go",
 			"function": "scheduled QA",
-		}).Info("Result of QA:", summary)
+		}).Infof("Result of QA: %v\n", summary)
+
+		defaultLog.Println("Finished QA")
 	})
 	QAscheduler.StartAsync()
 
@@ -81,10 +85,10 @@ func (a *App) scheduleQA() {
 	secondsLeft := int(diff.Seconds()) - (hoursLeft * 60 * 60) - (minutesLeft * 60)
 
 	defaultLog.Printf("Next QA: %v (in %v hours, %v minutes, %v seconds)",
-		nextQA.Format(time.RFC822), hoursLeft, minutesLeft, secondsLeft)
+		nextQA.Format(time.RubyDate), hoursLeft, minutesLeft, secondsLeft)
 }
 
-func (a *App) Run(addr string) error {
+func (a *App) Run(addr string, doQA bool) error {
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("Failed to listen: %v\n", err)
@@ -93,8 +97,9 @@ func (a *App) Run(addr string) error {
 
 	pbApi.RegisterCrudCheropatillaServer(s, a.srv.(pbApi.CrudCheropatillaServer))
 
-	// Uncomment this line to turn on the daily QA on the sections.
-	// a.scheduleQA()
+	if doQA {
+		a.scheduleQA()
+	}
 	defaultLog.Println("Running")
 	return s.Serve(lis)
 }
