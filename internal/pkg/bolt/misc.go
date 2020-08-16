@@ -1,10 +1,12 @@
 package bolt
 
 import (
+	"context"
 	"log"
 
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	pbUsers "github.com/luisguve/cheroproto-go/userapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	bolt "go.etcd.io/bbolt"
@@ -99,15 +101,18 @@ func (h *handler) formatContentData(c *pbDataFormat.Content) *pbApi.ContentData 
 // returns a formatted *pbApi.ContentAuthor. It may return an error if the user
 // was not found or it was an error while unmarshaling the bytes.
 func (h *handler) getContentAuthor(id string) (*pbApi.ContentAuthor, error) {
-	pbUser, err := h.User(id)
+	req := &pbUsers.GetBasicUserDataRequest{
+		UserId: id,
+	}
+	bud, err := h.users.GetBasicUserData(context.Background(), req)
 	if err != nil {
 		log.Println(err)
 		return nil, err
 	}
 	pbAuthor := &pbApi.ContentAuthor{
 		Id:       id,
-		Username: pbUser.BasicUserData.Username,
-		Alias:    pbUser.BasicUserData.Alias,
+		Username: bud.Username,
+		Alias:    bud.Alias,
 	}
 	return pbAuthor, nil
 }
