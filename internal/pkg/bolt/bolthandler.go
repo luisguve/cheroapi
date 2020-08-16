@@ -10,6 +10,7 @@ import (
 	"time"
 
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
+	pbApi "github.com/luisguve/cheroproto-go/userapi"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -17,17 +18,6 @@ import (
 const (
 	activeContentsB   = "ActiveContents"
 	archivedContentsB = "ArchivedContents"
-	usersB            = "Everyone"
-	usernameIdsB      = "UsernameIdMappings"
-	// store usernames in lowercase as the keys and the real usernames as
-	// the values.
-	lowercasedUsernamesB = "LowercasedUsernames"
-	idUsernamesB         = "IdUsernameMappings"
-	emailIdsB            = "EmailIdMappings"
-	// store emails in lowercase as the keys and the real emails as the
-	// values.
-	lowercasedEmailsB = "LowercasedEmails"
-	idEmailsB         = "IdEmailMappings"
 	commentsB         = "Comments"
 	subcommentsB      = "Subcomments"
 	deletedThreadsB   = "DeletedThreads"
@@ -35,12 +25,12 @@ const (
 )
 
 type handler struct {
-	// database for user management.
-	users *bolt.DB
-	// section ids (lowercased, space-trimmed name) mapped to section.
+	// Section ids (lowercased, space-trimmed name) mapped to section.
 	sections map[string]section
 	// Last time a clean up was done.
 	lastQA int64
+	// Connection to remote users service.
+	users pbApi.CrudUsersClient
 }
 
 type section struct {
@@ -56,9 +46,6 @@ type section struct {
 // Close every section database and the database of users, return the first
 // error, if any.
 func (h *handler) Close() error {
-	if err := h.users.Close(); err != nil {
-		return err
-	}
 	for _, section := range h.sections {
 		if err := section.contents.Close(); err != nil {
 			return err
@@ -68,7 +55,7 @@ func (h *handler) Close() error {
 }
 
 // New returns a dbmodel.Handler with a few just open bolt databases under the
-// directory specified by path; one for all the users and one for each section.
+// directory specified by path for the given sections.
 //
 // The section databases hold a couple of buckets: one for active contents with
 // read-write access and other for archived content with read-only access. If
@@ -98,7 +85,7 @@ func (h *handler) Close() error {
 // New only creates the bucket of active contents and the bucket of archived
 // contents, along with their top-level bucket for comments. In the bucket of
 // active contents, it also creates a bucket for deleted threads.
-func New(path string, sectionIds map[string]string) (dbmodel.Handler, error) {
+func New(path string, sectionIds map[string]string, usersClient pbApi.CrudUsersClient) (dbmodel.Handler, error) {
 	sectionsDBs := make(map[string]section)
 
 	// open or create section databases
@@ -154,105 +141,10 @@ func New(path string, sectionIds map[string]string) (dbmodel.Handler, error) {
 		}
 	}
 
-	// open or create users database
-	usersPath := filepath.Join(path, "users")
-	if _, err := os.Stat(usersPath); os.IsNotExist(err) {
-		os.MkdirAll(usersPath, os.ModeDir)
-	}
-	usersFile := filepath.Join(usersPath, "users.db")
-	usersDB, err := bolt.Open(usersFile, 0600, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	// create bucket for users
-	err = usersDB.Update(func(tx *bolt.Tx) error {
-		_, err = tx.CreateBucketIfNotExists([]byte(usersB))
-		if err != nil {
-			log.Printf("Could not create bucket %s: %v\n", usersB, err)
-		}
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// create bucket for usernames to user ids mapping
-	err = usersDB.Update(func(tx *bolt.Tx) error {
-		_, err = tx.CreateBucketIfNotExists([]byte(usernameIdsB))
-		if err != nil {
-			log.Printf("Could not create bucket %s: %v\n", usernameIdsB, err)
-		}
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// create bucket for lowercased usernames to real usernames mappings
-	err = usersDB.Update(func(tx *bolt.Tx) error {
-		_, err = tx.CreateBucketIfNotExists([]byte(lowercasedUsernamesB))
-		if err != nil {
-			log.Printf("Could not create bucket %s: %v\n", lowercasedUsernamesB, err)
-		}
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// create bucket for emails to user ids mapping
-	err = usersDB.Update(func(tx *bolt.Tx) error {
-		_, err = tx.CreateBucketIfNotExists([]byte(emailIdsB))
-		if err != nil {
-			log.Printf("Could not create bucket %s: %v\n", emailIdsB, err)
-		}
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// create bucket for ids to emails mapping
-	err = usersDB.Update(func(tx *bolt.Tx) error {
-		_, err = tx.CreateBucketIfNotExists([]byte(idEmailsB))
-		if err != nil {
-			log.Printf("Could not create bucket %s: %v\n", idEmailsB, err)
-		}
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// create bucket for lowercased emails to real emails mapping
-	err = usersDB.Update(func(tx *bolt.Tx) error {
-		_, err = tx.CreateBucketIfNotExists([]byte(lowercasedEmailsB))
-		if err != nil {
-			log.Printf("Could not create bucket %s: %v\n", lowercasedEmailsB, err)
-		}
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// create bucket for ids to usernames mapping
-	err = usersDB.Update(func(tx *bolt.Tx) error {
-		_, err = tx.CreateBucketIfNotExists([]byte(idUsernamesB))
-		if err != nil {
-			log.Printf("Could not create bucket %s: %v\n", idUsernamesB, err)
-		}
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	now := time.Now()
 
 	return &handler{
-		users:    usersDB,
+		users:    usersClient,
 		sections: sectionsDBs,
 		lastQA:   now.Unix(),
 	}, nil
