@@ -1,6 +1,7 @@
 package bolt_test
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -16,6 +17,8 @@ import (
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
+	pbUsers "github.com/luisguve/cheroproto-go/userapi"
+	"google.golang.org/grpc"
 )
 
 type user struct {
@@ -46,8 +49,59 @@ type comment struct {
 
 var sections = map[string]string{"mylife": "My life"}
 
+type closer interface {
+	Close() error
+}
+
+func setupClient(addr string, t *testing.T) (pbUsers.CrudUsersClient, closer, error) {
+	// Establish connection with users gRPC service.
+	conn, err := grpc.Dial(addr, grpc.WithInsecure())
+	if err != nil {
+		return nil, nil, fmt.Errorf("Could not setup dial: %v", err)
+	}
+
+	// Create users gRPC crud client.
+	usersClient := pbUsers.NewCrudUsersClient(conn)
+
+	return usersClient, conn, nil
+}
+
+func setupUsers(usersClient pbUsers.CrudUsersClient, t *testing.T) []string {
+	var ids []string
+	// Register users.
+	t.Log("Register users")
+	for _, u := range users {
+		req := &pbUsers.RegisterUserRequest{
+			Email:    u.email,
+			Name:     u.name,
+			PicUrl:   u.patillavatar,
+			Username: u.username,
+			Alias:    u.alias,
+			About:    u.about,
+			Password: u.password,
+		}
+		res, err := usersClient.RegisterUser(context.Background(), req)
+		if err != nil {
+			t.Fatalf("Got err registering user %s: %v\n", u.username, err)
+		}
+		if res.UserId == "" {
+			t.Errorf("Register user %v: got empty user id.\n", u.username)
+			continue
+		}
+		ids = append(ids, res.UserId)
+	}
+	t.Log("Finished registering users")
+	return ids
+}
+
 // Register users, then create threads, then leave replies on those threads.
 func TestThread(t *testing.T) {
+	usersClient, conn, err := setupClient("localhost:50052", t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
 	dir, err := ioutil.TempDir("db", "storage")
 	if err != nil {
 		t.Fatalf("Error in test: %v\n", err)
@@ -57,28 +111,20 @@ func TestThread(t *testing.T) {
 			t.Errorf("RemoveAll Error: %v\n", err)
 		}
 	}()
-	db, err := bolt.New(dir, sections)
+
+	db, err := bolt.New(dir, sections, usersClient)
 	if err != nil {
 		t.Errorf("DB open error: %v\n", err)
 	}
+
 	defer func() {
 		if err := db.Close(); err != nil {
 			t.Errorf("DB Close error: %v\n", err)
 		}
 	}()
-	userKeys := make(map[string]user)
-	var ids []string
-	// Register users.
-	t.Log("Register users")
-	for _, u := range users {
-		userId, st := db.RegisterUser(u.email, u.name, u.patillavatar, u.username, u.alias, u.about, u.password)
-		if st != nil {
-			t.Errorf("Got status %v: %v\n", st.Code(), st.Message())
-		}
-		ids = append(ids, userId)
-		userKeys[userId] = u
-	}
-	t.Log("Finished register users")
+
+	ids := setupUsers(usersClient, t)
+
 	// Create 44 threads.
 	var wg sync.WaitGroup
 	var m sync.Mutex
