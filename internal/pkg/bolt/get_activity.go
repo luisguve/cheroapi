@@ -1,6 +1,7 @@
 package bolt
 
 import (
+	"context"
 	"log"
 	"sync"
 
@@ -8,7 +9,7 @@ import (
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
-	bolt "go.etcd.io/bbolt"
+	pbUsers "github.com/luisguve/cheroproto-go/userapi"
 )
 
 // Get activity of users
@@ -39,104 +40,99 @@ func (h *handler) GetActivity(users ...string) (map[string]patillator.UserActivi
 			ActivityMetadata: patillator.ActivityMetadata(*pbContent.Metadata),
 		}
 	}
+	for _, user := range users {
+		wg.Add(1)
+		go func(user string) {
+			defer wg.Done()
 
-	err := h.users.View(func(tx *bolt.Tx) error {
-		for _, user := range users {
-			wg.Add(1)
-			go func(user string) {
-				defer wg.Done()
-
-				pbUser, err := h.User(user)
-				if err != nil {
+			req := &pbUsers.RecentActivityRequest{
+				UserId: user,
+			}
+			recent, err := h.users.RecentActivity(context.Background(), req)
+			if err != nil {
+				m.Lock()
+				defer m.Unlock()
+				errs = append(errs, err)
+				log.Println(err)
+				return
+			}
+			// check whether the user has recent activity
+			if recent == nil {
+				// no recent activity; do nothing and finish this go-routine
+				return
+			}
+			// set threads from the recent activity of this user
+			for _, ctx := range recent.ThreadsCreated {
+				wg.Add(1)
+				go func(ctx *pbContext.Thread, user string) {
+					defer wg.Done()
+					pbContent, err := h.GetThreadContent(ctx)
 					m.Lock()
 					defer m.Unlock()
-					errs = append(errs, err)
-					log.Println(err)
-					return
-				}
-				// check whether the user has recent activity
-				recent := pbUser.RecentActivity
-				if recent == nil {
-					// no recent activity; do nothing and finish this go-routine
-					return
-				}
-				// set threads from the recent activity of this user
-				for _, ctx := range recent.ThreadsCreated {
-					wg.Add(1)
-					go func(ctx *pbContext.Thread, user string) {
-						defer wg.Done()
-						pbContent, err := h.GetThreadContent(ctx)
-						m.Lock()
-						defer m.Unlock()
-						if err != nil {
-							// failed to get thread metadata; append err to errs
-							// and return
-							errs = append(errs, err)
-							return
-						}
-						once.Do(func() {
-							activity = make(map[string]patillator.UserActivity)
-						})
-						ta := setTA(pbContent, ctx)
-						userAct := activity[user]
-						userAct.ThreadsCreated = append(userAct.ThreadsCreated, ta)
-						activity[user] = userAct
-					}(ctx, user)
-				}
-				// set comments from the recent activity of this user
-				for _, ctx := range recent.Comments {
-					wg.Add(1)
-					go func(ctx *pbContext.Comment, user string) {
-						defer wg.Done()
-						pbContent, err := h.GetCommentContent(ctx)
-						m.Lock()
-						defer m.Unlock()
-						if err != nil {
-							// failed to get comment metadata; append err to errs
-							// and return
-							errs = append(errs, err)
-							return
-						}
-						once.Do(func() {
-							activity = make(map[string]patillator.UserActivity)
-						})
-						ca := setCA(pbContent, ctx)
-						userAct := activity[user]
-						userAct.Comments = append(userAct.Comments, ca)
-						activity[user] = userAct
-					}(ctx, user)
-				}
-				// set subcomments from the recent activity of this user
-				for _, ctx := range recent.Subcomments {
-					wg.Add(1)
-					go func(ctx *pbContext.Subcomment, user string) {
-						defer wg.Done()
-						pbContent, err := h.GetSubcommentContent(ctx)
-						m.Lock()
-						defer m.Unlock()
-						if err != nil {
-							// failed to get subcomment metadata; append err to
-							// errs and return
-							errs = append(errs, err)
-							return
-						}
-						once.Do(func() {
-							activity = make(map[string]patillator.UserActivity)
-						})
-						sca := setSCA(pbContent, ctx)
-						userAct := activity[user]
-						userAct.Subcomments = append(userAct.Subcomments, sca)
-						activity[user] = userAct
-					}(ctx, user)
-				}
-			}(user)
-		}
-		wg.Wait()
-		return nil
-	})
-	if err != nil {
-		errs = append(errs, err)
+					if err != nil {
+						// failed to get thread metadata; append err to errs
+						// and return
+						errs = append(errs, err)
+						return
+					}
+					once.Do(func() {
+						activity = make(map[string]patillator.UserActivity)
+					})
+					ta := setTA(pbContent, ctx)
+					userAct := activity[user]
+					userAct.ThreadsCreated = append(userAct.ThreadsCreated, ta)
+					activity[user] = userAct
+				}(ctx, user)
+			}
+			// set comments from the recent activity of this user
+			for _, ctx := range recent.Comments {
+				wg.Add(1)
+				go func(ctx *pbContext.Comment, user string) {
+					defer wg.Done()
+					pbContent, err := h.GetCommentContent(ctx)
+					m.Lock()
+					defer m.Unlock()
+					if err != nil {
+						// failed to get comment metadata; append err to errs
+						// and return
+						errs = append(errs, err)
+						return
+					}
+					once.Do(func() {
+						activity = make(map[string]patillator.UserActivity)
+					})
+					ca := setCA(pbContent, ctx)
+					userAct := activity[user]
+					userAct.Comments = append(userAct.Comments, ca)
+					activity[user] = userAct
+				}(ctx, user)
+			}
+			// set subcomments from the recent activity of this user
+			for _, ctx := range recent.Subcomments {
+				wg.Add(1)
+				go func(ctx *pbContext.Subcomment, user string) {
+					defer wg.Done()
+					pbContent, err := h.GetSubcommentContent(ctx)
+					m.Lock()
+					defer m.Unlock()
+					if err != nil {
+						// failed to get subcomment metadata; append err to
+						// errs and return
+						errs = append(errs, err)
+						return
+					}
+					once.Do(func() {
+						activity = make(map[string]patillator.UserActivity)
+					})
+					sca := setSCA(pbContent, ctx)
+					userAct := activity[user]
+					userAct.Subcomments = append(userAct.Subcomments, sca)
+					activity[user] = userAct
+				}(ctx, user)
+			}
+		}(user)
 	}
+	wg.Wait()
 	return activity, errs
 }
 
