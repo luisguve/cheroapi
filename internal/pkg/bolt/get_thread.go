@@ -1,6 +1,7 @@
 package bolt
 
 import (
+	"context"
 	"log"
 	"sync"
 
@@ -11,6 +12,7 @@ import (
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
+	pbUsers "github.com/luisguve/cheroproto-go/userapi"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -338,14 +340,18 @@ func (h *handler) GetSavedThreadsOverview(userId string) (map[string][]patillato
 		return patillator.GeneralContent(*gc)
 	}
 
-	pbUser, err := h.User(userId)
+	req := &pbUsers.SavedThreadsRequest{
+		UserId: userId,
+	}
+	savedThreads, err := h.users.SavedThreads(context.Background(), req)
+
 	if err != nil {
 		log.Println(err)
 		errs = append(errs, err)
 		return nil, errs
 	}
-	if len(pbUser.SavedThreads) == 0 {
-		log.Println("This user has not saved any thread yet.")
+	if len(savedThreads.References) == 0 {
+		log.Printf("GetSavedThreadsOverview: user %s has not saved any thread.\n", userId)
 		errs = append(errs, dbmodel.ErrNoSavedThreads)
 		return nil, errs
 	}
@@ -355,7 +361,7 @@ func (h *handler) GetSavedThreadsOverview(userId string) (map[string][]patillato
 		wg   sync.WaitGroup
 	)
 	// Get and set threads metadata.
-	for _, ctx := range pbUser.SavedThreads {
+	for _, ctx := range savedThreads.References {
 		wg.Add(1)
 		// Do the content getting, setting and appending in its own go-routine.
 		// Should it get an error and it will append it to errs. Otherwise, it
