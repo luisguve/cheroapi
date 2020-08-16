@@ -75,6 +75,7 @@ func (a *App) scheduleQA() {
 
 		defaultLog.Println("Finished QA")
 	})
+	// QAscheduler.StartAt(time.Now().Add(10 * time.Second))
 	QAscheduler.StartAsync()
 
 	_, nextQA := QAscheduler.NextRun()
