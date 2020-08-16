@@ -12,6 +12,8 @@ import (
 	app "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	"github.com/luisguve/cheroapi/internal/pkg/bolt"
 	"github.com/luisguve/cheroapi/internal/pkg/server"
+	pbApi "github.com/luisguve/cheroproto-go/userapi"
+	"google.golang.org/grpc"
 )
 
 type grpcConfig struct {
@@ -19,11 +21,12 @@ type grpcConfig struct {
 }
 
 type cheroapiConfig struct {
-	SectionsPath string `toml:"sections"`
-	DBdir        string `toml:"db_dir"`
+	SectionsPath string     `toml:"sections"`
+	DBdir        string     `toml:"db_dir"`
 	SrvConf      grpcConfig `toml:"grpc_config"`
-	LogDir       string `toml:"log_dir"`
-	DoQA         bool `toml:"schedule_qa"`
+	UsersSrvConf grpcConfig `toml:"users_grpc_config"`
+	LogDir       string     `toml:"log_dir"`
+	DoQA         bool       `toml:"schedule_qa"`
 }
 
 func siteConfig(file string, vars ...string) (map[string]string, error) {
@@ -56,23 +59,33 @@ func main() {
 	configDir := filepath.Join(gopath, "src", "github.com", "luisguve",
 		"cheroapi", "cheroapi.toml")
 
-	cheroConfig := new(cheroapiConfig)
-	if _, err := toml.DecodeFile(configDir, cheroConfig); err != nil {
+	config := cheroapiConfig{}
+	if _, err := toml.DecodeFile(configDir, &config); err != nil {
 		log.Fatal(err)
 	}
 
 	// Get section names mapped to their ids.
-	sections, err := siteConfig(cheroConfig.SectionsPath)
+	sections, err := siteConfig(config.SectionsPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	h, err := bolt.New(cheroConfig.DBdir, sections)
+	// Establish connection with users gRPC service.
+	conn, err := grpc.Dial(config.UsersSrvConf.BindAddress, grpc.WithInsecure())
 	if err != nil {
-		log.Fatalf("Could not setup database: %v\n", err)
+		log.Fatal("Could not setup dial:", err)
+	}
+	defer conn.Close()
+
+	// Create users gRPC crud client.
+	usersClient := pbApi.NewCrudUsersClient(conn)
+
+	h, err := bolt.New(config.DBdir, sections, usersClient)
+	if err != nil {
+		log.Fatal("Could not setup database:", err)
 	}
 	srv := server.New(h)
 	// Start App.
-	a := app.New(srv, cheroConfig.LogDir)
-	log.Fatal(a.Run(cheroConfig.SrvConf.BindAddress, cheroConfig.DoQA))
+	a := app.New(srv, config.LogDir)
+	log.Fatal(a.Run(config.SrvConf.BindAddress, config.DoQA))
 }
