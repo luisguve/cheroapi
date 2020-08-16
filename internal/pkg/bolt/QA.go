@@ -1,6 +1,7 @@
 package bolt
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -9,6 +10,7 @@ import (
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
+	pbUsers "github.com/luisguve/cheroproto-go/userapi"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -35,15 +37,15 @@ func (h *handler) LastQA() int64 {
 // In addition to moving the contents to the bucket of archived contents, it also
 // updates the activity of the users involved, moving contexts from the list of
 // recent activity of the users to their list of old activity.
-// 
+//
 // It returns the result of moving the contents in a string and an error.
 func (h *handler) QA() (string, error) {
 	var (
 		summary string
-		numGR int
-		done = make(chan resultErr)
-		quit = make(chan struct{})
-		now = time.Now()
+		numGR   int
+		done    = make(chan resultErr)
+		quit    = make(chan struct{})
+		now     = time.Now()
 	)
 	defer close(quit)
 	summary = fmt.Sprintf("[%v] Starting QA.\n", now.Format(time.Stamp))
@@ -52,9 +54,9 @@ func (h *handler) QA() (string, error) {
 		go func(s section) {
 			var (
 				sectionSummary string
-				localDone = make(chan resultErr)
-				localQuit = make(chan struct{})
-				numGR       int
+				localDone      = make(chan resultErr)
+				localQuit      = make(chan struct{})
+				numGR          int
 			)
 			defer close(localQuit)
 			sectionSummary = fmt.Sprintf("\t[%v]\n", s.name)
@@ -111,7 +113,7 @@ func (h *handler) QA() (string, error) {
 					if (m.Interactions > 49) && (avgUpdateTime <= min.Seconds()) {
 						sectionSummary += fmt.Sprintln("-----------------------------------------------------")
 						sectionSummary += fmt.Sprintf("With an average update time difference of %v (< %v), ", avgUpdateTime, min.Seconds())
-						sectionSummary += fmt.Sprintf("and a total of %v interactions (> 49), %s keeps active.\n", m.Interactions, 
+						sectionSummary += fmt.Sprintf("and a total of %v interactions (> 49), %s keeps active.\n", m.Interactions,
 							pbThread.Title)
 						continue
 					}
@@ -130,12 +132,12 @@ func (h *handler) QA() (string, error) {
 						)
 						resErr.result += fmt.Sprintln("-----------------------------------------------------")
 						resErr.result += fmt.Sprintf("With an average update time difference of %v, ", avgUpdateTime)
-						resErr.result += fmt.Sprintf("and a total of %v interactions, %s will be moved to archived contents.\n", 
+						resErr.result += fmt.Sprintf("and a total of %v interactions, %s will be moved to archived contents.\n",
 							c.Metadata.Interactions, pbThread.Title)
 						result, resErr.err = h.moveContents(s, k, v, c)
 						resErr.result += result
 						select {
-						case localDone<- resErr:
+						case localDone <- resErr:
 						case <-localQuit:
 						}
 					}(copyKey, copyVal, pbThread, avgUpdateTime)
@@ -160,7 +162,7 @@ func (h *handler) QA() (string, error) {
 						var resErr resultErr
 						resErr.result, resErr.err = h.deleteThread(s, k)
 						select {
-						case localDone<- resErr:
+						case localDone <- resErr:
 						case <-localQuit:
 						}
 					}(copyKey)
@@ -171,7 +173,7 @@ func (h *handler) QA() (string, error) {
 				if numGR == 0 {
 					// Nothing to do; there are no summaries to receive.
 					select {
-					case done<- resultErr{err: err}:
+					case done <- resultErr{err: err}:
 					case <-quit:
 					}
 					return
@@ -203,14 +205,14 @@ func (h *handler) QA() (string, error) {
 			resErr.result = sectionSummary
 			resErr.err = err
 			select {
-			case done<- resErr:
+			case done <- resErr:
 			case <-quit:
 			}
 		}(s)
 	}
 	var (
 		resErr resultErr
-		err error
+		err    error
 		// Flag to indicate that an error was found and that no more errors
 		// will be checked.
 		foundErr bool
@@ -278,14 +280,14 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, pbConten
 			var resErr resultErr
 			err := h.markThreadAsOld(userId, ctx)
 			if err != nil {
-				resErr.result = fmt.Sprintf("Could not mark thread %s as old to user %s: %v. Contents moving aborted.\n", 
+				resErr.result = fmt.Sprintf("Could not mark thread %s as old to user %s: %v. Contents moving aborted.\n",
 					ctx.Id, userId, resErr.err)
 				resErr.err = err
 			} else {
 				resErr.result = fmt.Sprintln("Updated thread author's activity successfully.")
 			}
 			select {
-			case done<- resErr:
+			case done <- resErr:
 			case <-quit:
 			}
 		}()
@@ -371,8 +373,8 @@ func (h *handler) moveContents(s section, threadId, threadBytes []byte, pbConten
 			return err
 		}
 		var (
-			resErr resultErr
-			err error
+			resErr   resultErr
+			err      error
 			foundErr bool
 		)
 		// Check for errors. All the results will be concatenated but only the first
@@ -520,7 +522,7 @@ func (h *handler) moveComments(threadId string, actComments, archComments *bolt.
 		result += fmt.Sprintf("Moving comment %s into archived contents... ", k)
 		if err := archComments.Put(k, v); err != nil {
 			// Finish early.
-			return resultErr {
+			return resultErr{
 				result: result + fmt.Sprintf("\nCould not put comment %s into archived contents: %v.\n", k, err),
 				err:    err,
 			}
@@ -556,14 +558,14 @@ func (h *handler) moveComments(threadId string, actComments, archComments *bolt.
 				}
 			}
 			select {
-			case done<- resErr:
+			case done <- resErr:
 			case <-quit:
 			}
 		}(k, v)
 	}
 	var (
-		resErr resultErr
-		err error
+		resErr   resultErr
+		err      error
 		foundErr bool
 	)
 	// Check for errors. All the results will be concatenated but only the first
@@ -621,7 +623,7 @@ func (h *handler) moveSubcomments(actSubcomKeys, archSubcomKeys *bolt.Bucket) re
 			if err = archivedSubcom.Put(k, v); err != nil {
 				// Finish early.
 				return resultErr{
-					err:    err,
+					err: err,
 					result: result + fmt.Sprintf("\nCould not put subcomment %s into archived contents: %v. Aborting subcomment moving\n",
 						k, err),
 				}
@@ -660,14 +662,14 @@ func (h *handler) moveSubcomments(actSubcomKeys, archSubcomKeys *bolt.Bucket) re
 					}
 				}
 				select {
-				case done<- resErr:
+				case done <- resErr:
 				case <-quit:
 				}
 			}(k, v, comKey)
 		}
 	}
 	var (
-		resErr resultErr
+		resErr   resultErr
 		foundErr bool
 	)
 	// Check for errors. All the results will be concatenated but only the first
@@ -690,111 +692,28 @@ func (h *handler) moveSubcomments(actSubcomKeys, archSubcomKeys *bolt.Bucket) re
 }
 
 func (h *handler) markThreadAsOld(userId string, ctx *pbContext.Thread) error {
-	var (
-		id        = ctx.Id
-		sectionId = ctx.SectionCtx.Id
-		found     bool
-	)
-	return h.UpdateUser(userId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
-		if pbUser.RecentActivity != nil {
-			// Find and copy thread from recent activity to old activity of
-			// the user, then remove it from recent activity.
-			for i, t := range pbUser.RecentActivity.ThreadsCreated {
-				if (t.SectionCtx.Id == sectionId) && (t.Id == id) {
-					found = true
-					if pbUser.OldActivity == nil {
-						pbUser.OldActivity = new(pbDataFormat.Activity)
-					}
-					// Append to old activity.
-					tc := pbUser.OldActivity.ThreadsCreated
-					pbUser.OldActivity.ThreadsCreated = append(tc, t)
-					// Remove from recent activity.
-					last := len(pbUser.RecentActivity.ThreadsCreated) - 1
-					pbUser.RecentActivity.ThreadsCreated[i] = pbUser.RecentActivity.ThreadsCreated[last]
-					pbUser.RecentActivity.ThreadsCreated = pbUser.RecentActivity.ThreadsCreated[:last]
-					break
-				}
-			}
-			if !found {
-				log.Printf("Thread %v is not in recent activity of user %v.\n", ctx, userId)
-			}
-		}
-		return pbUser
-	})
+	req := &pbUsers.OldThreadRequest{
+		UserId: userId,
+		Ctx:    ctx,
+	}
+	_, err := h.users.OldThread(context.Background(), req)
+	return err
 }
 
 func (h *handler) markCommentAsOld(userId string, ctx *pbContext.Comment) error {
-	var (
-		id        = ctx.Id
-		threadId  = ctx.ThreadCtx.Id
-		sectionId = ctx.ThreadCtx.SectionCtx.Id
-		found     bool
-	)
-	return h.UpdateUser(userId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
-		if pbUser.RecentActivity != nil {
-			// Find and copy comment from recent activity to old activity of
-			// the user, then remove it from recent activity.
-			for i, c := range pbUser.RecentActivity.Comments {
-				if (c.ThreadCtx.SectionCtx.Id == sectionId) &&
-					(c.ThreadCtx.Id == threadId) &&
-					(c.Id == id) {
-					found = true
-					if pbUser.OldActivity == nil {
-						pbUser.OldActivity = new(pbDataFormat.Activity)
-					}
-					// Append to old activity.
-					comments := pbUser.OldActivity.Comments
-					pbUser.OldActivity.Comments = append(comments, c)
-					// Remove from recent activity.
-					last := len(pbUser.RecentActivity.Comments) - 1
-					pbUser.RecentActivity.Comments[i] = pbUser.RecentActivity.Comments[last]
-					pbUser.RecentActivity.Comments = pbUser.RecentActivity.Comments[:last]
-					break
-				}
-			}
-			if !found {
-				log.Printf("Comment %v is not in recent activity of user %v.\n", ctx, userId)
-			}
-		}
-		return pbUser
-	})
+	req := &pbUsers.OldCommentRequest{
+		UserId: userId,
+		Ctx:    ctx,
+	}
+	_, err := h.users.OldComment(context.Background(), req)
+	return err
 }
 
 func (h *handler) markSubcommentAsOld(userId string, ctx *pbContext.Subcomment) error {
-	var (
-		id        = ctx.Id
-		commentId = ctx.CommentCtx.Id
-		threadId  = ctx.CommentCtx.ThreadCtx.Id
-		sectionId = ctx.CommentCtx.ThreadCtx.SectionCtx.Id
-		found     bool
-	)
-	return h.UpdateUser(userId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
-		if pbUser.RecentActivity != nil {
-			// Find and copy thread from recent activity to old activity of
-			// the user, then remove it from recent activity.
-			for i, s := range pbUser.RecentActivity.Subcomments {
-				if (s.CommentCtx.ThreadCtx.SectionCtx.Id == sectionId) &&
-					(s.CommentCtx.ThreadCtx.Id == threadId) &&
-					(s.CommentCtx.Id == commentId) &&
-					(s.Id == id) {
-					found = true
-					if pbUser.OldActivity == nil {
-						pbUser.OldActivity = new(pbDataFormat.Activity)
-					}
-					// Append to old activity.
-					subcomments := pbUser.OldActivity.Subcomments
-					pbUser.OldActivity.Subcomments = append(subcomments, s)
-					// Remove from recent activity.
-					last := len(pbUser.RecentActivity.Subcomments) - 1
-					pbUser.RecentActivity.Subcomments[i] = pbUser.RecentActivity.Subcomments[last]
-					pbUser.RecentActivity.Subcomments = pbUser.RecentActivity.Subcomments[:last]
-					break
-				}
-			}
-			if !found {
-				log.Printf("Subcomment %v is not in recent activity of user %v.\n", ctx, userId)
-			}
-		}
-		return pbUser
-	})
+	req := &pbUsers.OldSubcommentRequest{
+		UserId: userId,
+		Ctx:    ctx,
+	}
+	_, err := h.users.OldSubcomment(context.Background(), req)
+	return err
 }

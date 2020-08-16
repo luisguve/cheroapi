@@ -8,7 +8,6 @@ import (
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
-	"google.golang.org/grpc/status"
 )
 
 type UpdateUserFunc func(*pbDataFormat.User) *pbDataFormat.User
@@ -44,10 +43,6 @@ type Handler interface {
 	AppendUserWhoSaved(thread *pbContext.Thread, userId string) error
 	// Remove user id from list of users who saved.
 	RemoveUserWhoSaved(thread *pbContext.Thread, userId string) error
-	// Add user credentials and data (sign in); returns the user id and a nil
-	// *status.Status on successful registering or an empty string an a *status.Status
-	// indicating what went wrong (email or username already in use) otherwise.
-	RegisterUser(email, name, patillavatar, username, alias, about, password string) (string, *status.Status)
 	// Submit upvote on a thread from the given user id and return a list of users
 	// and the notifications for them and an error
 	UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.NotifyUser, error)
@@ -57,8 +52,6 @@ type Handler interface {
 	// Submit upvote on a subcomment from the given user id and return a list of
 	// users and the notifications for them and an error
 	UpvoteSubcomment(userId string, subcomment *pbContext.Subcomment) ([]*pbApi.NotifyUser, error)
-	// Set notif into user's list of unread notifications
-	SaveNotif(userToNotif string, notif *pbDataFormat.Notif)
 	// Undo upvote on a thread from the given user id
 	UndoUpvoteThread(userId string, thread *pbContext.Thread) error
 	// Undo upvote on a comment from the given user id
@@ -77,16 +70,6 @@ type Handler interface {
 	DeleteComment(thread *pbContext.Comment, userId string) error
 	// Delete the given subcomment and the contents associated to it.
 	DeleteSubcomment(thread *pbContext.Subcomment, userId string) error
-	// Get data of a user.
-	User(userId string) (*pbDataFormat.User, error)
-	// Associate username to user id.
-	MapUsername(username, userId string) error
-	// Update data of user.
-	UpdateUser(userId string, updateFn UpdateUserFunc) error
-	// Get user id with the given username.
-	FindUserIdByUsername(username string) ([]byte, error)
-	// Get user id with the given email.
-	FindUserIdByEmail(email string) ([]byte, error)
 	// Return the last time a clean up was done.
 	LastQA() int64
 	// Clean up every section database.
@@ -105,9 +88,6 @@ type Reply struct {
 
 // These errors are returned when contents are not found.
 var (
-	ErrUserNotFound              = errors.New("User not found")
-	ErrUsernameNotFound          = errors.New("Username not found")
-	ErrEmailNotFound             = errors.New("Email not found")
 	ErrSectionNotFound           = errors.New("Section not found")
 	ErrThreadNotFound            = errors.New("Thread not found")
 	ErrCommentNotFound           = errors.New("Comment not found")
@@ -133,8 +113,4 @@ var (
 	ErrNotUpvoted = errors.New("This user has not upvoted this content")
 	// A user has not the permission to do something.
 	ErrUserNotAllowed = errors.New("User not allowed")
-	// A user wants to use an unavailable username.
-	ErrUsernameAlreadyExists = errors.New("Username already exists")
-	// A user wants to use an unavailable email.
-	ErrEmailAlreadyExists = errors.New("Email already exists")
 )

@@ -1,6 +1,7 @@
 package bolt
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	pbUsers "github.com/luisguve/cheroproto-go/userapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
@@ -94,18 +96,16 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		if err = commentsBucket.Put([]byte(commentId), pbCommentBytes); err != nil {
 			return err
 		}
+		commentCtx := &pbContext.Comment{
+			Id:        commentId,
+			ThreadCtx: thread,
+		}
+		reqUpdateUser := &pbUsers.CommentRequest{
+			UserId: reply.Submitter,
+			Ctx:    commentCtx,
+		}
 		// Update user; append comment to list of activity of user.
-		err = h.UpdateUser(reply.Submitter, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
-			if pbUser.RecentActivity == nil {
-				pbUser.RecentActivity = new(pbDataFormat.Activity)
-			}
-			commentCtx := &pbContext.Comment{
-				Id:        commentId,
-				ThreadCtx: thread,
-			}
-			pbUser.RecentActivity.Comments = append(pbUser.RecentActivity.Comments, commentCtx)
-			return pbUser
-		})
+		_, err = h.users.Comment(context.Background(), reqUpdateUser)
 		if err != nil {
 			return err
 		}
@@ -240,18 +240,16 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		if err != nil {
 			return err
 		}
+		subcommentCtx := &pbContext.Subcomment{
+			Id:         subcommentId,
+			CommentCtx: comment,
+		}
+		reqUpdateUser := &pbUsers.SubcommentRequest{
+			UserId: reply.Submitter,
+			Ctx:    subcommentCtx,
+		}
 		// Update user; append subcomment to list of activity of author.
-		err = h.UpdateUser(reply.Submitter, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
-			if pbUser.RecentActivity == nil {
-				pbUser.RecentActivity = new(pbDataFormat.Activity)
-			}
-			subcommentCtx := &pbContext.Subcomment{
-				Id:         subcommentId,
-				CommentCtx: comment,
-			}
-			pbUser.RecentActivity.Subcomments = append(pbUser.RecentActivity.Subcomments, subcommentCtx)
-			return pbUser
-		})
+		_, err = h.users.Subcomment(context.Background(), reqUpdateUser)
 		if err != nil {
 			return err
 		}

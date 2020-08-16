@@ -1,6 +1,7 @@
 package bolt
 
 import (
+	"context"
 	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
+	pbUsers "github.com/luisguve/cheroproto-go/userapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
@@ -47,7 +49,8 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 	// Save thread and user in the same transaction.
 	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
 		// Get author data.
-		pbUser, err := h.User(userId)
+		req := &pbUsers.GetBasicUserDataRequest{UserId: userId}
+		pbUser, err := h.users.GetUserHeaderData(context.Background(), req)
 		if err != nil {
 			return err
 		}
@@ -100,20 +103,17 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 			log.Printf("Could not marshal content: %v\n", err)
 			return err
 		}
-		err = h.UpdateUser(userId, func(pbUser *pbDataFormat.User) *pbDataFormat.User {
-			if pbUser.RecentActivity == nil {
-				pbUser.RecentActivity = new(pbDataFormat.Activity)
-			}
-			// Append new thread context to users' recent activity.
-			threadCtx := &pbContext.Thread{
-				Id:         newId,
-				SectionCtx: section,
-			}
-			pbUser.RecentActivity.ThreadsCreated = append(pbUser.RecentActivity.ThreadsCreated, threadCtx)
-			// Update last time created field.
-			pbUser.LastTimeCreated = content.PublishDate
-			return pbUser
-		})
+		threadCtx := &pbContext.Thread{
+			Id:         newId,
+			SectionCtx: section,
+		}
+		reqUpdateUser := &pbUsers.CreateThreadRequest{
+			UserId:      userId,
+			Ctx:         threadCtx,
+			PublishDate: content.PublishDate,
+		}
+		// Update users' recent activity by appending a thread.
+		_, err = h.users.CreateThread(context.Background(), reqUpdateUser)
 		if err != nil {
 			return err
 		}
@@ -124,6 +124,8 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 	}
 	return permalink, nil
 }
+
+// TO BE REMOVED:
 
 // SetThreadContent encodes the given content in protobuf bytes, then updates
 // the value of the given thread with the resulting []byte.
@@ -219,6 +221,8 @@ func (h *handler) SetSubcommentContent(subcomment *pbContext.Subcomment, content
 	return err
 }
 
+// <--->
+
 func (h *handler) AppendUserWhoSaved(thread *pbContext.Thread, userId string) error {
 	var (
 		id = thread.Id
@@ -233,7 +237,7 @@ func (h *handler) AppendUserWhoSaved(thread *pbContext.Thread, userId string) er
 	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
 		threadBytes, err := getThreadBytes(tx, id)
 		if err != nil {
-			log.Printf("Could not find thread (id: %s) [root]->[%s]: %v", id, sectionId, err)
+			log.Printf("Could not find thread %s in section %s: %v", id, sectionId, err)
 			return err
 		}
 		pbContent := new(pbDataFormat.Content)
@@ -247,7 +251,16 @@ func (h *handler) AppendUserWhoSaved(thread *pbContext.Thread, userId string) er
 			log.Printf("Could not marshal content: %v\n", err)
 			return err
 		}
-		return setThreadBytes(tx, id, threadBytes)
+		err = setThreadBytes(tx, id, threadBytes)
+		if err != nil {
+			return err
+		}
+		reqUpdateUser := &pbUsers.SaveThreadRequest{
+			UserId: userId,
+			Thread: thread,
+		}
+		_, err = h.users.SaveThread(context.Background(), reqUpdateUser)
+		return err
 	})
 }
 
@@ -265,7 +278,7 @@ func (h *handler) RemoveUserWhoSaved(thread *pbContext.Thread, userId string) er
 	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
 		threadBytes, err := getThreadBytes(tx, id)
 		if err != nil {
-			log.Printf("Could not find thread (id: %s) [root]->[%s]: %v", id, sectionId, err)
+			log.Printf("Could not find thread %s in section %s: %v", id, sectionId, err)
 			return err
 		}
 		pbContent := new(pbDataFormat.Content)
@@ -291,6 +304,15 @@ func (h *handler) RemoveUserWhoSaved(thread *pbContext.Thread, userId string) er
 			log.Printf("Could not marshal content: %v\n", err)
 			return err
 		}
-		return setThreadBytes(tx, id, threadBytes)
+		err = setThreadBytes(tx, id, threadBytes)
+		if err != nil {
+			return err
+		}
+		reqUpdateUser := &pbUsers.RemoveSavedRequest{
+			UserId: userId,
+			Ctx:    thread,
+		}
+		_, err = h.users.RemoveSaved(context.Background(), reqUpdateUser)
+		return err
 	})
 }
