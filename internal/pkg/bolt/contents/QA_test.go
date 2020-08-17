@@ -1,6 +1,7 @@
-package bolt_test
+package contents_test
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -12,10 +13,12 @@ import (
 
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
-	"github.com/luisguve/cheroapi/internal/pkg/bolt"
+	"github.com/luisguve/cheroapi/internal/pkg/bolt/contents"
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
+	pbUsers "github.com/luisguve/cheroproto-go/userapi"
+	"google.golang.org/grpc"
 )
 
 type user struct {
@@ -46,8 +49,59 @@ var idPost = make(map[string]post)
 
 var sections = map[string]string{"mylife": "My life"}
 
+type closer interface {
+	Close() error
+}
+
+func setupClient(addr string, t *testing.T) (pbUsers.CrudUsersClient, closer, error) {
+	// Establish connection with users gRPC service.
+	conn, err := grpc.Dial(addr, grpc.WithInsecure())
+	if err != nil {
+		return nil, nil, fmt.Errorf("Could not setup dial: %v", err)
+	}
+
+	// Create users gRPC crud client.
+	usersClient := pbUsers.NewCrudUsersClient(conn)
+
+	return usersClient, conn, nil
+}
+
+func setupUsers(usersClient pbUsers.CrudUsersClient, t *testing.T) []string {
+	var ids []string
+	// Register users.
+	t.Log("Register users")
+	for _, u := range users {
+		req := &pbUsers.RegisterUserRequest{
+			Email:    u.email,
+			Name:     u.name,
+			PicUrl:   u.patillavatar,
+			Username: u.username,
+			Alias:    u.alias,
+			About:    u.about,
+			Password: u.password,
+		}
+		res, err := usersClient.RegisterUser(context.Background(), req)
+		if err != nil {
+			t.Fatalf("Got err registering user %s: %v\n", u.username, err)
+		}
+		if res.UserId == "" {
+			t.Errorf("Register user %v: got empty user id.\n", u.username)
+			continue
+		}
+		ids = append(ids, res.UserId)
+	}
+	t.Log("Finished registering users")
+	return ids
+}
+
 // Register users, then create threads, then leave replies on those threads.
 func TestQA(t *testing.T) {
+	usersClient, conn, err := setupClient("localhost:50052", t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
 	dir, err := ioutil.TempDir("db", "storage")
 	if err != nil {
 		t.Fatalf("Error in test: %v\n", err)
@@ -57,28 +111,20 @@ func TestQA(t *testing.T) {
 			t.Errorf("RemoveAll Error: %v\n", err)
 		}
 	}()
-	db, err := bolt.New(dir, sections)
+
+	db, err := contents.New(dir, sections, usersClient)
 	if err != nil {
 		t.Errorf("DB open error: %v\n", err)
 	}
+
 	defer func() {
 		if err := db.Close(); err != nil {
 			t.Errorf("DB Close error: %v\n", err)
 		}
 	}()
-	userKeys := make(map[string]user)
-	var ids []string
-	// Register users.
-	t.Log("Register users")
-	for _, u := range users {
-		userId, st := db.RegisterUser(u.email, u.name, u.patillavatar, u.username, u.alias, u.about, u.password)
-		if st != nil {
-			t.Errorf("Got status %v: %v\n", st.Code(), st.Message())
-		}
-		ids = append(ids, userId)
-		userKeys[userId] = u
-	}
-	t.Log("Finished register users")
+
+	ids := setupUsers(usersClient, t)
+
 	// Create 44 threads.
 	var wg sync.WaitGroup
 	var m sync.Mutex
@@ -91,10 +137,16 @@ func TestQA(t *testing.T) {
 			user := ids[i]
 			permalink, err := db.CreateThread(p.content, p.section, user)
 			if err != nil {
-				t.Errorf("Got err: %v\n", err)
+				t.Errorf("Could not post %v; got err: %v (user %s)\n", p.content.Title, err, user)
+				return
+			}
+			if permalink == "" {
+				t.Errorf("Got empty permalink; expected %v\n", p.expLink)
+				return
 			}
 			if !strings.Contains(permalink, p.expLink) {
 				t.Errorf("Expected permalink: %v\nGot: %v\n", p.expLink, permalink)
+				return
 			}
 			// The permalink comes in the format "/{section-id}/{thread-id}",
 			// guaranteeing that there will not be collisions (or value overrides)
@@ -288,6 +340,7 @@ func TestQA(t *testing.T) {
 	}
 	t.Log("Finished upvoting \"Awesome blog post 03\".")
 	// Post 50 comments on "Awesome blog post 03".
+	// This will keep this post active after QA.
 	t.Log("Posting 50 comments on \"Awesome blog post 03\".")
 	for i := 0; i < 50; i++ {
 		wg.Add(1)
@@ -330,7 +383,7 @@ func TestQA(t *testing.T) {
 		}(comments[0].content)
 	}
 	wg.Wait()
-	t.Log("Finished replying \"Awesome blog post 03\" 50 times.")
+	t.Log("Finished replying \"Awesome blog post 03\" 50 times.")*/
 	// Get Id of thread "Awesome blog post 11"
 	var (
 		post11Id string
@@ -393,14 +446,16 @@ func TestQA(t *testing.T) {
 	}
 	wg.Wait()
 	t.Log("Finished replying \"Awesome blog post 11\" 40 times.")
-	// All the contents and comments should be moved to archived contents.
-	result, err := db.QA()
+	// All the contents and comments but post 03 and post 11 should be moved
+	// to archived contents.
+	// result, err := db.QA()
+	_, err = db.QA()
 	if err != nil {
 		t.Errorf("Got err: %v.\n", err)
 	}
-	if result != "" {
+	/* if result != "" {
 		t.Log("Result:", result)
-	}
+	} */
 	t.Log("GetThreadsOverview again.")
 	threads, err = db.GetThreadsOverview(section)
 	if err != nil {
@@ -409,6 +464,9 @@ func TestQA(t *testing.T) {
 	t.Log("Finished GetThreadsOverview")
 	if len(threads) != 2 {
 		t.Errorf("Expected 2 thread still active, got %v.\n", len(threads))
+		for _, thread := range threads {
+			t.Log(thread.Key())
+		}
 	}
 }
 
@@ -507,7 +565,7 @@ var posts = []post{
 			Content: "Lorem ipsum dolor sit amet... Lest assume this is a long post",
 			FtFile:  "fresh-watermelon.jpg",
 			PublishDate: &pbTime.Timestamp{
-				Seconds: time.Now().Unix(),
+				Seconds: time.Now().Add(-1 * time.Hour).Unix(),
 			},
 		},
 		section: &pbContext.Section{

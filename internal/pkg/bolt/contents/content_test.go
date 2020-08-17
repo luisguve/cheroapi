@@ -1,4 +1,4 @@
-package bolt_test
+package contents_test
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
-	"github.com/luisguve/cheroapi/internal/pkg/bolt"
+	"github.com/luisguve/cheroapi/internal/pkg/bolt/contents"
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	pbContext "github.com/luisguve/cheroproto-go/context"
@@ -112,7 +112,7 @@ func TestThread(t *testing.T) {
 		}
 	}()
 
-	db, err := bolt.New(dir, sections, usersClient)
+	db, err := contents.New(dir, sections, usersClient)
 	if err != nil {
 		t.Errorf("DB open error: %v\n", err)
 	}

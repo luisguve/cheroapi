@@ -1,7 +1,7 @@
 // package bolthandler provides a Handler for performing CRUD operations
 // on a bolt database.
 
-package bolt
+package contents
 
 import (
 	"log"

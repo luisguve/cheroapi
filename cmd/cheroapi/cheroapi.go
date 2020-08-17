@@ -10,8 +10,8 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/joho/godotenv"
 	app "github.com/luisguve/cheroapi/internal/app/cheroapi"
-	"github.com/luisguve/cheroapi/internal/pkg/bolt"
-	"github.com/luisguve/cheroapi/internal/pkg/server"
+	db "github.com/luisguve/cheroapi/internal/pkg/bolt/contents"
+	server "github.com/luisguve/cheroapi/internal/pkg/server/contents"
 	pbApi "github.com/luisguve/cheroproto-go/userapi"
 	"google.golang.org/grpc"
 )
@@ -80,7 +80,7 @@ func main() {
 	// Create users gRPC crud client.
 	usersClient := pbApi.NewCrudUsersClient(conn)
 
-	h, err := bolt.New(config.DBdir, sections, usersClient)
+	h, err := db.New(config.DBdir, sections, usersClient)
 	if err != nil {
 		log.Fatal("Could not setup database:", err)
 	}

@@ -1,7 +1,7 @@
 // Package server provides the data type Server, which implements the
 // interface CrudCheropatillaServer.
 
-package server
+package contents
 
 import (
 	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
