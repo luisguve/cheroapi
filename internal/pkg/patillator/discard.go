@@ -277,3 +277,50 @@ func DiscardContents(contents []SegregateDiscarderFinder, ids []string) []Segreg
 	}
 	return result
 }
+
+// OrderActivityBySection returns the given activity sorted by section id.
+func OrderActivityBySection(activity *pbDataFormat.Activity) map[string]*pbDataFormat.Activity {
+	if activity == nil {
+		return nil
+	}
+
+	var result map[string]*pbDataFormat.Activity
+
+	for _, t := range activity.ThreadsCreated {
+		section := t.SectionCtx.Id
+		if result == nil {
+			result = make(map[string]*pbDataFormat.Activity)
+		}
+		sectionActivity := result[section]
+		if sectionActivity == nil {
+			sectionActivity = &pbDataFormat.Activity{}
+		}
+		sectionActivity.ThreadsCreated = append(sectionActivity.ThreadsCreated, t)
+		result[section] = sectionActivity
+	}
+	for _, c := range activity.Comments {
+		section := c.ThreadCtx.SectionCtx.Id
+		if result == nil {
+			result = make(map[string]*pbDataFormat.Activity)
+		}
+		sectionActivity := result[section]
+		if sectionActivity == nil {
+			sectionActivity = &pbDataFormat.Activity{}
+		}
+		sectionActivity.Comments = append(sectionActivity.Comments, c)
+		result[section] = sectionActivity
+	}
+	for _, sc := range activity.Subcomments {
+		section := c.CommentCtx.ThreadCtx.SectionCtx.Id
+		if result == nil {
+			result = make(map[string]*pbDataFormat.Activity)
+		}
+		sectionActivity := result[section]
+		if sectionActivity == nil {
+			sectionActivity = &pbDataFormat.Activity{}
+		}
+		sectionActivity.Subcomments = append(sectionActivity.Subcomments, sc)
+		result[section] = sectionActivity
+	}
+	return result
+}
