@@ -4,6 +4,7 @@ import (
 	"log"
 	"sync"
 
+	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
@@ -11,22 +12,22 @@ import (
 // set whose toDiscard method returns true and returns the resulting activity.
 // It does nothing when the fields ThreadsCreated, Comments or Subcomments from
 // either the given Activity or ids are empty.
-func DiscardActivities(a UserActivity, ids *pbDataFormat.Activity) UserActivity {
-	// initially, no activity has been discarded and if there are no ids
+func DiscardActivities(a *pbDataFormat.Activity, ids *pbDataFormat.Activity) *pbDataFormat.Activity {
+	// Initially, no activity has been discarded and if there are no ids
 	// to compare, the exact same list of activity will be returned back.
 	discardedActivity := a
 
-	// check whether there is not anything to discard
-	if ids == nil {
-		// return the same Activity
+	// Check whether there is not anything to discard.
+	if (ids == nil) || (a == nil) {
+		// Return the same Activity.
 		return a
 	}
 
 	var wg sync.WaitGroup
 
-	// workflow: remove threads then comments then subcomments
+	// Workflow: discard threads, comments and subcomments concurrently.
 
-	// discard threads only if there are threads to discard
+	// Discard threads only if there are threads to discard.
 	if (len(a.ThreadsCreated) > 0) && (len(ids.ThreadsCreated) > 0) {
 		wg.Add(1)
 		go func() {
@@ -35,23 +36,39 @@ func DiscardActivities(a UserActivity, ids *pbDataFormat.Activity) UserActivity 
 			removed := 0
 			for idx := 0; idx < len(a.ThreadsCreated); idx++ {
 				// Discard the thread at position idx and the threads that
-				// replace it if it fulfills the requirement toDiscard.
+				// replace it if it fulfills the requirement to be discarded.
 				for {
-					ta, ok := a.ThreadsCreated[idx].(ThreadActivity)
-					if !ok {
-						log.Printf("Failed type assertion to ThreadActivity.\n")
-						break
+					var (
+						discard     bool
+						id1         = a.ThreadsCreated[idx].Id
+						sectionCtx1 = a.ThreadsCreated[idx].SectionCtx
+					)
+					for i, t := range ids.ThreadsCreated {
+						// Compare sections.
+						section1 := sectionCtx1.Id
+						section2 := t.SectionCtx.Id
+						if section1 == section2 {
+							// Compare ids.
+							id2 := t.Id
+							if id1 == id2 {
+								// Found coincidence.
+								discard = true
+								// Remove thread reference from ids.
+								last := len(ids.ThreadsCreated) - 1
+								ids.ThreadsCreated[i] = ids.ThreadsCreated[last]
+								ids.ThreadsCreated = ids.ThreadsCreated[:last]
+								break
+							}
+						}
 					}
-					var discard bool
-					discard, ids.ThreadsCreated = ta.toDiscard(ids.ThreadsCreated)
 					if discard {
 						removed++
-						// copy last valid element in position idx
+						// Copy the last valid thread in position idx.
 						a.ThreadsCreated[idx] = a.ThreadsCreated[total-removed]
-						// re-slice a.ThreadsCreated, leaving out the last element
+						// Re-slice a.ThreadsCreated, leaving out the last thread.
 						a.ThreadsCreated = a.ThreadsCreated[:total-removed]
 						// If there are still elements in a.ThreadsCreated,
-						// keep checking the element at position idx, which was
+						// keep checking the thread at position idx, which was
 						// replaced by the last thread in a.ThreadsCreated.
 						if len(a.ThreadsCreated) > 0 {
 							continue
@@ -60,17 +77,17 @@ func DiscardActivities(a UserActivity, ids *pbDataFormat.Activity) UserActivity 
 					break
 				}
 				if len(ids.ThreadsCreated) == 0 {
-					// no more thread ids to compare; break loop
+					// No more thread ids to compare; break loop.
 					break
 				}
 			}
-			// free memory used by removed elements by allocating a new slice
-			// and copying the resulting elements.
-			discardedActivity.ThreadsCreated = make([]SegregateFinder, total-removed)
+			// Free memory used by removed threads by allocating a new slice
+			// and copying the resulting threads.
+			discardedActivity.ThreadsCreated = make([]*pbContext.Thread, total-removed)
 			copy(discardedActivity.ThreadsCreated, a.ThreadsCreated)
 		}()
 	}
-	// discard comments only if there are comments to discard
+	// Discard comments only if there are comments to discard.
 	if (len(a.Comments) > 0) && (len(ids.Comments) > 0) {
 		wg.Add(1)
 		go func() {
@@ -79,23 +96,47 @@ func DiscardActivities(a UserActivity, ids *pbDataFormat.Activity) UserActivity 
 			removed := 0
 			for idx := 0; idx < len(a.Comments); idx++ {
 				// Discard the comment at position idx and the comments that
-				// replace it if it fulfills the requirement toDiscard.
+				// replace it if it fulfills the requirement to be discarded.
 				for {
-					ca, ok := a.Comments[idx].(CommentActivity)
-					if !ok {
-						log.Printf("Failed type assertion to CommentActivity.\n")
-						break
+					var (
+						id1         = a.Comments[idx].Id
+						threadCtx1  = a.Comments[idx].ThreadCtx
+						sectionCtx1 = a.Comments[idx].ThreadCtx.SectionCtx
+						discard     bool
+					)
+					for i, c := range ids.Comments {
+						// Compare sections.
+						sectionCtx2 := c.ThreadCtx.SectionCtx
+						section1 := sectionCtx1.Id
+						section2 := sectionCtx2.Id
+						if section1 == section2 {
+							// Compare threads.
+							threadCtx2 := c.ThreadCtx
+							thread1 := threadCtx1.Id
+							thread2 := threadCtx2.Id
+							if thread1 == thread2 {
+								// Compare ids.
+								id2 := c.Id
+								if id1 == id2 {
+									// Found coincidence.
+									discard = true
+									// Remove comment reference from ids.
+									last := len(ids.Comments) - 1
+									ids.Comments[i] = ids.Comments[last]
+									ids.Comments = ids.Comments[:last]
+									break
+								}
+							}
+						}
 					}
-					var discard bool
-					discard, ids.Comments = ca.toDiscard(ids.Comments)
 					if discard {
 						removed++
-						// copy last element in position idx
+						// Copy the last comment in position idx.
 						a.Comments[idx] = a.Comments[total-removed]
-						// re-slice a.Comments, leaving out the last element
+						// Re-slice a.Comments, leaving out the last comment.
 						a.Comments = a.Comments[:total-removed]
 						// If there are still elements in a.Comments, keep
-						// checking the element at position idx, which was
+						// checking the comment at position idx, which was
 						// replaced by the last comment in a.Comments.
 						if len(a.Comments) > 0 {
 							continue
@@ -104,17 +145,17 @@ func DiscardActivities(a UserActivity, ids *pbDataFormat.Activity) UserActivity 
 					break
 				}
 				if len(ids.Comments) == 0 {
-					// no more comment ids to compare; break loop
+					// No more comment ids to compare; break loop.
 					break
 				}
 			}
-			// free memory used by removed elements by allocating a new slice
-			// and copying the resulting elements
-			discardedActivity.Comments = make([]SegregateFinder, total-removed)
+			// Free memory used by removed comments by allocating a new slice
+			// and copying the resulting comments.
+			discardedActivity.Comments = make([]*pbContext.Comment, total-removed)
 			copy(discardedActivity.Comments, a.Comments)
 		}()
 	}
-	// discard subcomments only if there are subcomments to discard
+	// Discard subcomments only if there are subcomments to discard.
 	if (len(a.Subcomments) > 0) && (len(ids.Subcomments) > 0) {
 		wg.Add(1)
 		go func() {
@@ -123,23 +164,54 @@ func DiscardActivities(a UserActivity, ids *pbDataFormat.Activity) UserActivity 
 			removed := 0
 			for idx := 0; idx < len(a.Subcomments); idx++ {
 				// Discard the subcomment at position idx and the subcomments
-				// that replace it if it fulfills the requirement toDiscard.
+				// that replace it if it fulfills the requirement to be discarded.
 				for {
-					sca, ok := a.Subcomments[idx].(SubcommentActivity)
-					if !ok {
-						log.Printf("Failed type assertion to SubcommentActivity\n")
-						break
+					var (
+						discard bool
+						id = a.Subcomments[idx].Id
+						commentCtx1 = a.Subcomments[idx].CommentCtx
+						threadCtx1 = a.Subcomments[idx].CommentCtx.ThreadCtx
+						sectionCtx1 = a.Subcomments[idx].CommentCtx.ThreadCtx.SectionCtx
+					)
+					for i, sc := range ids.Subcomments {
+						// Compare sections.
+						sectionCtx2 := sc.CommentCtx.ThreadCtx.SectionCtx
+						section1 := sectionCtx1.Id
+						section2 := sectionCtx2.Id
+						if section1 == section2 {
+							// Compare threads.
+							threadCtx2 := sc.CommentCtx.ThreadCtx
+							thread1 := threadCtx1.Id
+							thread2 := threadCtx2.Id
+							if thread1 == thread2 {
+								// Compare comments.
+								commentCtx2 := sc.CommentCtx
+								comment1 := commentCtx1.Id
+								comment2 := commentCtx2.Id
+								if comment1 == comment2 {
+									// Compare ids.
+									id2 := sc.Id
+									if id1 == id2 {
+										// Found coincidence
+										discard = true
+										// Remove subcomment reference from ids.
+										last := len(ids.Subcomments) - 1
+										ids.Subcomments[i] = ids.Subcomments[last]
+										ids.Subcomments = ids.Subcomments[:last]
+										break
+									}
+								}
+							}
+						}
 					}
-					var discard bool
-					discard, ids.Subcomments = sca.toDiscard(ids.Subcomments)
 					if discard {
 						removed++
-						// copy last element in position idx
+						// Copy the last subcomment in position idx.
 						a.Subcomments[idx] = a.Subcomments[total-removed]
-						// re-slice a.Subcomments, leaving out the last element
+						// Re-slice a.Subcomments, leaving out the last subcomment.
 						a.Subcomments = a.Subcomments[:total-removed]
 						// If there are still elements in a.Subcomments, keep
-						// checking the element at position idx, which was
+						// checking the subcomment at position idx, which was
 						// replaced by the last comment in a.Subcomments.
 						if len(a.Subcomments) > 0 {
 							continue
@@ -148,13 +220,13 @@ func DiscardActivities(a UserActivity, ids *pbDataFormat.Activity) UserActivity 
 					break
 				}
 				if len(ids.Subcomments) == 0 {
-					// no more subcomment ids to compare; break loop
+					// No more subcomment ids to compare; break loop.
 					break
 				}
 			}
-			// free memory used by removed elements by allocating a new slice
-			// and copying the resulting elements
-			discardedActivity.Subcomments = make([]SegregateFinder, total-removed)
+			// Free memory used by removed subcomments by allocating a new slice
+			// and copying the resulting subcomments.
+			discardedActivity.Subcomments = make([]*pbContext.Subcomment, total-removed)
 			copy(discardedActivity.Subcomments, a.Subcomments)
 		}()
 	}
