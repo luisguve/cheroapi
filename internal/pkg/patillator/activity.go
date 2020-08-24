@@ -46,7 +46,8 @@ func (am ActivityMetadata) IsLessRelevantThan(other interface{}) bool {
 
 // ThreadActivity holds the metadata of a thread as well as its context.
 type ThreadActivity struct {
-	Thread *pbContext.Thread
+	SectionId string
+	Thread    *pbContext.Thread
 	ActivityMetadata
 }
 
@@ -56,6 +57,7 @@ func (ta ThreadActivity) Key() interface{} {
 		Ctx: &pbContext.Context_ThreadCtx{
 			ThreadCtx: ta.Thread,
 		},
+		SectionId: ta.SectionId,
 	}
 }
 
@@ -93,7 +95,8 @@ func (ta ThreadActivity) toDiscard(ids []*pbContext.Thread) (bool, []*pbContext.
 
 // CommentActivity holds the metadata of a comment as well as its context.
 type CommentActivity struct {
-	Comment *pbContext.Comment
+	SectionId string
+	Comment   *pbContext.Comment
 	ActivityMetadata
 }
 
@@ -103,6 +106,7 @@ func (ca CommentActivity) Key() interface{} {
 		Ctx: &pbContext.Context_CommentCtx{
 			CommentCtx: ca.Comment,
 		},
+		SectionId: ca.SectionId,
 	}
 }
 
@@ -153,6 +157,7 @@ func (ca CommentActivity) toDiscard(ids []*pbContext.Comment) (bool, []*pbContex
 
 // SubcommentActivity holds the metadata of a subcomment as well as its context.
 type SubcommentActivity struct {
+	SectionId  string
 	Subcomment *pbContext.Subcomment
 	ActivityMetadata
 }
@@ -163,6 +168,7 @@ func (sca SubcommentActivity) Key() interface{} {
 		Ctx: &pbContext.Context_SubcommentCtx{
 			SubcommentCtx: sca.Subcomment,
 		},
+		SectionId: sca.SectionId,
 	}
 }
 
@@ -219,6 +225,53 @@ func (sca SubcommentActivity) toDiscard(ids []*pbContext.Subcomment) (bool, []*p
 		}
 	}
 	return toDiscard, ids
+}
+
+// OrderActivityBySection returns the given activity sorted by section id.
+func OrderActivityBySection(activity *pbDataFormat.Activity) map[string]*pbDataFormat.Activity {
+	if activity == nil {
+		return nil
+	}
+
+	var result map[string]*pbDataFormat.Activity
+
+	for _, t := range activity.ThreadsCreated {
+		section := t.SectionCtx.Id
+		if result == nil {
+			result = make(map[string]*pbDataFormat.Activity)
+		}
+		sectionActivity := result[section]
+		if sectionActivity == nil {
+			sectionActivity = &pbDataFormat.Activity{}
+		}
+		sectionActivity.ThreadsCreated = append(sectionActivity.ThreadsCreated, t)
+		result[section] = sectionActivity
+	}
+	for _, c := range activity.Comments {
+		section := c.ThreadCtx.SectionCtx.Id
+		if result == nil {
+			result = make(map[string]*pbDataFormat.Activity)
+		}
+		sectionActivity := result[section]
+		if sectionActivity == nil {
+			sectionActivity = &pbDataFormat.Activity{}
+		}
+		sectionActivity.Comments = append(sectionActivity.Comments, c)
+		result[section] = sectionActivity
+	}
+	for _, sc := range activity.Subcomments {
+		section := c.CommentCtx.ThreadCtx.SectionCtx.Id
+		if result == nil {
+			result = make(map[string]*pbDataFormat.Activity)
+		}
+		sectionActivity := result[section]
+		if sectionActivity == nil {
+			sectionActivity = &pbDataFormat.Activity{}
+		}
+		sectionActivity.Subcomments = append(sectionActivity.Subcomments, sc)
+		result[section] = sectionActivity
+	}
+	return result
 }
 
 type UserActivity struct {
