@@ -81,18 +81,22 @@ type SetSDF func(*pbDataFormat.Content) SegregateDiscarderFinder
 type Context struct {
 	Key    *pbContext.Context
 	Status string
+	Index  int
 }
 
 // FillActivityPattern merges the fields ThreadsCreated, Comments and
 // Subcomments (type []SegregateFinder) from the given map[string]UserActivity
-// into a single []SegregateFinder, and then fetches out SegregateFinder
-// instances in a random fashion, with a probability of 80% of following
-// the given pattern, and returns a []*pbContext.Context containing the required
-// information to retrieve the contents from the databases.
+// into a single []SegregateFinder, and then fetches out instances of
+// SegregateFinder in a random fashion, with a probability of 80% of following
+// the given pattern, and returns a map[string][]Context containing the required
+// information to request the contents mapped to their section.
 //
 // It may return a smaller list of content contexts than the provided pattern
 // requires, depending upon the availability of contents.
-func FillActivityPattern(activity map[string]UserActivity, pattern []pbMetadata.ContentStatus) []Context {
+//
+// Each context of each slice of the returned map contains an Index, which
+// determine the position of each content rule in the final slice of contents.
+func FillActivityPattern(activity map[string]UserActivity, pattern []pbMetadata.ContentStatus) map[string][]Context {
 	var activities []SegregateFinder
 	for _, a := range activity {
 		activities = append(activities, a.ThreadsCreated...)
@@ -101,14 +105,14 @@ func FillActivityPattern(activity map[string]UserActivity, pattern []pbMetadata.
 	}
 	segActivities := segregate(activities)
 
-	var result []Context
+	var result = make(map[string][]Context)
 
 	var content ContentFinder
 	// empty is a flag that indicates whether both newContents and relContents
 	// have no more contents to fetch from.
 	var empty bool
 FOR:
-	for _, status := range pattern {
+	for idx, status := range pattern {
 		switch pbMetadata.ContentStatus_name[int32(status)] {
 		case "NEW":
 			content, segActivities.newContents, segActivities.relContents, empty = fetch(segActivities.newContents,
@@ -116,7 +120,14 @@ FOR:
 			if !empty {
 				// check type assertion to ensure there will not be a panic
 				if ctx, ok := content.Key().(*pbContext.Context); ok {
-					result = append(result, Context{ctx, "NEW"})
+					contents := result[ctx.SectionId]
+					contentContext := Context{
+						Key:    ctx,
+						Status: "NEW",
+						Index:  idx,
+					}
+					contents = append(contents, contentContext)
+					result[ctx.SectionId] = contents
 				}
 				continue
 			}
@@ -127,7 +138,14 @@ FOR:
 			if !empty {
 				// check type assertion to ensure there will not be a panic
 				if ctx, ok := content.Key().(*pbContext.Context); ok {
-					result = append(result, Context{ctx, "REL"})
+					contents := result[ctx.SectionId]
+					contentContext := Context{
+						Key:    ctx,
+						Status: "REL",
+						Index:  idx,
+					}
+					contents = append(contents, contentContext)
+					result[ctx.SectionId] = contents
 				}
 				continue
 			}
@@ -136,7 +154,14 @@ FOR:
 			if segActivities.topContent != nil {
 				// check type assertion to ensure there will not be a panic
 				if ctx, ok := segActivities.topContent.Key().(*pbContext.Context); ok {
-					result = append(result, Context{ctx, "TOP"})
+					contents := result[ctx.SectionId]
+					contentContext := Context{
+						Key:    ctx,
+						Status: "TOP",
+						Index:  idx,
+					}
+					contents = append(contents, contentContext)
+					result[ctx.SectionId] = contents
 				}
 				// set topContent to nil to avoid reaching this point again.
 				segActivities.topContent = nil
