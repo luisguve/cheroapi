@@ -3,10 +3,13 @@ package users
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	dbmodel "github.com/luisguve/cheroapi/internal/app/userapi"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbApi "github.com/luisguve/cheroproto-go/userapi"
+	pbContents "github.com/luisguve/cheroproto-go/cheroapi"
+	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -219,19 +222,68 @@ func (s *Server) GetDashboardData(ctx context.Context, req *pbApi.GetDashboardDa
 	}, nil
 }
 
-// Get the recent activity of a user.
-func (s *Server) RecentActivity(ctx context.Context, req *pbApi.RecentActivityRequest) (*pbDataFormat.Activity, error) {
+// Get the recent activity of different users and discard those that the user
+// has already seen.
+func (s *Server) RecentActivity(ctx context.Context, req *pbApi.RecentActivityRequest) (*pbApi.RecentActivityResponse, error) {
 	if s.dbHandler == nil {
 		return nil, status.Error(codes.Internal, "No database connection")
 	}
-	pbUser, err := s.dbHandler.User(req.UserId)
-	if err != nil {
-		if errors.Is(err, dbmodel.ErrUserNotFound) {
-			return nil, status.Error(codes.NotFound, err.Error())
+	var (
+		errs []error
+		userIds = req.Users // user ids to get activity from.
+		ids = req.DiscardIds // ids of activity to discard, classified by user id.
+		res *pbApi.RecentActivityResponse
+	)
+
+	for _, userId := range userIds {
+		pbUser, err := s.dbHandler.User(userId)
+		if err != nil {
+			if errors.Is(err, dbmodel.ErrUserNotFound) {
+				err = fmt.Errorf("(%s) %s", userId, err.Error())
+			}
+			errs = append(errs, err)
+			continue
 		}
-		return nil, status.Error(codes.Internal, err.Error())
+		userActivity := pbUser.RecentActivity
+		if userActivity == nil {
+			continue
+		}
+		toDiscard, ok := ids[userId]
+		if ok {
+			userActivity = patillator.DiscardActivities(userActivity, toDiscard)
+		}
+		bySection := patillator.OrderActivityBySection(userActivity)
+		if res == nil {
+			res = &pbApi.RecentActivityResponse{
+				References: make(map[string]*pbDataFormat.Activity),
+			}
+		}
+		for sectionId, activity := range bySection {
+			sectionRefs := res.References[sectionId]
+
+			if sectionRefs == nil {
+				sectionRefs = &pbDataFormat.Activity{}
+			}
+
+			sectionRefs.ThreadsCreated = append(sectionRefs.ThreadsCreated, activity.ThreadsCreated...)
+			sectionRefs.Comments = append(sectionRefs.Comments, activity.Comments...)
+			sectionRefs.Subcomments = append(sectionRefs.Subcomments, activity.Subcomments...)
+
+			res.References[sectionId] = sectionRefs
+		}
 	}
-	return pbUser.RecentActivity, nil
+
+	var err error
+	if len(errs) != 0 {
+		// Set the first error.
+		err = fmt.Errorf("Error 1: %v\n", errs[0].Error())
+		// Set the rest of errors.
+		for i := 1; i < len(errs); i++ {
+			err = fmt.Errorf("%vError %d: %v\n", err.Error(), i+1, errs[i].Error())
+		}
+	}
+
+	return res, err
 }
 
 // Get the list of saved threads of a user.
@@ -246,7 +298,27 @@ func (s *Server) SavedThreads(ctx context.Context, req *pbApi.SavedThreadsReques
 		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	savedThreads := make(map[string]*pbContents.IdList)
+	groupedThreads := patillator.OrderBySection(pbUser.SavedThreads)
+
+	if req.DiscardIds != nil {
+		for sectionId, idList := range req.DiscardIds {
+			// Check whether there are saved threads from each section.
+			sectionThreads, ok := groupedThreads[sectionId]
+			if !ok {
+				continue
+			}
+			// Discard threads from one section at a time.
+			sectionThreads = patillator.DiscardIds(sectionThreads, idList.Ids)
+			savedThreads[sectionId] = &pbContents.IdList{Ids: sectionThreads}
+		}
+	} else {
+		for sectionId, sectionThreads := range groupedThreads {
+			savedThreads[sectionId] = &pbContents.IdList{Ids: sectionThreads}
+		}
+	}
 	return &pbApi.SavedThreadsResponse{
-		References: pbUser.SavedThreads,
+		References: savedThreads,
 	}, nil
 }
