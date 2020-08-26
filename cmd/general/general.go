@@ -46,6 +46,9 @@ func (c cheroapiConfig) preventDefault() error {
 		if s.Id == "" {
 			return fmt.Errorf("Missing id in one or more sections.")
 		}
+		if s.Name == "" {
+			return fmt.Errorf("Missing name in one or more sections.")
+		}
 	}
 	return nil
 }
