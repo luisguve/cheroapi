@@ -1,0 +1,9 @@
+# Specify the absolute path of the directory where the database files will live in.
+db_dir = "C:/cheroapi_files/db"
+
+# Specify the absolute path of the directory where the log files will live in.
+log_dir = "C:/cheroapi_files/logtest"
+
+# Config for grpc service for users.
+[users_grpc_config]
+bind_address = "localhost:50051"
