@@ -182,7 +182,7 @@ FOR:
 //
 // It may return a smaller list of content contexts than the provided pattern
 // requires, depending upon the availability of contents.
-func FillGeneralPattern(generalContents map[string][]SegregateFinder, pattern []pbMetadata.ContentStatus) []GeneralId {
+func FillGeneralPattern(generalContents map[string][]SegregateFinder, pattern []pbMetadata.ContentStatus) map[string][]Context {
 	var contents []SegregateFinder
 	for _, c := range generalContents {
 		contents = append(contents, c...)
@@ -190,14 +190,14 @@ func FillGeneralPattern(generalContents map[string][]SegregateFinder, pattern []
 	// segregated contents
 	segContents := segregate(contents)
 
-	var result []GeneralId
+	var result = make(map[string][]Context)
 
 	var content ContentFinder
 	// empty is a flag that indicates whether both newContents and relContents
 	// have no more contents to fetch from.
 	var empty bool
 FOR:
-	for _, status := range pattern {
+	for idx, status := range pattern {
 		switch pbMetadata.ContentStatus_name[int32(status)] {
 		case "NEW":
 			content, segContents.newContents, segContents.relContents, empty = fetch(segContents.newContents,
@@ -205,12 +205,24 @@ FOR:
 			if !empty {
 				// check type assertion to ensure there will not be a panic.
 				if gi, ok := content.Key().(GeneralId); ok {
-					gi = GeneralId{
-						Id:        gi.Id,
-						SectionId: gi.SectionId,
-						Status:    "NEW",
+					ctx := &pbContext.Context{
+						Ctx: &pbContext.Context_ThreadCtx{
+							ThreadCtx: &pbContext.Thread{
+								Id:         gi.Id,
+								SectionCtx: &pbContext.Section{
+									Id: gi.SectionId,
+								},
+							},
+						},
 					}
-					result = append(result, gi)
+					contextList := result[gi.SectionId]
+					contentContext := Context{
+						Key:    ctx,
+						Status: "NEW",
+						Index:  idx,
+					}
+					contextList = append(contextList, contentContext)
+					result[gi.SectionId] = contextList
 				}
 				continue
 			}
@@ -221,12 +233,24 @@ FOR:
 			if !empty {
 				// check type assertion to ensure there will not be a panic.
 				if gi, ok := content.Key().(GeneralId); ok {
-					gi = GeneralId{
-						Id:        gi.Id,
-						SectionId: gi.SectionId,
-						Status:    "REL",
+					ctx := &pbContext.Context{
+						Ctx: &pbContext.Context_ThreadCtx{
+							ThreadCtx: &pbContext.Thread{
+								Id:         gi.Id,
+								SectionCtx: &pbContext.Section{
+									Id: gi.SectionId,
+								},
+							},
+						},
 					}
-					result = append(result, gi)
+					contextList := result[gi.SectionId]
+					contentContext := Context{
+						Key:    ctx,
+						Status: "REL",
+						Index:  idx,
+					}
+					contextList = append(contextList, contentContext)
+					result[gi.SectionId] = contextList
 				}
 				continue
 			}
@@ -235,12 +259,24 @@ FOR:
 			if segContents.topContent != nil {
 				// check type assertion to ensure there will not be a panic.
 				if gi, ok := segContents.topContent.Key().(GeneralId); ok {
-					gi = GeneralId{
-						Id:        gi.Id,
-						SectionId: gi.SectionId,
-						Status:    "TOP",
+					ctx := &pbContext.Context{
+						Ctx: &pbContext.Context_ThreadCtx{
+							ThreadCtx: &pbContext.Thread{
+								Id:         gi.Id,
+								SectionCtx: &pbContext.Section{
+									Id: gi.SectionId,
+								},
+							},
+						},
 					}
-					result = append(result, gi)
+					contextList := result[gi.SectionId]
+					contentContext := Context{
+						Key:    ctx,
+						Status: "TOP",
+						Index:  idx,
+					}
+					contextList = append(contextList, contentContext)
+					result[gi.SectionId] = contextList
 				}
 				// set topContent to nil to avoid reaching this point again.
 				segContents.topContent = nil
