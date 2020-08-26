@@ -4,6 +4,7 @@ import (
 	"time"
 
 	pbContext "github.com/luisguve/cheroproto-go/context"
+	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 )
 
@@ -260,7 +261,7 @@ func OrderActivityBySection(activity *pbDataFormat.Activity) map[string]*pbDataF
 		result[section] = sectionActivity
 	}
 	for _, sc := range activity.Subcomments {
-		section := c.CommentCtx.ThreadCtx.SectionCtx.Id
+		section := sc.CommentCtx.ThreadCtx.SectionCtx.Id
 		if result == nil {
 			result = make(map[string]*pbDataFormat.Activity)
 		}
