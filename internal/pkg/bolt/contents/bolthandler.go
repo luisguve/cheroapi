@@ -1,5 +1,5 @@
-// package bolthandler provides a Handler for performing CRUD operations
-// on a bolt database.
+// Package contents provides a Handler for performing CRUD operations on a
+// section's bolt database.
 
 package contents
 
@@ -25,33 +25,23 @@ const (
 )
 
 type handler struct {
-	// Section ids (lowercased, space-trimmed name) mapped to section.
-	sections map[string]section
-	// Last time a clean up was done.
-	lastQA int64
-	// Connection to remote users service.
-	users pbApi.CrudUsersClient
+	section section // Contents section
+	lastQA  int64 // Last time a clean up was done.
+	users   pbApi.CrudUsersClient // Connection to remote users service.
 }
 
 type section struct {
-	// every section has its own database, which holds two buckets: one for
+	// Every section has its own database, which holds two buckets: one for
 	// read-write (activeContentsB) and one for read only (archivedContentsB).
 	contents *bolt.DB
-	// relative path to the database, including extension
-	path string
-	// section name
-	name string
+	path     string // Absolute path to the database, including extension
+	name     string // Section name
+	id       string // Section ID
 }
 
-// Close every section database and the database of users, return the first
-// error, if any.
+// Close the section database and returns an error, if any.
 func (h *handler) Close() error {
-	for _, section := range h.sections {
-		if err := section.contents.Close(); err != nil {
-			return err
-		}
-	}
-	return nil
+	return h.section.contents.Close()
 }
 
 // New returns a dbmodel.Handler with a few just open bolt databases under the
@@ -85,67 +75,63 @@ func (h *handler) Close() error {
 // New only creates the bucket of active contents and the bucket of archived
 // contents, along with their top-level bucket for comments. In the bucket of
 // active contents, it also creates a bucket for deleted threads.
-func New(path string, sectionIds map[string]string, usersClient pbApi.CrudUsersClient) (dbmodel.Handler, error) {
-	sectionsDBs := make(map[string]section)
+func New(path string, sectionId, sectionName string, usersClient pbApi.CrudUsersClient) (dbmodel.Handler, error) {
 
-	// open or create section databases
-	for sectionId, sectionName := range sectionIds {
-		dbPath := filepath.Join(path, sectionId)
-		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-			os.MkdirAll(dbPath, os.ModeDir)
-		}
-		dbFile := filepath.Join(dbPath, "contents.db")
-		db, err := bolt.Open(dbFile, 0600, nil)
+	// open or create section database
+	dbPath := filepath.Join(path, sectionId)
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		os.MkdirAll(dbPath, os.ModeDir)
+	}
+	dbFile := filepath.Join(dbPath, "contents.db")
+	db, err := bolt.Open(dbFile, 0600, nil)
+	if err != nil {
+		return nil, err
+	}
+	// create bucket for active contents and for archived contents
+	err = db.Update(func(tx *bolt.Tx) error {
+		// active
+		b, err := tx.CreateBucketIfNotExists([]byte(activeContentsB))
 		if err != nil {
-			return nil, err
+			log.Printf("Could not create bucket %s: %v\n", activeContentsB, err)
+			return err
 		}
-		// create bucket for active contents and for archived contents
-		err = db.Update(func(tx *bolt.Tx) error {
-			// active
-			b, err := tx.CreateBucketIfNotExists([]byte(activeContentsB))
-			if err != nil {
-				log.Printf("Could not create bucket %s: %v\n", activeContentsB, err)
-				return err
-			}
-			_, err = b.CreateBucketIfNotExists([]byte(commentsB))
-			if err != nil {
-				log.Printf("Could not create bucket %s: %v\n", commentsB, err)
-				return err
-			}
-			_, err = b.CreateBucketIfNotExists([]byte(deletedThreadsB))
-			if err != nil {
-				log.Printf("Could not create bucket %s: %v\n", deletedThreadsB, err)
-				return err
-			}
-			// archived
-			b, err = tx.CreateBucketIfNotExists([]byte(archivedContentsB))
-			if err != nil {
-				log.Printf("Could not create bucket %s: %v\n", archivedContentsB, err)
-				return err
-			}
-			_, err = b.CreateBucketIfNotExists([]byte(commentsB))
-			if err != nil {
-				log.Printf("Could not create bucket %s: %v\n", commentsB, err)
-				return err
-			}
-			return nil
-		})
+		_, err = b.CreateBucketIfNotExists([]byte(commentsB))
 		if err != nil {
-			return nil, err
+			log.Printf("Could not create bucket %s: %v\n", commentsB, err)
+			return err
 		}
-		// create bucket for archived contents
-		sectionsDBs[sectionId] = section{
-			contents: db,
-			path:     dbFile,
-			name:     sectionName,
+		_, err = b.CreateBucketIfNotExists([]byte(deletedThreadsB))
+		if err != nil {
+			log.Printf("Could not create bucket %s: %v\n", deletedThreadsB, err)
+			return err
 		}
+		// archived
+		b, err = tx.CreateBucketIfNotExists([]byte(archivedContentsB))
+		if err != nil {
+			log.Printf("Could not create bucket %s: %v\n", archivedContentsB, err)
+			return err
+		}
+		_, err = b.CreateBucketIfNotExists([]byte(commentsB))
+		if err != nil {
+			log.Printf("Could not create bucket %s: %v\n", commentsB, err)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now()
 
 	return &handler{
 		users:    usersClient,
-		sections: sectionsDBs,
+		section:  section{
+			contents: db,
+			path:     dbFile,
+			name:     sectionName,
+			id:       sectionId,
+		},
 		lastQA:   now.Unix(),
 	}, nil
 }

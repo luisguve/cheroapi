@@ -33,26 +33,21 @@ import (
 // - unprepared database or proto marshal/unmarshal error
 func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*pbApi.NotifyUser, error) {
 	var (
-		sectionId = thread.SectionCtx.Id
 		pbComment = new(pbDataFormat.Content)
 		pbThread  = new(pbDataFormat.Content)
 	)
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return nil, dbmodel.ErrSectionNotFound
-	}
+
 	// Format, marshal and save comment and update user and thread content in
 	// the same transaction.
-	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
+	err := h.section.contents.Update(func(tx *bolt.Tx) error {
 		var err error
 		threadBytes, err := getThreadBytes(tx, thread.Id)
 		if err != nil {
-			log.Printf("Could not find thread %s in section %s: %v.\n", thread.Id, sectionId, err)
+			log.Printf("Could not find thread %s: %v.\n", thread.Id, err)
 			return err
 		}
 		if err = proto.Unmarshal(threadBytes, pbThread); err != nil {
-			log.Printf("Could not unmarshal content: %v\n", err)
+			log.Printf("Could not unmarshal content: %v.\n", err)
 			return err
 		}
 		commentsBucket, err := getActiveCommentsBucket(tx, thread.Id)
@@ -80,8 +75,8 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 			PublishDate: reply.PublishDate,
 			AuthorId:    reply.Submitter,
 			Id:          pbThread.Id,
-			SectionName: sectionDB.name,
-			SectionId:   sectionId,
+			SectionName: h.section.name,
+			SectionId:   h.section.id,
 			Permalink:   permalink,
 			Metadata: &pbMetadata.Content{
 				LastUpdated: reply.PublishDate,
@@ -165,22 +160,17 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		notifyUsers []*pbApi.NotifyUser
 		commentId   = comment.Id
 		threadId    = comment.ThreadCtx.Id
-		sectionId   = comment.ThreadCtx.SectionCtx.Id
 		pbThread    = new(pbDataFormat.Content)
 		pbComment   = new(pbDataFormat.Content)
 	)
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return nil, dbmodel.ErrSectionNotFound
-	}
+
 	// Get thread, comment and user and format, marshal and save comment and
 	// update user, thread and comment in the same transaction.
-	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
+	err := h.section.contents.Update(func(tx *bolt.Tx) error {
 		// Get thread which the comment belongs to.
 		threadBytes, err := getThreadBytes(tx, threadId)
 		if err != nil {
-			log.Printf("Could not find thread %s in section %s: %v.\n", threadId, sectionId, err)
+			log.Printf("Could not find thread %s: %v.\n", threadId, err)
 			return err
 		}
 		if err = proto.Unmarshal(threadBytes, pbThread); err != nil {
@@ -190,8 +180,8 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		// Get comment which the subcomment is being submitted on.
 		commentBytes, err := getCommentBytes(tx, threadId, commentId)
 		if err != nil {
-			log.Printf("Could not find comment %s in thread %s in section %s: %v.\n",
-				commentId, threadId, sectionId, err)
+			log.Printf("Could not find comment %s in thread %s: %v.\n",
+				commentId, threadId, err)
 			return err
 		}
 		if err = proto.Unmarshal(commentBytes, pbComment); err != nil {
@@ -223,8 +213,8 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 			PublishDate: reply.PublishDate,
 			AuthorId:    reply.Submitter,
 			Id:          pbThread.Id,
-			SectionName: sectionDB.name,
-			SectionId:   sectionId,
+			SectionName: h.section.name,
+			SectionId:   h.section.id,
 			Permalink:   permalink,
 			Metadata: &pbMetadata.Content{
 				LastUpdated: reply.PublishDate,

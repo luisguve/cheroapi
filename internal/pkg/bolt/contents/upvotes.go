@@ -56,18 +56,13 @@ func inSlice(users []string, user string) (bool, int) {
 func (h *handler) UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.NotifyUser, error) {
 	var (
 		id        = thread.Id
-		sectionId = thread.SectionCtx.Id
 		pbThread  = new(pbDataFormat.Content)
 	)
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return nil, dbmodel.ErrSectionNotFound
-	}
-	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
+
+	err := h.section.contents.Update(func(tx *bolt.Tx) error {
 		threadBytes, err := getThreadBytes(tx, id)
 		if err != nil {
-			log.Printf("Could not find thread %s in section %s: %v.\n", id, sectionId, err)
+			log.Printf("Could not find thread %s: %v.\n", id, err)
 			return err
 		}
 		if err = proto.Unmarshal(threadBytes, pbThread); err != nil {
@@ -118,18 +113,13 @@ func (h *handler) UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.
 // list of undoners. It does not update the interactions of the thread.
 func (h *handler) UndoUpvoteThread(userId string, thread *pbContext.Thread) error {
 	var (
-		id        = thread.Id
-		sectionId = thread.SectionCtx.Id
+		id = thread.Id
 	)
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return dbmodel.ErrSectionNotFound
-	}
-	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
+
+	return h.section.contents.Update(func(tx *bolt.Tx) error {
 		threadBytes, err := getThreadBytes(tx, id)
 		if err != nil {
-			log.Printf("Could not find thread %s in section %s: %v.\n", id, sectionId, err)
+			log.Printf("Could not find thread %s: %v.\n", id, err)
 			return err
 		}
 		pbThread := new(pbDataFormat.Content)
@@ -176,21 +166,16 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 	var (
 		commentId = comment.Id
 		threadId  = comment.ThreadCtx.Id
-		sectionId = comment.ThreadCtx.SectionCtx.Id
 		pbComment = new(pbDataFormat.Content)
 		pbThread  = new(pbDataFormat.Content)
 		notifs    []*pbApi.NotifyUser
 	)
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return nil, dbmodel.ErrSectionNotFound
-	}
-	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
+
+	err := h.section.contents.Update(func(tx *bolt.Tx) error {
 		// Get thread which the comment belongs to.
 		threadBytes, err := getThreadBytes(tx, threadId)
 		if err != nil {
-			log.Printf("Could not find thread %s in section %s: %v.\n", threadId, sectionId, err)
+			log.Printf("Could not find thread %s: %v.\n", threadId, err)
 			return err
 		}
 		if err = proto.Unmarshal(threadBytes, pbThread); err != nil {
@@ -215,8 +200,8 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 		// Get comment.
 		commentBytes, err := getCommentBytes(tx, threadId, commentId)
 		if err != nil {
-			log.Printf("Could not find comment %s in thread %s in section %s: %v.\n",
-				commentId, threadId, sectionId, err)
+			log.Printf("Could not find comment %s in thread %s: %v.\n",
+				commentId, threadId, err)
 			return err
 		}
 		if err = proto.Unmarshal(commentBytes, pbComment); err != nil {
@@ -284,19 +269,14 @@ func (h *handler) UpvoteComment(userId string, comment *pbContext.Comment) ([]*p
 func (h *handler) UndoUpvoteComment(userId string, comment *pbContext.Comment) error {
 	var (
 		commentId = comment.Id
-		sectionId = comment.ThreadCtx.SectionCtx.Id
 		threadId  = comment.ThreadCtx.Id
 	)
-	// Check whether the section exists.
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return dbmodel.ErrSectionNotFound
-	}
-	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
+
+	return h.section.contents.Update(func(tx *bolt.Tx) error {
 		commentBytes, err := getCommentBytes(tx, threadId, commentId)
 		if err != nil {
-			log.Printf("Could not find comment %s in thread %s in section %s: %v.\n",
-				commentId, threadId, sectionId, err)
+			log.Printf("Could not find comment %s in thread %s: %v.\n",
+				commentId, threadId, err)
 			return err
 		}
 		pbComment := new(pbDataFormat.Content)
@@ -347,19 +327,14 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 		subcommentId = subcomment.Id
 		commentId    = subcomment.CommentCtx.Id
 		threadId     = subcomment.CommentCtx.ThreadCtx.Id
-		sectionId    = subcomment.CommentCtx.ThreadCtx.SectionCtx.Id
 	)
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return nil, dbmodel.ErrSectionNotFound
-	}
-	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
+
+	err := h.section.contents.Update(func(tx *bolt.Tx) error {
 		// Get thread which both the comment and subcomment belongs to.
 		threadBytes, err := getThreadBytes(tx, threadId)
 		if err != nil {
-			log.Printf("Could not find thread %s in section %s: %v.\n", 
-				threadId, sectionId, err)
+			log.Printf("Could not find thread %s: %v.\n", 
+				threadId, err)
 			return err
 		}
 		if err = proto.Unmarshal(threadBytes, pbThread); err != nil {
@@ -383,8 +358,8 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 		// Get comment which the subcomment belongs to.
 		commentBytes, err := getCommentBytes(tx, threadId, commentId)
 		if err != nil {
-			log.Printf("Could not find comment %s in thread %s in section %s: %v.\n",
-				commentId, threadId, sectionId, err)
+			log.Printf("Could not find comment %s in thread %s: %v.\n",
+				commentId, threadId, err)
 			return err
 		}
 		if err = proto.Unmarshal(commentBytes, pbComment); err != nil {
@@ -404,8 +379,8 @@ func (h *handler) UpvoteSubcomment(userId string, subcomment *pbContext.Subcomme
 		// Get subcomment.
 		subcommentBytes, err := getSubcommentBytes(tx, threadId, commentId, subcommentId)
 		if err != nil {
-			log.Printf("Could not find subcomment %s in comemnt %s in thread %s in section %s: %v.\n",
-				subcommentId, commentId, threadId, sectionId, err)
+			log.Printf("Could not find subcomment %s in comemnt %s in thread %s: %v.\n",
+				subcommentId, commentId, threadId, err)
 			return err
 		}
 		if err = proto.Unmarshal(subcommentBytes, pbSubcomment); err != nil {
@@ -473,19 +448,14 @@ func (h *handler) UndoUpvoteSubcomment(userId string, subcomment *pbContext.Subc
 		subcommentId = subcomment.Id
 		commentId    = subcomment.CommentCtx.Id
 		threadId     = subcomment.CommentCtx.ThreadCtx.Id
-		sectionId    = subcomment.CommentCtx.ThreadCtx.SectionCtx.Id
 	)
-	// Check whether the section exists.
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return dbmodel.ErrSectionNotFound
-	}
-	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
+
+	return h.section.contents.Update(func(tx *bolt.Tx) error {
 		// Get subcomment.
 		subcommentBytes, err := getSubcommentBytes(tx, threadId, commentId, subcommentId)
 		if err != nil {
-			log.Printf("Could not find subcomment %s in comemnt %s in thread %s in section %s: %v.\n",
-				subcommentId, commentId, threadId, sectionId, err)
+			log.Printf("Could not find subcomment %s in comemnt %s in thread %s: %v.\n",
+				subcommentId, commentId, threadId, err)
 			return err
 		}
 		pbSubcomment := new(pbDataFormat.Content)

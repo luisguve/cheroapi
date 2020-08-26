@@ -63,10 +63,9 @@ func (s *Server) CreateThread(ctx context.Context, req *pbApi.CreateThreadReques
 	}
 	var (
 		submitter = req.UserId
-		section   = req.SectionCtx
 		content   = req.Content
 	)
-	permalink, err := s.dbHandler.CreateThread(content, section, submitter)
+	permalink, err := s.dbHandler.CreateThread(content, submitter)
 	if err != nil {
 		if errors.Is(err, dbmodel.ErrSectionNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())

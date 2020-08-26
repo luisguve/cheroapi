@@ -17,20 +17,14 @@ import (
 // recent or old activity of the given user by removing the reference to the thread.
 func (h *handler) DeleteThread(thread *pbContext.Thread, userId string) error {
 	var (
-		id        = thread.Id
-		sectionId = thread.SectionCtx.Id
+		id = thread.Id
 	)
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return dbmodel.ErrSectionNotFound
-	}
 
 	// Find thread, check whether the submitter is the author, update activity
 	// of author and remove reference to thread from the list of saved threads
 	// of every user who saved it, insert thread into the bucket of deleted
 	// threads if the thread is active and delete thread from active contents.
-	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
+	return h.section.contents.Update(func(tx *bolt.Tx) error {
 		contents, name, err := getThreadBucket(tx, id)
 		if err != nil {
 			return err
@@ -120,18 +114,12 @@ func (h *handler) DeleteComment(comment *pbContext.Comment, userId string) error
 	var (
 		id        = comment.Id
 		threadId  = comment.ThreadCtx.Id
-		sectionId = comment.ThreadCtx.SectionCtx.Id
 	)
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return dbmodel.ErrSectionNotFound
-	}
 
 	// Find comment, check whether the submitter is the author, delete comment,
 	// update user by removing the comment from its activity, decrease replies
 	// of thread by 1 and remove user from list of repliers.
-	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
+	return h.section.contents.Update(func(tx *bolt.Tx) error {
 		commentsBucket, _, err := getCommentsBucket(tx, threadId)
 		if err != nil {
 			return err
@@ -203,19 +191,13 @@ func (h *handler) DeleteSubcomment(subcomment *pbContext.Subcomment, userId stri
 		id        = subcomment.Id
 		commentId = subcomment.CommentCtx.Id
 		threadId  = subcomment.CommentCtx.ThreadCtx.Id
-		sectionId = subcomment.CommentCtx.ThreadCtx.SectionCtx.Id
 	)
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return dbmodel.ErrSectionNotFound
-	}
 
 	// Find subcomment, check whether the submitter is the author, delete
 	// subcomment, update activity of subcomment author, decrease replies of
 	// both the comment and thread the subcomment belongs to by 1 and remove
 	// user from list of repliers of the comment.
-	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
+	return h.section.contents.Update(func(tx *bolt.Tx) error {
 		subcommentsBucket, _, err := getSubcommentsBucket(tx, threadId, commentId)
 		if err != nil {
 			return err

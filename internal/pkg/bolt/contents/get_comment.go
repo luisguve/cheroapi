@@ -21,21 +21,15 @@ func (h *handler) GetCommentsOverview(thread *pbContext.Thread) ([]patillator.Se
 	var (
 		err       error
 		id        = thread.Id
-		sectionId = thread.SectionCtx.Id
 		contents  []patillator.SegregateDiscarderFinder
 	)
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return nil, dbmodel.ErrSectionNotFound
-	}
 
 	setContent := func(c *pbDataFormat.Content) patillator.SegregateDiscarderFinder {
 		return patillator.Content(*c.Metadata)
 	}
 
 	// query database
-	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
+	err = h.section.contents.View(func(tx *bolt.Tx) error {
 		comments, _, err := getCommentsBucket(tx, id)
 		if err != nil {
 			log.Printf("There are no comments for the thread %s. %v\n", id, err)
@@ -102,17 +96,10 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []patillator.Id) ([]
 	var (
 		err          error
 		id           = thread.Id
-		sectionId    = thread.SectionCtx.Id
 		contentRules = make([]*pbApi.ContentRule, len(ids))
 	)
 
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return nil, dbmodel.ErrSectionNotFound
-	}
-
-	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
+	err = h.section.contents.View(func(tx *bolt.Tx) error {
 		comments, _, err := getCommentsBucket(tx, id)
 		if err != nil {
 			log.Printf("There are no comments for the thread %s. %v\n", id, err)
@@ -147,7 +134,7 @@ func (h *handler) GetComments(thread *pbContext.Thread, ids []patillator.Id) ([]
 						contentRules[idx] = contentRule
 					}
 				} else {
-					log.Printf("Id %s not found in bucket %s\n", id, thread.Id)
+					log.Printf("Could not find comment %s in bucket %s\n", id, thread.Id)
 				}
 				select {
 				case done <- err:
@@ -186,21 +173,13 @@ func (h *handler) GetCommentContent(comment *pbContext.Comment) (*pbDataFormat.C
 		err       error
 		id        = comment.Id
 		threadId  = comment.ThreadCtx.Id
-		sectionId = comment.ThreadCtx.SectionCtx.Id
 		pbContent = new(pbDataFormat.Content)
 	)
 
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return nil, dbmodel.ErrSectionNotFound
-	}
-
-	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
+	err = h.section.contents.View(func(tx *bolt.Tx) error {
 		commentBytes, err := getCommentBytes(tx, threadId, id)
 		if err != nil {
-			log.Printf("Could not find comment (id: %s) [root]->[%s]->[%s]: %v",
-				id, sectionId, threadId, err)
+			log.Printf("Could not find comment %s in bucket %s: %v", id, threadId, err)
 			return err
 		}
 
@@ -226,21 +205,14 @@ func (h *handler) GetSubcommentContent(subcomment *pbContext.Subcomment) (*pbDat
 		id        = subcomment.Id
 		commentId = subcomment.CommentCtx.Id
 		threadId  = subcomment.CommentCtx.ThreadCtx.Id
-		sectionId = subcomment.CommentCtx.ThreadCtx.SectionCtx.Id
 		pbContent = new(pbDataFormat.Content)
 	)
 
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return nil, dbmodel.ErrSectionNotFound
-	}
-
-	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
+	err = h.section.contents.View(func(tx *bolt.Tx) error {
 		threadBytes, err := getSubcommentBytes(tx, threadId, commentId, id)
 		if err != nil {
-			log.Printf("Could not find subcomment (id: %s) [root]->[%s]->[%s]->[%s]: %v",
-				id, sectionId, threadId, commentId, err)
+			log.Printf("Could not find subcomment id %s in bucket %s of bucket %s: %v",
+				id, commentId, threadId, err)
 			return err
 		}
 
@@ -292,18 +264,12 @@ func (h *handler) GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.Co
 	var (
 		commentId    = comment.Id
 		threadId     = comment.ThreadCtx.Id
-		sectionId    = comment.ThreadCtx.SectionCtx.Id
 		contentRules = make([]*pbApi.ContentRule, Q)
 		err          error
 		count        = 0
 	)
-	// check whether section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return nil, dbmodel.ErrSectionNotFound
-	}
 
-	err = sectionDB.contents.View(func(tx *bolt.Tx) error {
+	err = h.section.contents.View(func(tx *bolt.Tx) error {
 		subcommentsBucket, _, err := getSubcommentsBucket(tx, threadId, commentId)
 		if err != nil {
 			return err
