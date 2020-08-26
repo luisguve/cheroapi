@@ -27,6 +27,9 @@ func New(sections []Section, usersClient pbUsers.CrudUsersClient) general.Server
 	if len(sections) == 0 {
 		log.Fatal("There must be at least one section.")
 	}
+	if usersClient == nil {
+		log.Fatal("Got a nil users client.")
+	}
 	srv := &server{
 		sections: make(map[string]Section),
 		users:    usersClient,
@@ -36,9 +39,6 @@ func New(sections []Section, usersClient pbUsers.CrudUsersClient) general.Server
 			log.Fatal(err)
 		}
 		srv.sections[s.Id] = s
-	}
-	if usersClient == nil {
-		log.Fatal("Got a nil users client.")
 	}
 	return srv
 }
