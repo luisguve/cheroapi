@@ -24,10 +24,10 @@ func (h *handler) LastQA() int64 {
 	return h.lastQA
 }
 
-// Clean up every section database.
+// Clean up the section database.
 //
 // It moves unpopular contents from the bucket of active contents to the bucket
-// of archived contents. It will only test the relevance of threads with 1 day
+// of archived contents. It will only test the popularity of threads with 1 day
 // or longer and move them accordingly, along with its comments and subcomments.
 //
 // It will also move comments and subcomments of deleted threads to the bucket
@@ -48,177 +48,132 @@ func (h *handler) QA() (string, error) {
 		now     = time.Now()
 	)
 	defer close(quit)
-	summary = fmt.Sprintf("[%v] Starting QA.\n", now.Format(time.Stamp))
-	for _, s := range h.sections {
-		numGR++
-		go func(s section) {
-			var (
-				sectionSummary string
-				localDone      = make(chan resultErr)
-				localQuit      = make(chan struct{})
-				numGR          int
-			)
-			defer close(localQuit)
-			sectionSummary = fmt.Sprintf("\t[%v]\n", s.name)
-			err := s.contents.View(func(tx *bolt.Tx) error {
-				activeContents := tx.Bucket([]byte(activeContentsB))
-				if activeContents == nil {
-					log.Printf("Could not find bucket %s\n", activeContentsB)
-					return dbmodel.ErrBucketNotFound
-				}
-				// Iterate over every key/value pair of active contents.
+	summary = fmt.Sprintf("[%v] Starting QA (section %s).\n", now.Format(time.Stamp), h.section.name)
+
+	err := h.section.contents.View(func(tx *bolt.Tx) error {
+		activeContents := tx.Bucket([]byte(activeContentsB))
+		if activeContents == nil {
+			log.Printf("Could not find bucket %s\n", activeContentsB)
+			return dbmodel.ErrBucketNotFound
+		}
+		// Iterate over every key/value pair of active contents.
+		c := activeContents.Cursor()
+
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			// Check whether the value is a nested bucket. If so, just continue.
+			// Cursors see nested buckets with value == nil.
+			if v == nil {
+				continue
+			}
+			pbThread := &pbDataFormat.Content{}
+			if err := proto.Unmarshal(v, pbThread); err != nil {
+				log.Printf("Could not unmarshal content %s: %v\n", string(k), err)
+				return err
+			}
+			// Check whether the thread has been around for less than one day.
+			// If so, it doesn't qualify for the popularity evaluation and it
+			// will be skipped.
+			published := time.Unix(pbThread.PublishDate.Seconds, 0)
+			diff := now.Sub(published)
+			if diff < (24 * time.Hour) {
+				summary += fmt.Sprintln("-----------------------------------------------------")
+				summary += fmt.Sprintf("%s has been around for less than one day, ", pbThread.Title)
+				summary += fmt.Sprintf("hence it is not a candidate for moving to archived contents.\n")
+				continue
+			}
+			m := pbThread.Metadata
+
+			lastUpdated := time.Unix(m.LastUpdated.Seconds, 0)
+
+			diff = now.Sub(lastUpdated)
+			diff += time.Duration(m.Diff) * time.Second
+
+			var avgUpdateTime float64
+			if m.Interactions > 0 {
+				avgUpdateTime = diff.Seconds() / float64(m.Interactions)
+			} else {
+				avgUpdateTime = diff.Seconds()
+			}
+			// Check whether the thread is still popular. It should have more
+			// than 100 interactions and the average time difference between
+			// interactions must be no longer than 1 hour.
+			// If so, it will be skipped.
+			min := 1 * time.Hour
+			if (m.Interactions > 49) && (avgUpdateTime <= min.Seconds()) {
+				summary += fmt.Sprintln("-----------------------------------------------------")
+				summary += fmt.Sprintf("With an average update time difference of %v (< %v), ", avgUpdateTime, min.Seconds())
+				summary += fmt.Sprintf("and a total of %v interactions (> 49), %s keeps active.\n", m.Interactions, pbThread.Title)
+				continue
+			}
+			// Otherwise, it will be moved to the bucket of archived contents,
+			// along with the contents associated to it; comments and
+			// subcomments.
+			copyKey := make([]byte, len(k))
+			copy(copyKey, k)
+			copyVal := make([]byte, len(v))
+			copy(copyVal, v)
+			numGR++
+			go func(k, v []byte, c *pbDataFormat.Content, avgUpdateTime float64) {
 				var (
-					c = activeContents.Cursor()
+					result string
+					resErr resultErr
 				)
-				for k, v := c.First(); k != nil; k, v = c.Next() {
-					// Check whether the value is a nested bucket. If so, just continue.
-					// Cursors see nested buckets with value == nil.
-					if v == nil {
-						continue
-					}
-					pbThread := new(pbDataFormat.Content)
-					if err := proto.Unmarshal(v, pbThread); err != nil {
-						log.Printf("Could not unmarshal content %s: %v\n", string(k), err)
-						return err
-					}
-					// Check whether the thread has been around for less than one day.
-					// If so, it doesn't qualify for the relevance evaluation and it
-					// will be skipped.
-					published := time.Unix(pbThread.PublishDate.Seconds, 0)
-					diff := now.Sub(published)
-					if diff < (24 * time.Hour) {
-						sectionSummary += fmt.Sprintln("-----------------------------------------------------")
-						sectionSummary += fmt.Sprintf("%s has been around for less than one day, ", pbThread.Title)
-						sectionSummary += fmt.Sprintf("hence it is not a candidate for moving to archived contents.\n")
-						continue
-					}
-					m := pbThread.Metadata
-
-					lastUpdated := time.Unix(m.LastUpdated.Seconds, 0)
-
-					diff = now.Sub(lastUpdated)
-					diff += time.Duration(m.Diff) * time.Second
-
-					var avgUpdateTime float64
-					if m.Interactions > 0 {
-						avgUpdateTime = diff.Seconds() / float64(m.Interactions)
-					} else {
-						avgUpdateTime = diff.Seconds()
-					}
-					// Check whether the thread is still relevant. It should have more
-					// than 100 interactions and the average time difference between
-					// interactions must be no longer than 1 hour.
-					// If so, it will be skipped.
-					min := 1 * time.Hour
-					if (m.Interactions > 49) && (avgUpdateTime <= min.Seconds()) {
-						sectionSummary += fmt.Sprintln("-----------------------------------------------------")
-						sectionSummary += fmt.Sprintf("With an average update time difference of %v (< %v), ", avgUpdateTime, min.Seconds())
-						sectionSummary += fmt.Sprintf("and a total of %v interactions (> 49), %s keeps active.\n", m.Interactions,
-							pbThread.Title)
-						continue
-					}
-					// Otherwise, it will be moved to the bucket of archived contents,
-					// along with the contents associated to it; comments and
-					// subcomments.
-					copyKey := make([]byte, len(k))
-					copy(copyKey, k)
-					copyVal := make([]byte, len(v))
-					copy(copyVal, v)
-					numGR++
-					go func(k, v []byte, c *pbDataFormat.Content, avgUpdateTime float64) {
-						var (
-							result string
-							resErr resultErr
-						)
-						resErr.result += fmt.Sprintln("-----------------------------------------------------")
-						resErr.result += fmt.Sprintf("With an average update time difference of %v, ", avgUpdateTime)
-						resErr.result += fmt.Sprintf("and a total of %v interactions, %s will be moved to archived contents.\n",
-							c.Metadata.Interactions, pbThread.Title)
-						result, resErr.err = h.moveContents(s, k, v, c)
-						resErr.result += result
-						select {
-						case localDone <- resErr:
-						case <-localQuit:
-						}
-					}(copyKey, copyVal, pbThread, avgUpdateTime)
+				resErr.result += fmt.Sprintln("-----------------------------------------------------")
+				resErr.result += fmt.Sprintf("With an average update time difference of %v, ", avgUpdateTime)
+				resErr.result += fmt.Sprintf("and a total of %v interactions, %s will be moved to archived contents.\n",
+					c.Metadata.Interactions, pbThread.Title)
+				result, resErr.err = h.moveContents(h.section, k, v, c)
+				resErr.result += result
+				select {
+				case done <- resErr:
+				case <-quit:
 				}
-				// Move comments and subcomments associated to deleted threads.
-				deletedContents := activeContents.Bucket([]byte(deletedThreadsB))
-				if deletedContents == nil {
-					log.Printf("Could not find bucket %s\n", deletedThreadsB)
-					return dbmodel.ErrBucketNotFound
-				}
-				c = deletedContents.Cursor()
-				for k, v := c.First(); k != nil; k, v = c.Next() {
-					// Check whether the value is a nested bucket. If so, just continue.
-					// Cursors see nested buckets with value == nil.
-					if v == nil {
-						continue
-					}
-					copyKey := make([]byte, len(k))
-					copy(copyKey, k)
-					numGR++
-					go func(k []byte) {
-						var resErr resultErr
-						resErr.result, resErr.err = h.deleteThread(s, k)
-						select {
-						case localDone <- resErr:
-						case <-localQuit:
-						}
-					}(copyKey)
-				}
-				return nil
-			})
-			if err != nil {
-				if numGR == 0 {
-					// Nothing to do; there are no summaries to receive.
-					select {
-					case done <- resultErr{err: err}:
-					case <-quit:
-					}
-					return
-				}
-				// There are summaries to receive, print the error and continue.
-				log.Println(err)
+			}(copyKey, copyVal, pbThread, avgUpdateTime)
+		}
+		// Move comments and subcomments associated to deleted threads.
+		deletedContents := activeContents.Bucket([]byte(deletedThreadsB))
+		if deletedContents == nil {
+			log.Printf("Could not find bucket %s\n", deletedThreadsB)
+			return dbmodel.ErrBucketNotFound
+		}
+		c = deletedContents.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			// Check whether the value is a nested bucket. If so, just continue.
+			// Cursors see nested buckets with value == nil.
+			if v == nil {
+				continue
 			}
-			var (
-				resErr resultErr
-				// Flag to indicate that an error was found and that no more
-				// errors will be checked.
-				foundErr bool
-			)
-			// Check for errors, concatenate the resulting summaries and send
-			// the result along with the first error, if any, to the outer
-			// go-routine.
-			for i := 0; i < numGR; i++ {
-				resErr = <-localDone
-				if resErr.result != "" {
-					sectionSummary += resErr.result
+			copyKey := make([]byte, len(k))
+			copy(copyKey, k)
+			numGR++
+			go func(k []byte) {
+				var resErr resultErr
+				resErr.result, resErr.err = h.deleteThread(h.section, k)
+				select {
+				case done <- resErr:
+				case <-quit:
 				}
-				if !foundErr {
-					if resErr.err != nil {
-						foundErr = true
-						err = resErr.err
-					}
-				}
-			}
-			resErr.result = sectionSummary
-			resErr.err = err
-			select {
-			case done <- resErr:
-			case <-quit:
-			}
-		}(s)
+			}(copyKey)
+		}
+		return nil
+	})
+	if err != nil {
+		if numGR == 0 {
+			// Nothing to do; there are no summaries to receive.
+			return summary, err
+		}
+		// There are summaries to receive, print the error and continue.
+		log.Println(err)
 	}
 	var (
 		resErr resultErr
-		err    error
-		// Flag to indicate that an error was found and that no more errors
-		// will be checked.
+		// foundErr is a flag to indicate that an error was found and that
+		// no more errors will be checked.
 		foundErr bool
 	)
-	// Check for errors, concatenate the resulting summaries and return the
-	// result along with the first error, if any.
+	// Check for errors, concatenate the resulting summaries and send
+	// the result along with the first error, if any, to the outer
+	// go-routine.
 	for i := 0; i < numGR; i++ {
 		resErr = <-done
 		if resErr.result != "" {
