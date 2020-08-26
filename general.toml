@@ -1,0 +1,13 @@
+# Config for grpc service for users.
+[users_grpc_config]
+  bind_address = "localhost:50051"
+
+# Config for grpc service for general api.
+[general_grpc_config]
+  bind_address = "localhost:50052"
+
+# Config for section grpc services.
+[[sections]]
+  id = "mylife"
+  name = "My Life"
+  bind_address = "localhost:50053"
