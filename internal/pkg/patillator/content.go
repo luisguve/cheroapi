@@ -3,6 +3,7 @@ package patillator
 import (
 	"time"
 
+	pbContext "github.com/luisguve/cheroproto-go/context"
 	pbMetadata "github.com/luisguve/cheroproto-go/metadata"
 )
 
@@ -162,4 +163,16 @@ type GeneralId struct {
 	Id        string
 	SectionId string
 	Status    string
+}
+
+// OrderBySection returns thread ids grouped by section Id.
+func OrderBySection(threads []*pbContext.Thread) map[string][]string {
+	result := make(map[string][]string)
+	for _, t := range threads {
+		id := t.SectionCtx.Id
+		section := result[id]
+		section = append(section, t.Id)
+		result[id] = section
+	}
+	return result
 }
