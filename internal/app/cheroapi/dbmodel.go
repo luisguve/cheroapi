@@ -15,55 +15,55 @@ type UpdateUserFunc func(*pbDataFormat.User) *pbDataFormat.User
 // Handler defines the set of available CRUD operations to perform on the
 // database.
 type Handler interface {
-	// Get metadata of threads in a section
-	GetThreadsOverview(*pbContext.Section, ...patillator.SetSDF) ([]patillator.SegregateDiscarderFinder, error)
-	// Get content of the given thread ids in a section
-	GetThreads(*pbContext.Section, []patillator.Id) ([]*pbApi.ContentRule, error)
-	// Get metadata of comments in a thread
+	// Get metadata of all the active threads in a section.
+	GetActiveThreadsOverview(...patillator.SetSDF) ([]patillator.SegregateDiscarderFinder, error)
+	// Get metadata of the given thread ids in a section.
+	GetThreadsOverview([]string, ...patillator.SetSDF) ([]patillator.SegregateDiscarderFinder, error)
+	// Get content of the given thread ids in a section.
+	GetThreads([]patillator.Id) ([]*pbApi.ContentRule, error)
+	// Get metadata of comments in a thread.
 	GetCommentsOverview(*pbContext.Thread) ([]patillator.SegregateDiscarderFinder, error)
-	// Get content of the given comment ids in a thread
+	// Get content of the given comment ids in a thread.
 	GetComments(*pbContext.Thread, []patillator.Id) ([]*pbApi.ContentRule, error)
-	// Get metadata of threads in every section
-	GetGeneralThreadsOverview() (map[string][]patillator.SegregateDiscarderFinder, []error)
-	// Get content of the given thread ids in the given sections
-	GetGeneralThreads([]patillator.GeneralId) ([]*pbApi.ContentRule, []error)
 	// Get a single ContentRule containing a thread.
 	GetThread(*pbContext.Thread) (*pbApi.ContentRule, error)
+	// Get a single ContentRule containing a comment.
+	GetComment(*pbContext.Comment) (*pbApi.ContentRule, error)
+	// Get a single ContentRule containing a subcomment.
+	GetSubcomment(*pbContext.Subcomment) (*pbApi.ContentRule, error)
 	// Get a single thread content.
-	GetThreadContent(thread *pbContext.Thread) (*pbDataFormat.Content, error)
-	// Get 10 content of subcomments, skip first n comments.
+	GetThreadContent(*pbContext.Thread) (*pbDataFormat.Content, error)
+	// Get a single comment content.
+	GetCommentContent(*pbContext.Comment) (*pbDataFormat.Content, error)
+	// Get a single subcomment content.
+	GetSubcommentContent(*pbContext.Subcomment) (*pbDataFormat.Content, error)
+	// Get content of 10 subcomments, skip first n comments.
 	GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.ContentRule, error)
-	// Get activity of users
-	GetActivity(users ...string) (map[string]patillator.UserActivity, []error)
-	// Get contents by context
-	GetContentsByContext([]patillator.Context) ([]*pbApi.ContentRule, []error)
-	// Get metadata of saved threads of a given user
-	GetSavedThreadsOverview(user string) (map[string][]patillator.SegregateDiscarderFinder, []error)
 	// Append user id to list of users who saved.
 	AppendUserWhoSaved(thread *pbContext.Thread, userId string) error
 	// Remove user id from list of users who saved.
 	RemoveUserWhoSaved(thread *pbContext.Thread, userId string) error
 	// Submit upvote on a thread from the given user id and return a list of users
-	// and the notifications for them and an error
+	// and the notifications for them and an error.
 	UpvoteThread(userId string, thread *pbContext.Thread) (*pbApi.NotifyUser, error)
 	// Submit upvote on a comment from the given user id and return a list of users
-	// and the notifications for them and an error
+	// and the notifications for them and an error.
 	UpvoteComment(userId string, comment *pbContext.Comment) ([]*pbApi.NotifyUser, error)
 	// Submit upvote on a subcomment from the given user id and return a list of
-	// users and the notifications for them and an error
+	// users and the notifications for them and an error.
 	UpvoteSubcomment(userId string, subcomment *pbContext.Subcomment) ([]*pbApi.NotifyUser, error)
-	// Undo upvote on a thread from the given user id
+	// Undo upvote on a thread from the given user id.
 	UndoUpvoteThread(userId string, thread *pbContext.Thread) error
-	// Undo upvote on a comment from the given user id
+	// Undo upvote on a comment from the given user id.
 	UndoUpvoteComment(userId string, comment *pbContext.Comment) error
-	// Undo upvote on a subcomment from the given user id
+	// Undo upvote on a subcomment from the given user id.
 	UndoUpvoteSubcomment(userId string, subcomment *pbContext.Subcomment) error
-	// Post a comment on a thread
+	// Post a comment on a thread.
 	ReplyThread(thread *pbContext.Thread, r Reply) (*pbApi.NotifyUser, error)
-	// Post a comment on a comment
+	// Post a comment on a comment.
 	ReplyComment(comment *pbContext.Comment, r Reply) ([]*pbApi.NotifyUser, error)
 	// Create a new thread, save it and return its permalink.
-	CreateThread(content *pbApi.Content, section *pbContext.Section, author string) (string, error)
+	CreateThread(content *pbApi.Content, author string) (string, error)
 	// Delete the given thread and the contents associated to it.
 	DeleteThread(thread *pbContext.Thread, userId string) error
 	// Delete the given comment and the contents associated to it.
