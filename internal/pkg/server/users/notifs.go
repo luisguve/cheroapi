@@ -7,6 +7,7 @@ import (
 	dbmodel "github.com/luisguve/cheroapi/internal/app/userapi"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 	pbApi "github.com/luisguve/cheroproto-go/userapi"
+	pbContents "github.com/luisguve/cheroproto-go/cheroapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -15,7 +16,7 @@ import (
 // it to the list of unread notifications of the given user.
 // If the notification was in the list of read notifications, it removes it from
 // there.
-func (s *Server) SaveNotif(ctx context.Context, req *pbApi.NotifyUser) (*pbApi.SaveNotifResponse, error) {
+func (s *Server) SaveNotif(ctx context.Context, req *pbContents.NotifyUser) (*pbApi.SaveNotifResponse, error) {
 	if s.dbHandler == nil {
 		return nil, status.Error(codes.Internal, "No database connection")
 	}
