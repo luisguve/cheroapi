@@ -1,0 +1,21 @@
+# SECTION MY LIFE
+
+section_name = "My Life"
+section_id = "mylife"
+
+# Specify the absolute path of the directory where the database files will live in.
+db_dir = "C:/cheroapi_files/db"
+
+# Specify the absolute path of the directory where the log files will live in.
+log_dir = "C:/cheroapi_files/logtest"
+
+# Turn on/off the Quality Assurance service.
+schedule_qa = true
+
+# Config for grpc service for users.
+[users_grpc_config]
+bind_address = "localhost:50051"
+
+# Config for grpc service for section.
+[contents_grpc_config]
+bind_address = "localhost:50053"
