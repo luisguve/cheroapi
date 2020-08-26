@@ -89,7 +89,7 @@ func (a *App) scheduleQA() {
 		nextQA.Format(time.RubyDate), hoursLeft, minutesLeft, secondsLeft)
 }
 
-func (a *App) Run(addr string, doQA bool) error {
+func (a *App) Run(addr, sectionName string, doQA bool) error {
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("Failed to listen: %v\n", err)
@@ -101,6 +101,6 @@ func (a *App) Run(addr string, doQA bool) error {
 	if doQA {
 		a.scheduleQA()
 	}
-	defaultLog.Println("Running")
+	defaultLog.Println("Running section", sectionName)
 	return s.Serve(lis)
 }
