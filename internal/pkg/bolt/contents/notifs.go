@@ -7,7 +7,6 @@ import (
 
 	pbTime "github.com/golang/protobuf/ptypes/timestamp"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
-	pbUsers "github.com/luisguve/cheroproto-go/userapi"
 	pbDataFormat "github.com/luisguve/cheroproto-go/dataformat"
 )
 
@@ -33,14 +32,11 @@ func (h *handler) notifyInteraction(userId, toNotify, msg, subject string,
 		Details:   notifDetails,
 		Timestamp: now,
 	}
-	req := &pbUsers.NotifyUser{
+	req := &pbApi.NotifyUser{
 		UserId:       toNotify,
 		Notification: notif,
 	}
 	go h.users.SaveNotif(context.Background(), req)
 
-	return &pbApi.NotifyUser{
-		UserId:       toNotify,
-		Notification: notif,
-	}
+	return req
 }
