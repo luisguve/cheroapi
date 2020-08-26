@@ -1,7 +1,6 @@
 package patillator
 
 import (
-	"log"
 	"sync"
 
 	pbContext "github.com/luisguve/cheroproto-go/context"
@@ -168,7 +167,7 @@ func DiscardActivities(a *pbDataFormat.Activity, ids *pbDataFormat.Activity) *pb
 				for {
 					var (
 						discard bool
-						id = a.Subcomments[idx].Id
+						id1 = a.Subcomments[idx].Id
 						commentCtx1 = a.Subcomments[idx].CommentCtx
 						threadCtx1 = a.Subcomments[idx].CommentCtx.ThreadCtx
 						sectionCtx1 = a.Subcomments[idx].CommentCtx.ThreadCtx.SectionCtx
@@ -276,4 +275,59 @@ func DiscardContents(contents []SegregateDiscarderFinder, ids []string) []Segreg
 		result[i] = SegregateFinder(c)
 	}
 	return result
+}
+
+// DiscardIds returns contents without those whose id is in the given list of ids.
+func DiscardIds(contents []string, ids []string) []string {
+	// Initially, no contents have been discarded and if there are no ids
+	// to compare, the exact same list of contents will be returned back.
+	if (len(ids) == 0) || (len(contents) == 0) {
+		return contents
+	}
+
+	total := len(contents)
+	removed := 0
+	for idx := 0; idx < len(contents); idx++ {
+		// Discard the content at position idx and the contents that
+		// replace it if it fulfills the requirement to be discarded.
+		for {
+			var (
+				threadId = contents[idx]
+				discard bool
+			)
+			for idx, id := range ids {
+				if threadId == id {
+					// Remove element from list of ids to be discarded.
+					discard = true
+					last := len(ids) - 1
+					ids[idx] = ids[last]
+					ids = ids[:last]
+					break
+				}
+			}
+			if discard {
+				// Remove thread from resulting slice.
+				removed++
+				last := len(contents) - 1
+				// Copy last valid element in position idx.
+				contents[idx] = contents[last]
+				// Re-slice contents, leaving out the last element.
+				contents = contents[:last]
+				// If there are still elements in contents, check again the
+				// element at position idx, which was replaced by the last
+				// content.
+				if len(contents) > 0 {
+					continue
+				}
+			}
+			break
+		}
+	}
+	if removed > 0 {
+		remaining := total - removed
+		result := make([]string, remaining)
+		copy(result, contents)
+		contents = result
+	}
+	return contents
 }
