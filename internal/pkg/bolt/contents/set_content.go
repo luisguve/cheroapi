@@ -34,20 +34,16 @@ func itob(v uint64) []byte {
 //
 // Then, it appends the just created thread to the list of threads created in
 // the recent activity of the author.
-func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Section, userId string) (string, error) {
+func (h *handler) CreateThread(content *pbApi.Content, userId string) (string, error) {
 	var (
-		sectionId = section.Id
 		permalink string
+		section = &pbContext.Section{
+			Id: h.section.id,
+		}
 	)
 
-	// Check whether the section exists.
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return "", dbmodel.ErrSectionNotFound
-	}
-
 	// Save thread and user in the same transaction.
-	err := sectionDB.contents.Update(func(tx *bolt.Tx) error {
+	err := h.section.contents.Update(func(tx *bolt.Tx) error {
 		// Get author data.
 		req := &pbUsers.GetBasicUserDataRequest{UserId: userId}
 		pbUser, err := h.users.GetUserHeaderData(context.Background(), req)
@@ -81,7 +77,7 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 		newId := strings.ToLower(strings.Replace(content.Title, " ", "-", -1))
 		newId += fmt.Sprintf("-%s", hashSeq)
 		// Build permalink: /{section-id}/{thread-id}.
-		permalink = fmt.Sprintf("/%s/%s", sectionId, newId)
+		permalink = fmt.Sprintf("/%s/%s", h.section.id, newId)
 
 		pbContent := &pbDataFormat.Content{
 			Title:       content.Title,
@@ -90,8 +86,8 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 			PublishDate: content.PublishDate,
 			AuthorId:    userId,
 			Id:          newId,
-			SectionName: sectionDB.name,
-			SectionId:   sectionId,
+			SectionName: h.section.name,
+			SectionId:   h.section.id,
 			Permalink:   permalink,
 			Metadata: &pbMetadata.Content{
 				LastUpdated: content.PublishDate,
@@ -125,119 +121,15 @@ func (h *handler) CreateThread(content *pbApi.Content, section *pbContext.Sectio
 	return permalink, nil
 }
 
-// TO BE REMOVED:
-
-// SetThreadContent encodes the given content in protobuf bytes, then updates
-// the value of the given thread with the resulting []byte.
-//
-// It may return an ErrSectionNotFound error in case of being called with an
-// invalid section context, ErrThreadNotFound if the thread does not exist, or
-// a proto marshalling error.
-func (h *handler) SetThreadContent(thread *pbContext.Thread, content *pbDataFormat.Content) error {
-	var (
-		id        = thread.Id
-		sectionId = thread.SectionCtx.Id
-	)
-
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return dbmodel.ErrSectionNotFound
-	}
-
-	contentBytes, err := proto.Marshal(content)
-	if err != nil {
-		log.Printf("Could not marshal content: %v\n", err)
-		return err
-	}
-
-	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		return setThreadBytes(tx, id, contentBytes)
-	})
-	return err
-}
-
-// SetCommentContent encodes the given content in protobuf bytes, then updates
-// the value of the given comment with the resulting []byte.
-//
-// It may return an ErrSectionNotFound error in case of being called with an
-// invalid section context, ErrCommentNotFound if either the comment or the
-// thread it belongs to does not exist, or a proto marshalling error.
-func (h *handler) SetCommentContent(comment *pbContext.Comment, content *pbDataFormat.Content) error {
-	var (
-		id        = comment.Id
-		threadId  = comment.ThreadCtx.Id
-		sectionId = comment.ThreadCtx.SectionCtx.Id
-	)
-
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return dbmodel.ErrSectionNotFound
-	}
-
-	contentBytes, err := proto.Marshal(content)
-	if err != nil {
-		log.Printf("Could not marshal content: %v\n", err)
-		return err
-	}
-
-	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		return setCommentBytes(tx, threadId, id, contentBytes)
-	})
-	return err
-}
-
-// SetSubcommentContent encodes the given content in protobuf bytes, then
-// updates the value of the given subcomment with the resulting []byte.
-//
-// It may return an ErrSectionNotFound error in case of being called with an
-// invalid section context, ErrSubcommentNotFound if either the subcomment, the
-// comment it belongs to or the thread it belongs to does not exist, or a proto
-// marshalling error.
-func (h *handler) SetSubcommentContent(subcomment *pbContext.Subcomment, content *pbDataFormat.Content) error {
-	var (
-		id        = subcomment.Id
-		commentId = subcomment.CommentCtx.Id
-		threadId  = subcomment.CommentCtx.ThreadCtx.Id
-		sectionId = subcomment.CommentCtx.ThreadCtx.SectionCtx.Id
-	)
-
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return dbmodel.ErrSectionNotFound
-	}
-
-	contentBytes, err := proto.Marshal(content)
-	if err != nil {
-		log.Printf("Could not marshal content: %v\n", err)
-		return err
-	}
-
-	err = sectionDB.contents.Update(func(tx *bolt.Tx) error {
-		return setSubcommentBytes(tx, threadId, commentId, id, contentBytes)
-	})
-	return err
-}
-
-// <--->
-
 func (h *handler) AppendUserWhoSaved(thread *pbContext.Thread, userId string) error {
 	var (
 		id = thread.Id
-		sectionId = thread.SectionCtx.Id
 	)
 
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return dbmodel.ErrSectionNotFound
-	}
-	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
+	return h.section.contents.Update(func(tx *bolt.Tx) error {
 		threadBytes, err := getThreadBytes(tx, id)
 		if err != nil {
-			log.Printf("Could not find thread %s in section %s: %v", id, sectionId, err)
+			log.Printf("Could not find thread %s: %v", id, err)
 			return err
 		}
 		pbContent := new(pbDataFormat.Content)
@@ -267,18 +159,12 @@ func (h *handler) AppendUserWhoSaved(thread *pbContext.Thread, userId string) er
 func (h *handler) RemoveUserWhoSaved(thread *pbContext.Thread, userId string) error {
 	var (
 		id = thread.Id
-		sectionId = thread.SectionCtx.Id
 	)
 
-	// check whether the section exists
-	sectionDB, ok := h.sections[sectionId]
-	if !ok {
-		return dbmodel.ErrSectionNotFound
-	}
-	return sectionDB.contents.Update(func(tx *bolt.Tx) error {
+	return h.section.contents.Update(func(tx *bolt.Tx) error {
 		threadBytes, err := getThreadBytes(tx, id)
 		if err != nil {
-			log.Printf("Could not find thread %s in section %s: %v", id, sectionId, err)
+			log.Printf("Could not find thread %s: %v", id, err)
 			return err
 		}
 		pbContent := new(pbDataFormat.Content)
