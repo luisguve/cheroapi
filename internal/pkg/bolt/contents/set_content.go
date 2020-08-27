@@ -99,6 +99,10 @@ func (h *handler) CreateThread(content *pbApi.Content, userId string) (string, e
 			log.Printf("Could not marshal content: %v\n", err)
 			return err
 		}
+		err = activeContents.Put([]byte(newId), pbContentBytes)
+		if err != nil {
+			return err
+		}
 		threadCtx := &pbContext.Thread{
 			Id:         newId,
 			SectionCtx: section,
@@ -110,10 +114,7 @@ func (h *handler) CreateThread(content *pbApi.Content, userId string) (string, e
 		}
 		// Update users' recent activity by appending a thread.
 		_, err = h.users.CreateThread(context.Background(), reqUpdateUser)
-		if err != nil {
-			return err
-		}
-		return activeContents.Put([]byte(newId), pbContentBytes)
+		return err
 	})
 	if err != nil {
 		return "", err

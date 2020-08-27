@@ -91,6 +91,19 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		if err = commentsBucket.Put([]byte(commentId), pbCommentBytes); err != nil {
 			return err
 		}
+		// Update thread metadata.
+		pbThread.Replies++
+		pbThread.ReplierIds = append(pbThread.ReplierIds, reply.Submitter)
+		incInteractions(pbThread.Metadata)
+		contentBytes, err := proto.Marshal(pbThread)
+		if err != nil {
+			log.Printf("Could not marshal content: %v\n", err)
+			return err
+		}
+		err = setThreadBytes(tx, thread.Id, contentBytes)
+		if err != nil {
+			return err
+		}
 		commentCtx := &pbContext.Comment{
 			Id:        commentId,
 			ThreadCtx: thread,
@@ -101,19 +114,7 @@ func (h *handler) ReplyThread(thread *pbContext.Thread, reply dbmodel.Reply) (*p
 		}
 		// Update user; append comment to list of activity of user.
 		_, err = h.users.Comment(context.Background(), reqUpdateUser)
-		if err != nil {
-			return err
-		}
-		// Update thread metadata.
-		pbThread.Replies++
-		pbThread.ReplierIds = append(pbThread.ReplierIds, reply.Submitter)
-		incInteractions(pbThread.Metadata)
-		contentBytes, err := proto.Marshal(pbThread)
-		if err != nil {
-			log.Printf("Could not marshal content: %v\n", err)
-			return err
-		}
-		return setThreadBytes(tx, thread.Id, contentBytes)
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -230,19 +231,6 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 		if err != nil {
 			return err
 		}
-		subcommentCtx := &pbContext.Subcomment{
-			Id:         subcommentId,
-			CommentCtx: comment,
-		}
-		reqUpdateUser := &pbUsers.SubcommentRequest{
-			UserId: reply.Submitter,
-			Ctx:    subcommentCtx,
-		}
-		// Update user; append subcomment to list of activity of author.
-		_, err = h.users.Subcomment(context.Background(), reqUpdateUser)
-		if err != nil {
-			return err
-		}
 		// Update thread metadata.
 		pbThread.Replies++
 		incInteractions(pbThread.Metadata)
@@ -264,7 +252,21 @@ func (h *handler) ReplyComment(comment *pbContext.Comment, reply dbmodel.Reply) 
 			log.Printf("Could not marshal content: %v\n", err)
 			return err
 		}
-		return setCommentBytes(tx, threadId, commentId, commentBytes)
+		err = setCommentBytes(tx, threadId, commentId, commentBytes)
+		if err != nil {
+			return err
+		}
+		subcommentCtx := &pbContext.Subcomment{
+			Id:         subcommentId,
+			CommentCtx: comment,
+		}
+		reqUpdateUser := &pbUsers.SubcommentRequest{
+			UserId: reply.Submitter,
+			Ctx:    subcommentCtx,
+		}
+		// Update user; append subcomment to list of activity of author.
+		_, err = h.users.Subcomment(context.Background(), reqUpdateUser)
+		return err
 	})
 	if err != nil {
 		log.Println(err)
