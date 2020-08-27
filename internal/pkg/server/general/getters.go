@@ -252,6 +252,7 @@ func (s *server) getActivity(users []string, ids map[string]*pbDataFormat.Activi
 		}(section.Id, section.Client, refs)
 	}
 
+	wg.Wait()
 	return activity, errs
 }
 
