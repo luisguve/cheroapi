@@ -237,6 +237,9 @@ func (s *server) getActivity(users []string, ids map[string]*pbDataFormat.Activi
 						ActivityMetadata: patillator.ActivityMetadata(*contentOverview.Metadata),
 					}
 					activityOverview.Subcomments = append(activityOverview.Subcomments, sca)
+				default:
+					log.Printf("Unexpected context type: %v.\n", ctx)
+					continue
 				}
 			}
 
