@@ -69,7 +69,7 @@ func DiscardActivities(a *pbDataFormat.Activity, ids *pbDataFormat.Activity) *pb
 						// If there are still elements in a.ThreadsCreated,
 						// keep checking the thread at position idx, which was
 						// replaced by the last thread in a.ThreadsCreated.
-						if len(a.ThreadsCreated) > 0 {
+						if idx < len(a.ThreadsCreated) {
 							continue
 						}
 					}
@@ -137,7 +137,7 @@ func DiscardActivities(a *pbDataFormat.Activity, ids *pbDataFormat.Activity) *pb
 						// If there are still elements in a.Comments, keep
 						// checking the comment at position idx, which was
 						// replaced by the last comment in a.Comments.
-						if len(a.Comments) > 0 {
+						if idx < len(a.Comments) {
 							continue
 						}
 					}
@@ -212,7 +212,7 @@ func DiscardActivities(a *pbDataFormat.Activity, ids *pbDataFormat.Activity) *pb
 						// If there are still elements in a.Subcomments, keep
 						// checking the subcomment at position idx, which was
 						// replaced by the last comment in a.Subcomments.
-						if len(a.Subcomments) > 0 {
+						if idx < len(a.Subcomments) {
 							continue
 						}
 					}
