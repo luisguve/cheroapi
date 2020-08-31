@@ -26,7 +26,7 @@ func DiscardActivities(a *pbDataFormat.Activity, ids *pbDataFormat.Activity) *pb
 
 	// Workflow: discard threads, comments and subcomments concurrently.
 
-	// Discard threads only if there are threads to discard.
+	// Check whether there are threads to discard.
 	if (len(a.ThreadsCreated) > 0) && (len(ids.ThreadsCreated) > 0) {
 		wg.Add(1)
 		go func() {
@@ -82,11 +82,12 @@ func DiscardActivities(a *pbDataFormat.Activity, ids *pbDataFormat.Activity) *pb
 			}
 			// Free memory used by removed threads by allocating a new slice
 			// and copying the resulting threads.
-			discardedActivity.ThreadsCreated = make([]*pbContext.Thread, total-removed)
-			copy(discardedActivity.ThreadsCreated, a.ThreadsCreated)
+			cleanThreadsCreated := make([]*pbContext.Thread, total-removed)
+			copy(cleanThreadsCreated, a.ThreadsCreated)
+			discardedActivity.ThreadsCreated = cleanThreadsCreated
 		}()
 	}
-	// Discard comments only if there are comments to discard.
+	// Check whether there are comments to discard.
 	if (len(a.Comments) > 0) && (len(ids.Comments) > 0) {
 		wg.Add(1)
 		go func() {
@@ -150,11 +151,12 @@ func DiscardActivities(a *pbDataFormat.Activity, ids *pbDataFormat.Activity) *pb
 			}
 			// Free memory used by removed comments by allocating a new slice
 			// and copying the resulting comments.
-			discardedActivity.Comments = make([]*pbContext.Comment, total-removed)
-			copy(discardedActivity.Comments, a.Comments)
+			cleanComments := make([]*pbContext.Comment, total-removed)
+			copy(cleanComments, a.Comments)
+			discardedActivity.Comments = cleanComments
 		}()
 	}
-	// Discard subcomments only if there are subcomments to discard.
+	// Check whether there are subcomments to discard.
 	if (len(a.Subcomments) > 0) && (len(ids.Subcomments) > 0) {
 		wg.Add(1)
 		go func() {
@@ -225,8 +227,9 @@ func DiscardActivities(a *pbDataFormat.Activity, ids *pbDataFormat.Activity) *pb
 			}
 			// Free memory used by removed subcomments by allocating a new slice
 			// and copying the resulting subcomments.
-			discardedActivity.Subcomments = make([]*pbContext.Subcomment, total-removed)
-			copy(discardedActivity.Subcomments, a.Subcomments)
+			cleanSubcomments := make([]*pbContext.Subcomment, total-removed)
+			copy(cleanSubcomments, a.Subcomments)
+			discardedActivity.Subcomments = cleanSubcomments
 		}()
 	}
 	wg.Wait()
