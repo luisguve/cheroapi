@@ -82,6 +82,7 @@ func (h *handler) formatContentData(c *pbDataFormat.Content) *pbApi.ContentData 
 	metadata := &pbApi.ContentMetadata{
 		Id:            c.Id,
 		Section:       c.SectionName,
+		SectionId:     c.SectionId,
 		Permalink:     c.Permalink,
 		Upvotes:       c.Upvotes,
 		Replies:       c.Replies,
