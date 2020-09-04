@@ -261,7 +261,7 @@ func DiscardContents(contents []SegregateDiscarderFinder, ids []string) []Segreg
 					// If there are still elements in contents, keep checking
 					// the element at position idx, which was replaced by the
 					// last content.
-					if len(contents) > 0 {
+					if idx < len(contents) {
 						continue
 					}
 				}
@@ -319,7 +319,7 @@ func DiscardIds(contents []string, ids []string) []string {
 				// If there are still elements in contents, check again the
 				// element at position idx, which was replaced by the last
 				// content.
-				if len(contents) > 0 {
+				if idx < len(contents) {
 					continue
 				}
 			}
