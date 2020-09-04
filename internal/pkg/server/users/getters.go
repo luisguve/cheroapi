@@ -302,7 +302,7 @@ func (s *Server) SavedThreads(ctx context.Context, req *pbApi.SavedThreadsReques
 	savedThreads := make(map[string]*pbContents.IdList)
 	groupedThreads := patillator.OrderBySection(pbUser.SavedThreads)
 
-	if req.DiscardIds != nil {
+	if len(req.DiscardIds) > 0 {
 		for sectionId, idList := range req.DiscardIds {
 			// Check whether there are saved threads from each section.
 			sectionThreads, ok := groupedThreads[sectionId]
