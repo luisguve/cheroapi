@@ -281,9 +281,13 @@ func (h *handler) GetSubcomments(comment *pbContext.Comment, n int) ([]*pbApi.Co
 			wg   sync.WaitGroup
 		)
 		for k, v := c.First(); (k != nil) && (count < (n + Q)); k, v = c.Next() {
+			// Skip iteration if the value is a nested bucket (value is nil).
+			if v == nil {
+				continue
+			}
 			count++
 			// Skip first n subcomments.
-			if count < n {
+			if count <= n {
 				continue
 			}
 			// Do the unmarshaling, formatting and appending in its own go-routine.
