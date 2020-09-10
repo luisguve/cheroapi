@@ -1,12 +1,15 @@
-# Config for grpc service for users.
+# Config for grpc service for users: specify the address and port where the users
+# server is listening on.
 [users_grpc_config]
   bind_address = "localhost:50051"
 
-# Config for grpc service for general api.
+# Config for grpc service for general api: specify the address and port where
+# the general server will be listening on.
 [general_grpc_config]
   bind_address = "localhost:50052"
 
-# Config for section grpc services.
+# Config for section grpc services: specify the address an port where the section
+# servers are listening on.
 [[sections]]
   id = "mylife"
   name = "My Life"

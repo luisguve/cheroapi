@@ -1,7 +1,7 @@
 # SECTION MY LIFE
 
 section_name = "My Life"
-section_id = "mylife"
+section_id = "mylife" # Must match the section id on URLs
 
 # Specify the absolute path of the directory where the database files will live in.
 db_dir = "C:/cheroapi_files/db"
@@ -12,10 +12,12 @@ log_dir = "C:/cheroapi_files/logtest"
 # Turn on/off the Quality Assurance service.
 schedule_qa = true
 
-# Config for grpc service for users.
+# Config for grpc service for users: specify the address and port where the users
+# server is listening on.
 [users_grpc_config]
 bind_address = "localhost:50051"
 
-# Config for grpc service for section.
+# Config for grpc service for section: specify the address and port where the gRPC
+# server will be listening on.
 [contents_grpc_config]
 bind_address = "localhost:50053"
