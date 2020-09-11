@@ -91,7 +91,6 @@ func (s *server) getSavedThreadsOverview(userId string, ids map[string]*pbApi.Id
 		return nil, errs
 	}
 	if len(savedThreads.References) == 0 {
-		log.Printf("GetSavedThreadsOverview: user %s has not saved any thread.\n", userId)
 		errs = append(errs, dbmodel.ErrNoSavedThreads)
 		return nil, errs
 	}
