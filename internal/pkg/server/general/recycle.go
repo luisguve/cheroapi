@@ -6,6 +6,7 @@ import (
 
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/codes"
+	dbmodel "github.com/luisguve/cheroapi/internal/app/cheroapi"
 	pbApi "github.com/luisguve/cheroproto-go/cheroapi"
 	"github.com/luisguve/cheroapi/internal/pkg/patillator"
 )
@@ -231,7 +232,11 @@ func (s *server) RecycleSaved(req *pbApi.SavedPattern, stream pbApi.CrudGeneral_
 	// users service.
 	generalMetadata, getErrs1 = s.getSavedThreadsOverview(req.UserId, req.DiscardIds)
 	// Return an error only if no content could be gotten.
-	if (getErrs1 != nil) && (generalMetadata == nil) {
+	if (len(getErrs1) > 0) && (generalMetadata == nil) {
+		// Check whether the given user has not saved threads.
+		if getErrs1[0] == dbmodel.ErrNoSavedThreads {
+			return status.Error(codes.InvalidArgument, getErrs1[0].Error())
+		}
 		// Set the first error.
 		errs := fmt.Sprintf("Error 1: %v\n", getErrs1[0].Error())
 		// Set the rest of errors.
